@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pantalla Pública – Turnos</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #05091f;
+      color: white;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Header */
+    header {
+      background: rgba(255,255,255,0.04);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 18px 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    header .brand {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: rgba(255,255,255,0.85);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+    header .clock {
+      font-size: 1.4rem;
+      font-weight: 600;
+      color: rgba(255,255,255,0.6);
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* Main area */
+    main {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    /* Estado: sin llamados */
+    #sinTurnos {
+      text-align: center;
+      color: rgba(255,255,255,0.25);
+    }
+    #sinTurnos i { font-size: 6rem; margin-bottom: 24px; }
+    #sinTurnos p { font-size: 1.8rem; font-weight: 300; }
+
+    /* Turno actual */
+    #turnoActual {
+      display: none;
+      text-align: center;
+      animation: fadeIn .4s ease;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: scale(.94); }
+      to   { opacity: 1; transform: scale(1); }
+    }
+
+    .label-turno {
+      font-size: 1.3rem;
+      font-weight: 600;
+      letter-spacing: 4px;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.5);
+      margin-bottom: 28px;
+    }
+
+    .biper-box {
+      background: linear-gradient(135deg, #1e40af, #3b82f6);
+      border-radius: 28px;
+      padding: 32px 72px;
+      margin: 0 auto 36px;
+      display: inline-block;
+      box-shadow: 0 0 60px rgba(59,130,246,0.45), 0 0 120px rgba(59,130,246,0.2);
+    }
+    .biper-numero {
+      font-size: 9rem;
+      font-weight: 900;
+      line-height: 1;
+      letter-spacing: -4px;
+    }
+
+    .cliente-nombre {
+      font-size: 3rem;
+      font-weight: 700;
+      color: rgba(255,255,255,0.95);
+      margin-bottom: 16px;
+    }
+    .atraccion-nombre {
+      font-size: 2rem;
+      font-weight: 400;
+      color: rgba(255,255,255,0.5);
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
+
+    /* Pulse animation on new call */
+    .pulse {
+      animation: pulse .6s ease 3;
+    }
+    @keyframes pulse {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.04); }
+      100% { transform: scale(1); }
+    }
+
+    /* Footer: historial */
+    footer {
+      background: rgba(255,255,255,0.04);
+      border-top: 1px solid rgba(255,255,255,0.07);
+      padding: 16px 40px;
+    }
+    footer .historial-label {
+      font-size: .8rem;
+      color: rgba(255,255,255,0.35);
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      margin-bottom: 8px;
+    }
+    .historial-items {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .hist-chip {
+      background: rgba(255,255,255,0.08);
+      border-radius: 8px;
+      padding: 6px 16px;
+      font-size: 1rem;
+      font-weight: 600;
+      color: rgba(255,255,255,0.55);
+    }
+    .hist-chip .hn { font-size: 1.3rem; color: rgba(255,255,255,0.8); }
+
+    /* Overlay flash when called */
+    #flash {
+      pointer-events: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(59,130,246,0.18);
+      opacity: 0;
+      transition: opacity .15s;
+      z-index: 999;
+    }
+    #flash.show { opacity: 1; }
+  </style>
+</head>
+<body>
+
+<div id="flash"></div>
+
+<header>
+  <div class="brand">&#127931; Sistema de Turnos</div>
+  <div class="clock" id="clock">--:--:--</div>
+</header>
+
+<main>
+  <div id="sinTurnos">
+    <i>&#128276;</i>
+    <p>Esperando llamado de turno…</p>
+  </div>
+
+  <div id="turnoActual">
+    <div class="label-turno">&#128276; Turno llamado</div>
+    <div class="biper-box">
+      <div class="biper-numero" id="dispBiper">—</div>
+    </div>
+    <div class="cliente-nombre" id="dispNombre"></div>
+    <div class="atraccion-nombre" id="dispAtraccion"></div>
+  </div>
+</main>
+
+<footer>
+  <div class="historial-label">Últimos llamados</div>
+  <div class="historial-items" id="historial">
+    <span style="color:rgba(255,255,255,0.2); font-size:.9rem;">Sin historial aún</span>
+  </div>
+</footer>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/pantalla.js"></script>
+</body>
+</html>

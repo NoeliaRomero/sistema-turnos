@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestión de Juegos – Sistema de Turnos</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    body { background: #f0f4f8; }
+    .navbar-custom { background: #1e1b4b; }
+    .card { border: none; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .badge-activo   { background: #d1fae5; color: #065f46; }
+    .badge-inactivo { background: #fee2e2; color: #991b1b; }
+    .duracion-badge {
+      background: #ede9fe; color: #5b21b6;
+      font-size: .8rem; font-weight: 600;
+      padding: 3px 10px; border-radius: 20px;
+    }
+    .table th { font-weight: 600; color: #6c757d; font-size: .82rem; text-transform: uppercase; letter-spacing: .5px; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark navbar-custom px-4 py-3">
+  <span class="navbar-brand fw-bold fs-5">
+    <i class="bi bi-controller me-2"></i>Gestión de Juegos
+  </span>
+  <div class="d-flex align-items-center gap-2">
+    <span class="text-white-50 small" id="usuarioNombre"></span>
+    <button class="btn btn-outline-light btn-sm" id="btnVolver">
+      <i class="bi bi-arrow-left me-1"></i>Volver
+    </button>
+    <button class="btn btn-outline-light btn-sm" id="btnLogout">
+      <i class="bi bi-box-arrow-right me-1"></i>Salir
+    </button>
+  </div>
+</nav>
+
+<div class="container mt-4" style="max-width:800px">
+
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h5 class="fw-bold mb-0"><i class="bi bi-grid-3x3-gap me-2 text-primary"></i>Juegos / Atracciones</h5>
+    <button class="btn btn-primary px-4" id="btnNuevoJuego">
+      <i class="bi bi-plus-lg me-2"></i>Nuevo Juego
+    </button>
+  </div>
+
+  <div class="card">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th class="ps-4">Nombre del Juego</th>
+            <th>Duración</th>
+            <th>Personas</th>
+            <th class="text-center">Estado</th>
+            <th class="text-end pe-4">Acciones</th>
+          </tr>
+        </thead>
+        <tbody id="tablaJuegos"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="text-muted small mt-3">
+    <i class="bi bi-info-circle me-1"></i>
+    La duración estimada se muestra al operador como referencia del tiempo de juego.
+  </div>
+</div>
+
+<!-- Modal Juego -->
+<div class="modal fade" id="modalJuego" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" id="modalJuegoTitle">Nuevo Juego</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="juegoId">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Nombre del juego <span class="text-danger">*</span></label>
+          <input type="text" class="form-control form-control-lg" id="jNombre" placeholder="Ej: Laser Tag" maxlength="60">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Duración estimada (minutos) <span class="text-danger">*</span></label>
+          <div class="input-group input-group-lg">
+            <input type="number" class="form-control" id="jDuracion" min="1" max="300" value="30">
+            <span class="input-group-text">min</span>
+          </div>
+          <div class="form-text">Tiempo aproximado que dura una sesión del juego</div>
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-6">
+            <label class="form-label fw-semibold">Mínimo de personas</label>
+            <div class="input-group">
+              <input type="number" class="form-control" id="jMinMiembros" min="1" max="100" value="1">
+              <span class="input-group-text"><i class="bi bi-people"></i></span>
+            </div>
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-semibold">Máximo de personas</label>
+            <div class="input-group">
+              <input type="number" class="form-control" id="jMaxMiembros" min="1" max="100" value="20">
+              <span class="input-group-text"><i class="bi bi-people-fill"></i></span>
+            </div>
+          </div>
+          <div class="col-12">
+            <div class="form-text mt-0"><i class="bi bi-info-circle me-1"></i>La recepción solo podrá ingresar grupos dentro de este rango</div>
+          </div>
+        </div>
+        <div class="mb-3" id="activoWrap" style="display:none">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="jActivo" checked>
+            <label class="form-check-label fw-semibold" for="jActivo">Juego activo</label>
+          </div>
+          <div class="form-text">Los juegos inactivos no aparecen en la caja ni en los operadores</div>
+        </div>
+        <div id="juegoError" class="alert alert-danger d-none"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-primary px-4 fw-bold" id="btnGuardarJuego">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/juegos.js"></script>
+</body>
+</html>

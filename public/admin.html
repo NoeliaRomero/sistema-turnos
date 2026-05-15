@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Administración – Sistema de Turnos</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
+  <style>
+    body { background: #f0f4f8; }
+    .navbar-custom { background: #1e1b4b; }
+    .card { border: none; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .stat-card { border-radius: 14px; padding: 20px 24px; color: white; }
+    .stat-card .num { font-size: 2.4rem; font-weight: 800; line-height: 1; }
+    .stat-card .lbl { font-size: .85rem; opacity: .85; margin-top: 4px; }
+    .rol-admin     { background:#6f42c1; color:white; }
+    .rol-operador  { background:#198754; color:white; }
+    .rol-recepcion { background:#0d6efd; color:white; }
+    .rol-badge { font-size:.75rem; padding:3px 10px; border-radius:20px; font-weight:600; }
+    .perm-badge { font-size:.72rem; background:#ede9fe; color:#5b21b6; padding:2px 8px; border-radius:20px; font-weight:600; }
+    .table th { font-weight:600; color:#495057; font-size:.82rem; text-transform:uppercase; letter-spacing:.5px; }
+    .chart-container { position:relative; height:260px; }
+    .nav-tabs .nav-link { font-weight:600; color:#6c757d; }
+    .nav-tabs .nav-link.active { color:#1e1b4b; }
+    .badge-activo   { background:#d1fae5; color:#065f46; }
+    .badge-inactivo { background:#fee2e2; color:#991b1b; }
+    .duracion-badge { background:#ede9fe; color:#5b21b6; font-size:.8rem; font-weight:600; padding:3px 10px; border-radius:20px; }
+    .perm-group { background:#f8f9ff; border:1px solid #dee2e6; border-radius:10px; padding:14px 16px; }
+    .perm-group .form-check-label { font-weight:500; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark navbar-custom px-4 py-3">
+  <span class="navbar-brand fw-bold fs-5"><i class="bi bi-shield-lock me-2"></i>Administración</span>
+  <div class="d-flex align-items-center gap-2">
+    <a href="/recepcion.html" class="btn btn-outline-light btn-sm"><i class="bi bi-person-lines-fill me-1"></i>Recepción</a>
+    <a href="/operador.html"  class="btn btn-outline-light btn-sm"><i class="bi bi-person-gear me-1"></i>Operador</a>
+    <a href="/juegos.html"  class="btn btn-outline-light btn-sm" id="btnJuegosNav"><i class="bi bi-controller me-1"></i>Juegos</a>
+    <a href="/pantalla.html"class="btn btn-outline-light btn-sm" target="_blank"><i class="bi bi-display me-1"></i>TV</a>
+    <span class="text-white-50 small ms-1" id="usuarioNombre"></span>
+    <button class="btn btn-outline-light btn-sm" id="btnLogout"><i class="bi bi-box-arrow-right me-1"></i>Salir</button>
+  </div>
+</nav>
+
+<div class="container-fluid px-4 mt-4">
+
+  <ul class="nav nav-tabs mb-4" id="mainTabs">
+    <li class="nav-item">
+      <button class="nav-link active px-4" id="tabBtnStats" data-bs-toggle="tab" data-bs-target="#tabStats">
+        <i class="bi bi-bar-chart-line me-2"></i>Estadísticas
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link px-4" data-bs-toggle="tab" data-bs-target="#tabUsuarios">
+        <i class="bi bi-people me-2"></i>Usuarios
+      </button>
+    </li>
+  </ul>
+
+  <div class="tab-content">
+
+    <!-- ── TAB ESTADÍSTICAS ─────────────────────────────────────────────── -->
+    <div class="tab-pane fade show active" id="tabStats">
+      <div class="d-flex align-items-center gap-3 mb-4">
+        <span class="fw-semibold text-muted">Período:</span>
+        <div class="btn-group" id="filtroPeriodo">
+          <button type="button" class="btn btn-primary btn-sm"          data-periodo="hoy">Hoy</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-periodo="semana">7 días</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-periodo="mes">30 días</button>
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-periodo="todo">Todo</button>
+        </div>
+        <button class="btn btn-outline-secondary btn-sm ms-auto" id="btnRefreshStats">
+          <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+      </div>
+
+      <div class="row g-3 mb-4">
+        <div class="col-6 col-md-3">
+          <div class="stat-card" style="background:linear-gradient(135deg,#1e40af,#3b82f6)">
+            <div class="num" id="sTotal">—</div><div class="lbl">Total turnos</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card" style="background:linear-gradient(135deg,#065f46,#059669)">
+            <div class="num" id="sFinalizados">—</div><div class="lbl">Finalizados</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card" style="background:linear-gradient(135deg,#92400e,#f59e0b)">
+            <div class="num" id="sEspera">—</div><div class="lbl">En espera ahora</div>
+          </div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="stat-card" style="background:linear-gradient(135deg,#4c1d95,#7c3aed)">
+            <div class="num" id="sPromEspera">—</div><div class="lbl">Min. prom. de espera</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-4 mb-4">
+        <div class="col-lg-5">
+          <div class="card p-4">
+            <h6 class="fw-bold mb-3"><i class="bi bi-pie-chart me-2 text-primary"></i>Turnos por atracción</h6>
+            <div class="chart-container"><canvas id="chartAtraccion"></canvas></div>
+          </div>
+        </div>
+        <div class="col-lg-7">
+          <div class="card p-4">
+            <h6 class="fw-bold mb-3"><i class="bi bi-graph-up me-2 text-success"></i>Turnos por día</h6>
+            <div class="chart-container"><canvas id="chartDias"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row g-4 mb-4">
+        <div class="col-lg-6">
+          <div class="card p-4">
+            <h6 class="fw-bold mb-3"><i class="bi bi-clock me-2 text-warning"></i>Pico de actividad por hora</h6>
+            <div class="chart-container"><canvas id="chartHoras"></canvas></div>
+          </div>
+        </div>
+        <div class="col-lg-6">
+          <div class="card p-4">
+            <h6 class="fw-bold mb-3"><i class="bi bi-person-check me-2 text-info"></i>Actividad por operador</h6>
+            <div class="chart-container"><canvas id="chartOperadores"></canvas></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card p-4 mb-4">
+        <h6 class="fw-bold mb-3"><i class="bi bi-table me-2 text-secondary"></i>Resumen por operador</h6>
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead><tr>
+              <th>Operador</th><th>Atracción</th>
+              <th class="text-center">Llamados</th>
+              <th class="text-center">Finalizados</th>
+              <th class="text-center">Tiempo prom. servicio</th>
+            </tr></thead>
+            <tbody id="tablaOps"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── TAB USUARIOS ────────────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tabUsuarios">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold mb-0"><i class="bi bi-people me-2 text-primary"></i>Gestión de Usuarios</h5>
+        <button class="btn btn-primary px-4" id="btnNuevoUsuario">
+          <i class="bi bi-person-plus me-2"></i>Nuevo Usuario
+        </button>
+      </div>
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light"><tr>
+              <th class="ps-4">Nombre</th><th>Usuario</th>
+              <th>Rol</th><th>Atracción</th>
+              <th>Permisos extra</th>
+              <th class="text-center">Estado</th>
+              <th class="text-end pe-4">Acciones</th>
+            </tr></thead>
+            <tbody id="tablaUsuarios"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Modal Usuario -->
+<div class="modal fade" id="modalUsuario" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" id="modalTitle">Nuevo Usuario</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="userId">
+
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Nombre completo <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="uNombre" placeholder="Ej: Juan Pérez">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Nombre de usuario <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="uUsername" placeholder="Ej: juan.perez">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold" id="passLabel">Contraseña <span class="text-danger">*</span></label>
+          <input type="password" class="form-control" id="uPassword" placeholder="Mínimo 6 caracteres">
+          <div class="form-text" id="passHint"></div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Rol <span class="text-danger">*</span></label>
+          <select class="form-select" id="uRol">
+            <option value="">Seleccionar…</option>
+            <option value="admin">Administrador</option>
+            <option value="operador">Operador</option>
+            <option value="recepcion">Recepción</option>
+          </select>
+        </div>
+        <div class="mb-3" id="atraccionWrap" style="display:none">
+          <label class="form-label fw-semibold">Atracción asignada</label>
+          <select class="form-select" id="uAtraccion">
+            <option value="">Sin asignar</option>
+          </select>
+        </div>
+
+        <!-- Permisos adicionales (ocultos para admin) -->
+        <div id="permisosWrap" style="display:none">
+          <label class="form-label fw-semibold mb-2">Permisos adicionales</label>
+          <div class="perm-group">
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" id="uPermisoLlamar">
+              <label class="form-check-label" for="uPermisoLlamar">
+                <i class="bi bi-megaphone me-1 text-success"></i>
+                Puede llamar grupos al juego
+                <span class="d-block text-muted fw-normal small">Marcar un grupo como "jugando" desde recepción</span>
+              </label>
+            </div>
+            <div class="form-check mb-2">
+              <input class="form-check-input" type="checkbox" id="uPermisoCancelar">
+              <label class="form-check-label" for="uPermisoCancelar">
+                <i class="bi bi-x-circle me-1 text-danger"></i>
+                Puede cancelar turnos
+                <span class="d-block text-muted fw-normal small">Cancelar el biper de clientes que no llegaron</span>
+              </label>
+            </div>
+            <div class="form-check mb-0">
+              <input class="form-check-input" type="checkbox" id="uPermisoJuegos">
+              <label class="form-check-label" for="uPermisoJuegos">
+                <i class="bi bi-controller me-1 text-primary"></i>
+                Puede gestionar juegos
+                <span class="d-block text-muted fw-normal small">Crear, editar y desactivar juegos/atracciones</span>
+              </label>
+            </div>
+          </div>
+          <div class="form-text mt-2">
+            <i class="bi bi-info-circle me-1"></i>
+            El Administrador siempre tiene todos los permisos.
+          </div>
+        </div>
+
+        <div id="modalError" class="alert alert-danger d-none mt-3"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-primary px-4 fw-bold" id="btnGuardarUsuario">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Confirmar desactivar -->
+<div class="modal fade" id="modalEliminar" tabindex="-1">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4 text-center p-4">
+      <div class="fs-1 mb-2">⚠️</div>
+      <h6 class="fw-bold">¿Desactivar usuario?</h6>
+      <p class="text-muted small mb-3">No podrá ingresar al sistema pero sus datos se conservan.</p>
+      <div class="d-flex gap-2">
+        <button class="btn btn-secondary flex-fill" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-danger flex-fill" id="btnConfirmarEliminar">Desactivar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/admin.js"></script>
+</body>
+</html>
