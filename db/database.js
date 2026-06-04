@@ -63,6 +63,7 @@ db.exec(`
   "ALTER TABLE turnos      ADD COLUMN etapa_actual_id         INTEGER REFERENCES juego_etapas(id)",
   "ALTER TABLE juego_etapas ADD COLUMN activa                 INTEGER DEFAULT 1",
   "ALTER TABLE turnos      ADD COLUMN jugando_desde           DATETIME DEFAULT NULL",
+  "ALTER TABLE turnos      ADD COLUMN creado_por              INTEGER REFERENCES usuarios(id)",
 ].forEach(sql => { try { db.exec(sql); } catch (_) {} });
 
 // ── Tabla juego_etapas ────────────────────────────────────────────────────────

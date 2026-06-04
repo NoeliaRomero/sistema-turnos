@@ -43,7 +43,6 @@ async function init() {
   await cargarAtracciones();
   if (adminMe.feature_graficos) await cargarStats();
   await cargarUsuarios();
-  await cargarTurnosAdmin();
   if (adminMe.feature_juegos) await cargarJuegos();
 }
 
@@ -79,7 +78,7 @@ async function cargarStats() {
   renderAtraccionChart(data.porAtraccion);
   renderDiasChart(data.porDia);
   renderHorasChart(data.porHora);
-  renderOperadoresChart(data.llamadosPorOp, data.finalizadosPorOp);
+  renderOperadoresChart(data.creadosPorOp, data.finalizadosPorOp);
   renderTablaOperadores(data.tablaOperadores);
 }
 
@@ -134,13 +133,13 @@ function renderHorasChart(data) {
   }, { plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } });
 }
 
-function renderOperadoresChart(llamados, finalizados) {
-  const nombres = [...new Set([...llamados.map(d => d.nombre), ...finalizados.map(d => d.nombre)])];
+function renderOperadoresChart(creados, finalizados) {
+  const nombres = [...new Set([...creados.map(d => d.nombre), ...finalizados.map(d => d.nombre)])];
   if (!nombres.length) { if (charts['chartOperadores']) charts['chartOperadores'].destroy(); return; }
   mkChart('chartOperadores', 'bar', {
     labels: nombres,
     datasets: [
-      { label: 'Llamados',    data: nombres.map(n => llamados.find(d=>d.nombre===n)?.total||0),    backgroundColor: 'rgba(59,130,246,0.75)', borderRadius: 6 },
+      { label: 'Creados',     data: nombres.map(n => creados.find(d=>d.nombre===n)?.total||0),    backgroundColor: 'rgba(59,130,246,0.75)', borderRadius: 6 },
       { label: 'Finalizados', data: nombres.map(n => finalizados.find(d=>d.nombre===n)?.total||0), backgroundColor: 'rgba(16,185,129,0.75)', borderRadius: 6 }
     ]
   }, { plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } });
@@ -158,101 +157,12 @@ function renderTablaOperadores(ops) {
       <td class="fw-semibold">${op.nombre}</td>
       <td><span class="rol-badge ${op.rol === 'recepcion' ? 'rol-recepcion' : 'rol-operador'}">${op.rol === 'recepcion' ? 'Recepción' : 'Operador'}</span></td>
       <td>${op.atraccion || '<span class="text-muted">—</span>'}</td>
-      <td class="text-center"><span class="badge bg-primary rounded-pill">${op.llamados}</span></td>
+      <td class="text-center"><span class="badge bg-primary rounded-pill">${op.creados}</span></td>
       <td class="text-center"><span class="badge bg-success rounded-pill">${op.finalizados}</span></td>
       <td class="text-center">${op.tiempo_promedio ? `${op.tiempo_promedio} min` : '—'}</td>
       <td class="text-center">${op.tiempo_total ? `${op.tiempo_total} min` : '—'}</td>
       <td class="text-center"><span class="badge bg-secondary rounded-pill">${op.movimientos}</span></td>
     </tr>`).join('');
-}
-
-// ── Tab Turnos en Vivo (Bug 9) ─────────────────────────────────────────────────
-document.getElementById('btnRefreshTurnos').addEventListener('click', cargarTurnosAdmin);
-document.getElementById('tabBtnTurnos').addEventListener('click', cargarTurnosAdmin);
-
-async function cargarTurnosAdmin() {
-  const res = await fetch('/api/turnos/cola');
-  if (!res.ok) return;
-  const { juegos } = await res.json();
-  renderTurnosAdmin(juegos);
-}
-
-function renderTurnosAdmin(juegos) {
-  const cont = document.getElementById('turnos-por-juego');
-  if (!juegos || !juegos.length) {
-    cont.innerHTML = '<p class="text-center text-muted py-5"><i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>Sin juegos activos</p>';
-    return;
-  }
-
-  cont.innerHTML = juegos.map(j => {
-    const activos  = j.jugando || [];
-    const cola     = j.cola    || [];
-    const totalAct = activos.length;
-    const totalCol = cola.length;
-
-    const activosHtml = activos.length ? activos.map(t => `
-      <div class="turno-card-admin ${t.estado === 'jugando' ? 'estado-jugando' : 'estado-llamado'}">
-        <div class="d-flex align-items-center gap-3">
-          <div class="biper-sm">${t.biper_numero}</div>
-          <div class="flex-grow-1">
-            <div class="fw-semibold small">${t.nombre_cliente || 'Sin nombre'}</div>
-            <div class="d-flex gap-2 flex-wrap mt-1">
-              <span class="badge ${t.estado === 'jugando' ? 'estado-badge-jugando' : 'estado-badge-llamado'} rounded-pill">
-                <i class="bi bi-${t.estado === 'jugando' ? 'play-circle' : 'bell'} me-1"></i>${t.estado === 'jugando' ? 'Jugando' : 'Llamado'}
-              </span>
-              <span class="text-muted small"><i class="bi bi-stopwatch me-1"></i>${t.tiempo_transcurrido ?? 0} min</span>
-              ${t.llamado_por_nombre ? `<span class="text-muted small">Op: ${t.llamado_por_nombre}</span>` : ''}
-            </div>
-          </div>
-        </div>
-      </div>`).join('') : '<p class="text-muted small py-2 mb-0">Sin turno activo</p>';
-
-    const colaHtml = cola.length ? cola.map(t => `
-      <div class="turno-card-admin estado-esperando">
-        <div class="d-flex align-items-center gap-3">
-          <div class="biper-sm text-warning">${t.biper_numero}</div>
-          <div class="flex-grow-1">
-            <div class="fw-semibold small">${t.nombre_cliente || 'Sin nombre'}</div>
-            <div class="d-flex gap-2 flex-wrap mt-1">
-              <span class="badge estado-badge-espera rounded-pill">#${t.posicion} en cola</span>
-              <span class="text-muted small"><i class="bi bi-clock me-1"></i>~${t.tiempo_espera_estimado ?? 0} min espera</span>
-            </div>
-          </div>
-        </div>
-      </div>`).join('') : '<p class="text-muted small py-2 mb-0">Cola vacía</p>';
-
-    return `
-      <div class="card p-4 mb-3">
-        <div class="d-flex align-items-center justify-content-between mb-3">
-          <h6 class="fw-bold mb-0"><i class="bi bi-controller me-2 text-primary"></i>${j.nombre}</h6>
-          <div class="d-flex gap-2">
-            <span class="badge bg-primary rounded-pill">${totalAct} activo${totalAct !== 1 ? 's' : ''}</span>
-            <span class="badge bg-warning text-dark rounded-pill">${totalCol} en cola</span>
-          </div>
-        </div>
-        <div class="row g-3">
-          <div class="col-md-6">
-            <div class="text-muted small fw-semibold mb-2 text-uppercase">En Juego</div>
-            ${activosHtml}
-          </div>
-          <div class="col-md-6">
-            <div class="text-muted small fw-semibold mb-2 text-uppercase">En Espera</div>
-            ${colaHtml}
-          </div>
-        </div>
-      </div>`;
-  }).join('');
-}
-
-// Actualizar turnos en tiempo real
-socket.on('turno:nuevo',        () => { if (isTabActive('tabTurnos')) cargarTurnosAdmin(); });
-socket.on('turno:llamado',      () => { if (isTabActive('tabTurnos')) cargarTurnosAdmin(); });
-socket.on('turno:jugando',      () => { if (isTabActive('tabTurnos')) cargarTurnosAdmin(); });
-socket.on('turno:finalizado',   () => { if (isTabActive('tabTurnos')) cargarTurnosAdmin(); });
-socket.on('turno:etapa_avanzada', () => { if (isTabActive('tabTurnos')) cargarTurnosAdmin(); });
-
-function isTabActive(tabId) {
-  return document.getElementById(tabId)?.classList.contains('active');
 }
 
 // ── Usuarios ──────────────────────────────────────────────────────────────────

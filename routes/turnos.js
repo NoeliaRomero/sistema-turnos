@@ -179,6 +179,47 @@ module.exports = (io) => {
     res.json({ juegos });
   });
 
+  // ── Cola pública (sin auth) — para pantalla TV ───────────────────────────────
+  router.get('/cola-publica', (req, res) => {
+    const ahora      = Date.now();
+    const atracciones = db.prepare('SELECT * FROM atracciones WHERE activa = 1 ORDER BY nombre').all();
+
+    const juegos = atracciones.map(a => {
+      const activos = db.prepare(`
+        SELECT t.biper_numero, t.nombre_cliente, t.cantidad_miembros, t.estado,
+               t.called_at, t.jugando_desde,
+               ea.nombre AS etapa_actual_nombre
+        FROM turnos t
+        LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id
+        WHERE t.atraccion_id = ? AND t.estado IN ('llamado','jugando')
+        ORDER BY t.called_at ASC
+      `).all(a.id).map(t => {
+        const baseTime = t.jugando_desde || t.called_at;
+        const elapsed  = baseTime ? Math.floor((ahora - new Date(baseTime).getTime()) / 60000) : 0;
+        const restante = Math.max(0, a.duracion_minutos - elapsed);
+        return { ...t, tiempo_transcurrido: elapsed, tiempo_restante: restante };
+      });
+
+      const esperando = db.prepare(`
+        SELECT t.biper_numero, t.nombre_cliente, t.cantidad_miembros, t.created_at
+        FROM turnos t
+        WHERE t.atraccion_id = ? AND t.estado = 'esperando'
+        ORDER BY t.created_at ASC
+      `).all(a.id);
+
+      let acumulado = activos.reduce((s, t) => s + t.tiempo_restante, 0);
+      const cola = esperando.map((t, i) => {
+        const espera = Math.ceil(acumulado);
+        acumulado += a.duracion_minutos;
+        return { ...t, posicion: i + 1, tiempo_espera_estimado: espera };
+      });
+
+      return { id: a.id, nombre: a.nombre, duracion_minutos: a.duracion_minutos, activos, cola };
+    });
+
+    res.json({ juegos });
+  });
+
   // ── Próximo biper disponible ──────────────────────────────────────────────────
   router.get('/proximo-biper', requireAuth('admin','recepcion'), (req, res) => {
     const usados = db
@@ -265,8 +306,8 @@ module.exports = (io) => {
     }
 
     const result = db.prepare(
-      'INSERT INTO turnos (atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, etapa_actual_id) VALUES (?,?,?,?,?)'
-    ).run(atraccion_id, String(biper_numero), nombre_cliente || null, cantidad_miembros || 1, primeraEtapa?.id ?? null);
+      'INSERT INTO turnos (atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, etapa_actual_id, creado_por) VALUES (?,?,?,?,?,?)'
+    ).run(atraccion_id, String(biper_numero), nombre_cliente || null, cantidad_miembros || 1, primeraEtapa?.id ?? null, req.session.usuario.id);
 
     const turnoId = Number(result.lastInsertRowid);
 

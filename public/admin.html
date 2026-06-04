@@ -35,15 +35,6 @@
     .etapa-row input[type="text"]   { flex:1; }
     .etapa-row input[type="number"] { width:90px; }
     #totalDuracion { background:#ede9fe; color:#5b21b6; font-weight:700; border-radius:8px; padding:8px 14px; font-size:.95rem; }
-    /* Turnos tab */
-    .turno-card-admin { border-radius:10px; border:2px solid #dee2e6; background:white; padding:12px 16px; margin-bottom:8px; }
-    .turno-card-admin.estado-esperando { border-left:5px solid #ffc107; }
-    .turno-card-admin.estado-llamado   { border-left:5px solid #f59e0b; background:#fffbeb; }
-    .turno-card-admin.estado-jugando   { border-left:5px solid #0d6efd; background:#f0f6ff; }
-    .biper-sm { font-size:1.4rem; font-weight:900; color:#0d1b4b; }
-    .estado-badge-llamado { background:#fef3c7; color:#92400e; }
-    .estado-badge-jugando { background:#dbeafe; color:#1d4ed8; }
-    .estado-badge-espera  { background:#fef9c3; color:#854d0e; }
   </style>
 </head>
 <body>
@@ -65,11 +56,6 @@
     <li class="nav-item">
       <button class="nav-link active px-4" id="tabBtnStats" data-bs-toggle="tab" data-bs-target="#tabStats">
         <i class="bi bi-bar-chart-line me-2"></i>Estadísticas
-      </button>
-    </li>
-    <li class="nav-item">
-      <button class="nav-link px-4" id="tabBtnTurnos" data-bs-toggle="tab" data-bs-target="#tabTurnos">
-        <i class="bi bi-list-ol me-2"></i>Turnos
       </button>
     </li>
     <li class="nav-item">
@@ -163,7 +149,7 @@
               <th>Usuario</th>
               <th>Rol</th>
               <th>Atracción</th>
-              <th class="text-center">Turnos llamados</th>
+              <th class="text-center">Turnos creados</th>
               <th class="text-center">Turnos finalizados</th>
               <th class="text-center">Tiempo prom.</th>
               <th class="text-center">Tiempo total</th>
@@ -173,17 +159,6 @@
           </table>
         </div>
       </div>
-    </div>
-
-    <!-- ── TAB TURNOS (Bug 9) ─────────────────────────────────────────── -->
-    <div class="tab-pane fade" id="tabTurnos">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="fw-bold mb-0"><i class="bi bi-list-ol me-2 text-primary"></i>Cola de Turnos en Vivo</h5>
-        <button class="btn btn-outline-secondary btn-sm" id="btnRefreshTurnos">
-          <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
-        </button>
-      </div>
-      <div id="turnos-por-juego"></div>
     </div>
 
     <!-- ── TAB USUARIOS ────────────────────────────────────────────────── -->
