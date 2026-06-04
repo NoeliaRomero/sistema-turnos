@@ -59,7 +59,21 @@ db.exec(`
   "ALTER TABLE usuarios    ADD COLUMN feature_graficos         INTEGER DEFAULT 1",
   "ALTER TABLE usuarios    ADD COLUMN feature_cancelar_turno  INTEGER DEFAULT 1",
   "ALTER TABLE usuarios    ADD COLUMN feature_llamar_turno    INTEGER DEFAULT 1",
+  "ALTER TABLE atracciones ADD COLUMN usa_etapas              INTEGER DEFAULT 0",
 ].forEach(sql => { try { db.exec(sql); } catch (_) {} });
+
+// ── Tabla juego_etapas ────────────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS juego_etapas (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    juego_id         INTEGER NOT NULL REFERENCES atracciones(id) ON DELETE CASCADE,
+    nombre           TEXT    NOT NULL,
+    duracion_minutos INTEGER NOT NULL DEFAULT 1,
+    orden            INTEGER NOT NULL DEFAULT 1,
+    created_at       DATETIME DEFAULT (datetime('now','localtime')),
+    updated_at       DATETIME DEFAULT (datetime('now','localtime'))
+  );
+`);
 
 // ── Datos iniciales ───────────────────────────────────────────────────────────
 if (db.prepare('SELECT COUNT(*) AS c FROM atracciones').get().c === 0) {
