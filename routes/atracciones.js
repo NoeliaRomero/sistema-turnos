@@ -59,9 +59,9 @@ router.post('/', requirePermission('permiso_gestionar_juegos'), (req, res) => {
 
   if (usaEtapas) {
     const insertEtapa = db.prepare(
-      'INSERT INTO juego_etapas (juego_id, nombre, duracion_minutos, orden) VALUES (?,?,?,?)'
+      'INSERT INTO juego_etapas (juego_id, nombre, duracion_minutos, orden, activa) VALUES (?,?,?,?,?)'
     );
-    etapasArr.forEach((e, i) => insertEtapa.run(juegoId, e.nombre.trim(), parseInt(e.duracion_minutos) || 1, i + 1));
+    etapasArr.forEach((e, i) => insertEtapa.run(juegoId, e.nombre.trim(), parseInt(e.duracion_minutos) || 1, i + 1, e.activa ?? 1));
     recalcularDuracion(juegoId);
   }
 
@@ -96,9 +96,9 @@ router.put('/:id', requirePermission('permiso_gestionar_juegos'), (req, res) => 
   db.prepare('DELETE FROM juego_etapas WHERE juego_id = ?').run(req.params.id);
   if (usaEtapas) {
     const insertEtapa = db.prepare(
-      'INSERT INTO juego_etapas (juego_id, nombre, duracion_minutos, orden) VALUES (?,?,?,?)'
+      'INSERT INTO juego_etapas (juego_id, nombre, duracion_minutos, orden, activa) VALUES (?,?,?,?,?)'
     );
-    etapasArr.forEach((e, i) => insertEtapa.run(req.params.id, e.nombre.trim(), parseInt(e.duracion_minutos) || 1, i + 1));
+    etapasArr.forEach((e, i) => insertEtapa.run(req.params.id, e.nombre.trim(), parseInt(e.duracion_minutos) || 1, i + 1, e.activa ?? 1));
     recalcularDuracion(req.params.id);
   }
 

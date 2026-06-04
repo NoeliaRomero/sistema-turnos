@@ -73,11 +73,22 @@ function renderJugando(juegos) {
     const pct     = t.juego.duracion_minutos > 0
       ? Math.min(100, Math.round((t.tiempo_transcurrido / t.juego.duracion_minutos) * 100)) : 0;
     const vencido = t.tiempo_transcurrido > t.juego.duracion_minutos;
+
+    const etapaHtml = t.etapa_actual_nombre
+      ? `<div class="etapa-tv">
+           <span class="etapa-tv-actual"><i class="bi bi-layers me-1"></i>${t.etapa_actual_nombre}</span>
+           ${t.etapa_siguiente_nombre
+             ? `<span class="etapa-tv-sig"><i class="bi bi-arrow-right me-1"></i>${t.etapa_siguiente_nombre}</span>`
+             : `<span class="etapa-tv-sig" style="opacity:.5">Última etapa</span>`}
+         </div>`
+      : '';
+
     return `
     <div class="card-jugando" id="jugando-${t.id}">
       <div class="juego-label"><i class="bi bi-controller me-1"></i>${t.juego.nombre}</div>
       <div class="biper-grande">${t.biper_numero}</div>
       <div class="familia-nombre">${t.nombre_cliente || 'Sin nombre'}</div>
+      ${etapaHtml}
       <div class="info-row">
         <span class="tag-miembros"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} personas</span>
         <span style="font-size:.8rem; color:rgba(255,255,255,.5);">${t.tiempo_transcurrido} min en juego</span>
@@ -146,9 +157,10 @@ function flash() {
 }
 
 // ── Socket ────────────────────────────────────────────────────────────────────
-socket.on('turno:nuevo',     () => { cargarCola(); });
-socket.on('turno:llamado',   () => { cargarCola(); flash(); });
-socket.on('turno:finalizado',() => { cargarCola(); });
+socket.on('turno:nuevo',         () => { cargarCola(); });
+socket.on('turno:llamado',       () => { cargarCola(); flash(); });
+socket.on('turno:etapa_avanzada',() => { cargarCola(); flash(); });
+socket.on('turno:finalizado',    () => { cargarCola(); });
 
 // Actualizar progreso cada 60 seg sin recargar del servidor
 setInterval(() => {

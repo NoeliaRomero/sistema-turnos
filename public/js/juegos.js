@@ -70,7 +70,7 @@ function calcularTotalEtapas() {
   return total;
 }
 
-function crearFilaEtapa(nombre = '', minutos = 15) {
+function crearFilaEtapa(nombre = '', minutos = 15, activa = 1) {
   const div = document.createElement('div');
   div.className = 'etapa-row';
   div.innerHTML = `
@@ -86,6 +86,7 @@ function crearFilaEtapa(nombre = '', minutos = 15) {
     <button type="button" class="btn btn-outline-danger btn-eliminar-etapa" title="Eliminar">
       <i class="bi bi-trash"></i>
     </button>`;
+  div.dataset.activa = activa ? '1' : '0';
 
   div.querySelector('.etapa-minutos').addEventListener('input', calcularTotalEtapas);
 
@@ -163,7 +164,7 @@ async function editarJuego(id) {
     document.getElementById('wrapDuracionManual').classList.add('d-none');
     document.getElementById('seccionEtapas').classList.remove('d-none');
     const lista = document.getElementById('listaEtapas');
-    (j.etapas || []).forEach(e => lista.appendChild(crearFilaEtapa(e.nombre, e.duracion_minutos)));
+    (j.etapas || []).forEach(e => lista.appendChild(crearFilaEtapa(e.nombre, e.duracion_minutos, e.activa ?? 1)));
     calcularTotalEtapas();
   } else {
     document.getElementById('jDuracion').value = j.duracion_minutos;
@@ -198,6 +199,7 @@ document.getElementById('btnGuardarJuego').addEventListener('click', async () =>
     const etapas = Array.from(filas).map(fila => ({
       nombre: fila.querySelector('.etapa-nombre').value.trim(),
       duracion_minutos: parseInt(fila.querySelector('.etapa-minutos').value, 10) || 1,
+      activa: fila.dataset.activa !== '0' ? 1 : 0,
     }));
     const vacias = etapas.filter(e => !e.nombre);
     if (vacias.length) {

@@ -163,6 +163,19 @@ function renderJuegoPane(j) {
              <i class="bi bi-check-lg me-1"></i>Finalizar
            </button>`
         : '';
+      // Info de etapa para recepción
+      let etapaHtml = '';
+      if (t.etapa_actual_nombre) {
+        const sigTexto = t.etapa_siguiente_nombre
+          ? `<span class="text-muted small"><i class="bi bi-arrow-right me-1"></i>Próxima: <strong>${t.etapa_siguiente_nombre}</strong></span>`
+          : `<span class="text-muted small"><i class="bi bi-flag-fill me-1"></i>Última etapa</span>`;
+        etapaHtml = `
+          <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
+            <span class="etapa-recep-badge"><i class="bi bi-layers me-1"></i>${t.etapa_actual_nombre}</span>
+            ${sigTexto}
+          </div>`;
+      }
+
       return `
       <div class="turno-row jugando d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div class="d-flex align-items-center gap-3">
@@ -173,6 +186,7 @@ function renderJuegoPane(j) {
               <span class="miembros-badge"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
               <span class="badge bg-primary"><i class="bi bi-play-fill me-1"></i>JUGANDO</span>
             </div>
+            ${etapaHtml}
           </div>
         </div>
         <div class="d-flex align-items-center gap-3">
@@ -357,9 +371,10 @@ async function _ejecutarLlamar(id) {
 }
 
 // ── Socket (actualización en tiempo real) ─────────────────────────────────────
-socket.on('turno:nuevo',     () => cargarCola());
-socket.on('turno:llamado',   () => cargarCola());
-socket.on('turno:finalizado',() => cargarCola());
+socket.on('turno:nuevo',        () => cargarCola());
+socket.on('turno:llamado',      () => cargarCola());
+socket.on('turno:etapa_avanzada',() => cargarCola());
+socket.on('turno:finalizado',   () => cargarCola());
 
 // ── Notificación de turno finalizado (enviada por operador) ───────────────────
 socket.on('recepcion:notificacion', (data) => {
