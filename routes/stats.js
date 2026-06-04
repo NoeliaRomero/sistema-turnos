@@ -5,7 +5,6 @@ const { requireAuth } = require('../middleware/auth');
 
 router.use(requireAuth('admin', 'superadmin'));
 router.use((req, res, next) => {
-  // Superadmin siempre pasa; admin necesita feature_graficos habilitada
   if (req.session.usuario.rol === 'admin' && !req.session.usuario.feature_graficos) {
     return res.status(403).json({ error: 'Tu plan no incluye acceso a estadísticas' });
   }
@@ -33,7 +32,7 @@ router.get('/', (req, res) => {
       COUNT(*)                                                    AS total,
       SUM(CASE WHEN estado='finalizado' THEN 1 ELSE 0 END)       AS finalizados,
       SUM(CASE WHEN estado='esperando'  THEN 1 ELSE 0 END)       AS en_espera,
-      SUM(CASE WHEN estado='llamado'    THEN 1 ELSE 0 END)       AS llamados,
+      SUM(CASE WHEN estado IN ('llamado','jugando') THEN 1 ELSE 0 END) AS llamados,
       SUM(CASE WHEN estado='cancelado'  THEN 1 ELSE 0 END)       AS cancelados
     FROM turnos WHERE ${wSimple}
   `).get();
@@ -83,13 +82,18 @@ router.get('/', (req, res) => {
     GROUP BY u.id ORDER BY total DESC
   `).all();
 
+  // Bug 10: incluir operadores Y recepcionistas, excluir admin/superadmin
+  // Agregar: tiempo_total, cantidad_movimientos
   const tablaOperadores = db.prepare(`
     SELECT
       u.nombre,
+      u.rol,
       a.nombre AS atraccion,
       COALESCE(ll.total, 0)      AS llamados,
       COALESCE(fi.total, 0)      AS finalizados,
-      COALESCE(tp.promedio, 0)   AS tiempo_promedio
+      COALESCE(tp.promedio, 0)   AS tiempo_promedio,
+      COALESCE(tt.total_min, 0)  AS tiempo_total,
+      (COALESCE(ll.total, 0) + COALESCE(fi.total, 0)) AS movimientos
     FROM usuarios u
     LEFT JOIN atracciones a ON u.atraccion_id = a.id
     LEFT JOIN (
@@ -109,8 +113,15 @@ router.get('/', (req, res) => {
       WHERE finished_at IS NOT NULL AND finalizado_por IS NOT NULL AND ${wSimple}
       GROUP BY finalizado_por
     ) tp ON tp.finalizado_por = u.id
-    WHERE u.rol = 'operador' AND u.activo = 1
-    ORDER BY u.nombre
+    LEFT JOIN (
+      SELECT finalizado_por,
+             ROUND(SUM((julianday(finished_at)-julianday(called_at))*1440),1) AS total_min
+      FROM turnos
+      WHERE finished_at IS NOT NULL AND finalizado_por IS NOT NULL AND ${wSimple}
+      GROUP BY finalizado_por
+    ) tt ON tt.finalizado_por = u.id
+    WHERE u.rol IN ('operador', 'recepcion') AND u.activo = 1
+    ORDER BY u.rol, u.nombre
   `).all();
 
   res.json({

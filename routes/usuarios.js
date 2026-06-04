@@ -6,6 +6,7 @@ const { requireAuth } = require('../middleware/auth');
 
 router.use(requireAuth('admin'));
 
+// Bug 1: excluir superadmin de la lista que ve el admin
 router.get('/', (req, res) => {
   const usuarios = db.prepare(`
     SELECT u.id, u.nombre, u.username, u.rol, u.atraccion_id, u.activo,
@@ -13,6 +14,7 @@ router.get('/', (req, res) => {
            a.nombre AS atraccion_nombre
     FROM usuarios u
     LEFT JOIN atracciones a ON u.atraccion_id = a.id
+    WHERE u.rol != 'superadmin'
     ORDER BY u.rol, u.nombre
   `).all();
   res.json(usuarios);
@@ -57,6 +59,12 @@ router.put('/:id', (req, res) => {
   if (!nombre?.trim() || !username?.trim() || !rol) {
     return res.status(400).json({ error: 'Nombre, usuario y rol son requeridos' });
   }
+
+  // Bug 1: admin no puede editar al superadmin
+  const target = db.prepare("SELECT rol FROM usuarios WHERE id=?").get(id);
+  if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
+  if (target.rol === 'superadmin') return res.status(403).json({ error: 'No autorizado' });
+
   const dup = db.prepare("SELECT id FROM usuarios WHERE username=? AND id!=?").get(username.trim(), id);
   if (dup) return res.status(409).json({ error: 'El nombre de usuario ya existe' });
 
@@ -75,17 +83,34 @@ router.put('/:id', (req, res) => {
   res.json({ ok: true });
 });
 
+// Bug 11: eliminación real si no hay historial, desactivación si tiene historial
 router.delete('/:id', (req, res) => {
   const { id } = req.params;
-  const user   = db.prepare("SELECT rol FROM usuarios WHERE id=?").get(id);
+  const user = db.prepare("SELECT rol, activo FROM usuarios WHERE id=?").get(id);
   if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+  // Bug 1: admin no puede eliminar al superadmin
+  if (user.rol === 'superadmin') return res.status(403).json({ error: 'No autorizado' });
 
   if (user.rol === 'admin') {
     const admins = db.prepare("SELECT COUNT(*) AS c FROM usuarios WHERE rol='admin' AND activo=1").get();
-    if (admins.c <= 1) return res.status(400).json({ error: 'No se puede desactivar el único administrador' });
+    if (admins.c <= 1) return res.status(400).json({ error: 'No se puede eliminar el único administrador' });
   }
-  db.prepare("UPDATE usuarios SET activo=0 WHERE id=?").run(id);
-  res.json({ ok: true });
+
+  // Verificar si el usuario tiene historial en turnos
+  const historial = db.prepare(
+    "SELECT COUNT(*) AS c FROM turnos WHERE llamado_por=? OR finalizado_por=?"
+  ).get(id, id);
+
+  if (historial.c > 0) {
+    // Tiene historial: solo desactivar para preservar integridad referencial
+    db.prepare("UPDATE usuarios SET activo=0 WHERE id=?").run(id);
+    return res.json({ ok: true, accion: 'desactivado', razon: 'tiene_historial' });
+  }
+
+  // Sin historial: eliminar permanentemente
+  db.prepare("DELETE FROM usuarios WHERE id=?").run(id);
+  res.json({ ok: true, accion: 'eliminado' });
 });
 
 module.exports = router;

@@ -1,3 +1,5 @@
+const socket = io();
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 (async () => {
   const res = await fetch('/api/auth/me');
@@ -20,11 +22,9 @@ let eliminandoId = null;
 let adminMe     = null;
 
 async function init() {
-  // Verificar features habilitadas para esta cuenta admin
   const resMe = await fetch('/api/auth/me');
   adminMe = await resMe.json();
 
-  // Ocultar tab Estadísticas si no tiene feature_graficos
   if (!adminMe.feature_graficos) {
     document.getElementById('tabBtnStats').style.display = 'none';
     document.getElementById('tabStats').innerHTML = `
@@ -35,18 +35,19 @@ async function init() {
       </div>`;
   }
 
-  // Ocultar enlace a Juegos si no tiene feature_juegos
-  if (!adminMe.feature_juegos) {
-    const btnJuegos = document.getElementById('btnJuegosNav');
-    if (btnJuegos) btnJuegos.style.display = 'none';
+  // Bug 2: mostrar tab Juegos solo si tiene feature_juegos
+  if (adminMe.feature_juegos) {
+    document.getElementById('tabItemJuegos').style.display = '';
   }
 
   await cargarAtracciones();
   if (adminMe.feature_graficos) await cargarStats();
   await cargarUsuarios();
+  await cargarTurnosAdmin();
+  if (adminMe.feature_juegos) await cargarJuegos();
 }
 
-// ── Atracciones (para el selector del modal usuario) ──────────────────────────
+// ── Atracciones ───────────────────────────────────────────────────────────────
 async function cargarAtracciones() {
   const res = await fetch('/api/atracciones');
   atracciones = await res.json();
@@ -72,6 +73,7 @@ document.getElementById('btnRefreshStats').addEventListener('click', cargarStats
 // ── Estadísticas ──────────────────────────────────────────────────────────────
 async function cargarStats() {
   const res  = await fetch(`/api/stats?periodo=${periodo}`);
+  if (!res.ok) return;
   const data = await res.json();
   renderCards(data.resumen);
   renderAtraccionChart(data.porAtraccion);
@@ -93,8 +95,9 @@ const COLORS = ['#3b82f6','#10b981','#f59e0b','#ef4444','#8b5cf6','#ec4899','#06
 
 function mkChart(id, type, data, options = {}) {
   if (charts[id]) charts[id].destroy();
-  const ctx = document.getElementById(id).getContext('2d');
-  charts[id] = new Chart(ctx, { type, data, options: { responsive: true, maintainAspectRatio: false, ...options } });
+  const ctx = document.getElementById(id);
+  if (!ctx) return;
+  charts[id] = new Chart(ctx.getContext('2d'), { type, data, options: { responsive: true, maintainAspectRatio: false, ...options } });
 }
 
 function renderAtraccionChart(data) {
@@ -143,20 +146,113 @@ function renderOperadoresChart(llamados, finalizados) {
   }, { plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } });
 }
 
+// Bug 10: tabla extendida incluyendo recepcionistas
 function renderTablaOperadores(ops) {
   const tbody = document.getElementById('tablaOps');
   if (!ops.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Sin datos de operadores</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Sin datos de usuarios</td></tr>';
     return;
   }
   tbody.innerHTML = ops.map(op => `
     <tr>
       <td class="fw-semibold">${op.nombre}</td>
+      <td><span class="rol-badge ${op.rol === 'recepcion' ? 'rol-recepcion' : 'rol-operador'}">${op.rol === 'recepcion' ? 'Recepción' : 'Operador'}</span></td>
       <td>${op.atraccion || '<span class="text-muted">—</span>'}</td>
       <td class="text-center"><span class="badge bg-primary rounded-pill">${op.llamados}</span></td>
       <td class="text-center"><span class="badge bg-success rounded-pill">${op.finalizados}</span></td>
       <td class="text-center">${op.tiempo_promedio ? `${op.tiempo_promedio} min` : '—'}</td>
+      <td class="text-center">${op.tiempo_total ? `${op.tiempo_total} min` : '—'}</td>
+      <td class="text-center"><span class="badge bg-secondary rounded-pill">${op.movimientos}</span></td>
     </tr>`).join('');
+}
+
+// ── Tab Turnos en Vivo (Bug 9) ─────────────────────────────────────────────────
+document.getElementById('btnRefreshTurnos').addEventListener('click', cargarTurnosAdmin);
+document.getElementById('tabBtnTurnos').addEventListener('click', cargarTurnosAdmin);
+
+async function cargarTurnosAdmin() {
+  const res = await fetch('/api/turnos/cola');
+  if (!res.ok) return;
+  const { juegos } = await res.json();
+  renderTurnosAdmin(juegos);
+}
+
+function renderTurnosAdmin(juegos) {
+  const cont = document.getElementById('turnos-por-juego');
+  if (!juegos || !juegos.length) {
+    cont.innerHTML = '<p class="text-center text-muted py-5"><i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>Sin juegos activos</p>';
+    return;
+  }
+
+  cont.innerHTML = juegos.map(j => {
+    const activos  = j.jugando || [];
+    const cola     = j.cola    || [];
+    const totalAct = activos.length;
+    const totalCol = cola.length;
+
+    const activosHtml = activos.length ? activos.map(t => `
+      <div class="turno-card-admin ${t.estado === 'jugando' ? 'estado-jugando' : 'estado-llamado'}">
+        <div class="d-flex align-items-center gap-3">
+          <div class="biper-sm">${t.biper_numero}</div>
+          <div class="flex-grow-1">
+            <div class="fw-semibold small">${t.nombre_cliente || 'Sin nombre'}</div>
+            <div class="d-flex gap-2 flex-wrap mt-1">
+              <span class="badge ${t.estado === 'jugando' ? 'estado-badge-jugando' : 'estado-badge-llamado'} rounded-pill">
+                <i class="bi bi-${t.estado === 'jugando' ? 'play-circle' : 'bell'} me-1"></i>${t.estado === 'jugando' ? 'Jugando' : 'Llamado'}
+              </span>
+              <span class="text-muted small"><i class="bi bi-stopwatch me-1"></i>${t.tiempo_transcurrido ?? 0} min</span>
+              ${t.llamado_por_nombre ? `<span class="text-muted small">Op: ${t.llamado_por_nombre}</span>` : ''}
+            </div>
+          </div>
+        </div>
+      </div>`).join('') : '<p class="text-muted small py-2 mb-0">Sin turno activo</p>';
+
+    const colaHtml = cola.length ? cola.map(t => `
+      <div class="turno-card-admin estado-esperando">
+        <div class="d-flex align-items-center gap-3">
+          <div class="biper-sm text-warning">${t.biper_numero}</div>
+          <div class="flex-grow-1">
+            <div class="fw-semibold small">${t.nombre_cliente || 'Sin nombre'}</div>
+            <div class="d-flex gap-2 flex-wrap mt-1">
+              <span class="badge estado-badge-espera rounded-pill">#${t.posicion} en cola</span>
+              <span class="text-muted small"><i class="bi bi-clock me-1"></i>~${t.tiempo_espera_estimado ?? 0} min espera</span>
+            </div>
+          </div>
+        </div>
+      </div>`).join('') : '<p class="text-muted small py-2 mb-0">Cola vacía</p>';
+
+    return `
+      <div class="card p-4 mb-3">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <h6 class="fw-bold mb-0"><i class="bi bi-controller me-2 text-primary"></i>${j.nombre}</h6>
+          <div class="d-flex gap-2">
+            <span class="badge bg-primary rounded-pill">${totalAct} activo${totalAct !== 1 ? 's' : ''}</span>
+            <span class="badge bg-warning text-dark rounded-pill">${totalCol} en cola</span>
+          </div>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="text-muted small fw-semibold mb-2 text-uppercase">En Juego</div>
+            ${activosHtml}
+          </div>
+          <div class="col-md-6">
+            <div class="text-muted small fw-semibold mb-2 text-uppercase">En Espera</div>
+            ${colaHtml}
+          </div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+// Actualizar turnos en tiempo real
+socket.on('turno:nuevo',        () => { if (isTabActive('tabTurnos')) cargarTurnosAdmin(); });
+socket.on('turno:llamado',      () => { if (isTabActive('tabTurnos')) cargarTurnosAdmin(); });
+socket.on('turno:jugando',      () => { if (isTabActive('tabTurnos')) cargarTurnosAdmin(); });
+socket.on('turno:finalizado',   () => { if (isTabActive('tabTurnos')) cargarTurnosAdmin(); });
+socket.on('turno:etapa_avanzada', () => { if (isTabActive('tabTurnos')) cargarTurnosAdmin(); });
+
+function isTabActive(tabId) {
+  return document.getElementById(tabId)?.classList.contains('active');
 }
 
 // ── Usuarios ──────────────────────────────────────────────────────────────────
@@ -170,6 +266,7 @@ async function cargarUsuarios() {
     return;
   }
 
+  // Bug 1: El API ya excluye superadmin; aquí solo renderizamos lo recibido
   tbody.innerHTML = usuarios.map(u => {
     const perms = [];
     if (u.rol === 'admin') {
@@ -200,7 +297,7 @@ async function cargarUsuarios() {
           <i class="bi bi-pencil"></i>
         </button>
         <button class="btn btn-sm btn-outline-danger" onclick="pedirEliminar(${u.id})" ${!u.activo?'disabled':''}>
-          <i class="bi bi-person-x"></i>
+          <i class="bi bi-trash"></i>
         </button>
       </td>
     </tr>`;
@@ -214,7 +311,6 @@ function rolLabel(rol) { return { admin:'Administrador', operador:'Operador', re
 const modalUsuario  = new bootstrap.Modal(document.getElementById('modalUsuario'));
 const modalEliminar = new bootstrap.Modal(document.getElementById('modalEliminar'));
 
-// Mostrar/ocultar campos según el rol seleccionado
 document.getElementById('uRol').addEventListener('change', actualizarCamposRol);
 
 function actualizarCamposRol() {
@@ -226,30 +322,27 @@ function actualizarCamposRol() {
 
   if (!mostrarPermisos) return;
 
-  // Mostrar/ocultar cada permiso según lo que el superadmin habilitó para este admin
   const rowLlamar   = document.getElementById('uPermisoLlamar').closest('.form-check');
   const rowCancelar = document.getElementById('uPermisoCancelar').closest('.form-check');
   const rowJuegos   = document.getElementById('uPermisoJuegos').closest('.form-check');
 
-  // "Llamar" no aplica a operadores (siempre lo tienen) y requiere feature_llamar_turno
   if (rowLlamar)   rowLlamar.style.display   = (rol === 'operador' || !adminMe?.feature_llamar_turno)   ? 'none' : '';
   if (rowCancelar) rowCancelar.style.display = (!adminMe?.feature_cancelar_turno) ? 'none' : '';
   if (rowJuegos)   rowJuegos.style.display   = (!adminMe?.feature_juegos)         ? 'none' : '';
 
-  // Si ningún permiso es visible, ocultar el bloque entero
   const alguno = [rowLlamar, rowCancelar, rowJuegos].some(r => r && r.style.display !== 'none');
   document.getElementById('permisosWrap').style.display = alguno ? 'block' : 'none';
 }
 
 document.getElementById('btnNuevoUsuario').addEventListener('click', () => {
-  limpiarModal();
+  limpiarModalUsuario();
   document.getElementById('modalTitle').textContent = 'Nuevo Usuario';
   document.getElementById('passLabel').innerHTML    = 'Contraseña <span class="text-danger">*</span>';
   document.getElementById('passHint').textContent   = '';
   modalUsuario.show();
 });
 
-function limpiarModal() {
+function limpiarModalUsuario() {
   ['userId','uNombre','uUsername','uPassword'].forEach(id => document.getElementById(id).value = '');
   document.getElementById('uRol').value               = '';
   document.getElementById('uAtraccion').value          = '';
@@ -267,7 +360,7 @@ async function editarUsuario(id) {
   const u    = list.find(x => x.id === id);
   if (!u) return;
 
-  limpiarModal();
+  limpiarModalUsuario();
   document.getElementById('modalTitle').textContent      = 'Editar Usuario';
   document.getElementById('passLabel').innerHTML         = 'Contraseña <span class="text-muted fw-normal">(dejar vacío para no cambiar)</span>';
   document.getElementById('passHint').textContent        = 'Solo completá si querés cambiar la contraseña';
@@ -323,8 +416,11 @@ async function guardarUsuario() {
   cargarUsuarios();
 }
 
+// Bug 11: Eliminar usuario (real si no tiene historial, desactivar si tiene)
 function pedirEliminar(id) {
   eliminandoId = id;
+  document.getElementById('modalEliminarTitulo').textContent = '¿Eliminar usuario?';
+  document.getElementById('modalEliminarTexto').textContent  = 'Si el usuario no tiene historial de turnos, se eliminará permanentemente. Si tiene historial, se desactivará para preservar los registros.';
   modalEliminar.show();
 }
 
@@ -334,9 +430,193 @@ document.getElementById('btnConfirmarEliminar').addEventListener('click', async 
   const data = await res.json();
   modalEliminar.hide();
   if (!res.ok) { mostrarToast(data.error||'Error', 'danger'); return; }
-  mostrarToast('Usuario desactivado', 'warning');
+  if (data.accion === 'eliminado') {
+    mostrarToast('Usuario eliminado permanentemente', 'warning');
+  } else {
+    mostrarToast('Usuario desactivado (tiene historial de turnos)', 'warning');
+  }
   cargarUsuarios();
   eliminandoId = null;
+});
+
+// ── Gestión de Juegos (Bug 2) ─────────────────────────────────────────────────
+const modalJuego = () => bootstrap.Modal.getOrCreateInstance(document.getElementById('modalJuego'));
+
+async function cargarJuegos() {
+  const res    = await fetch('/api/atracciones/todas');
+  if (!res.ok) return;
+  const juegos = await res.json();
+  const tbody  = document.getElementById('tablaJuegos');
+  if (!tbody) return;
+
+  if (!juegos.length) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-5">Sin juegos registrados</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = juegos.map(j => `
+    <tr>
+      <td class="ps-4 fw-semibold">
+        ${j.nombre}
+        ${j.usa_etapas ? `<span class="etapas-badge ms-2"><i class="bi bi-layers me-1"></i>${(j.etapas||[]).length} etapas</span>` : ''}
+      </td>
+      <td><span class="duracion-badge"><i class="bi bi-clock me-1"></i>${j.duracion_minutos} min</span></td>
+      <td><span class="text-muted small"><i class="bi bi-people me-1"></i>${j.min_miembros||1}–${j.max_miembros||20}</span></td>
+      <td class="text-center">
+        <span class="badge rounded-pill px-3 ${j.activa ? 'badge-activo' : 'badge-inactivo'}">
+          ${j.activa ? 'Activo' : 'Inactivo'}
+        </span>
+      </td>
+      <td class="text-end pe-4">
+        <button class="btn btn-sm btn-outline-primary" onclick="editarJuego(${j.id})">
+          <i class="bi bi-pencil me-1"></i>Editar
+        </button>
+      </td>
+    </tr>`).join('');
+}
+
+document.getElementById('btnNuevoJuego')?.addEventListener('click', () => {
+  limpiarModalJuego();
+  document.getElementById('modalJuegoTitle').textContent = 'Nuevo Juego';
+  modalJuego().show();
+});
+
+document.getElementById('btnAgregarEtapa')?.addEventListener('click', () => {
+  document.getElementById('listaEtapas').appendChild(crearFilaEtapa());
+  calcularTotalEtapas();
+});
+
+document.getElementById('jUsaEtapas')?.addEventListener('change', function () {
+  const usaEtapas = this.checked;
+  document.getElementById('wrapDuracionManual').classList.toggle('d-none', usaEtapas);
+  document.getElementById('seccionEtapas').classList.toggle('d-none', !usaEtapas);
+  if (usaEtapas && document.getElementById('listaEtapas').children.length === 0) {
+    document.getElementById('listaEtapas').appendChild(crearFilaEtapa());
+    calcularTotalEtapas();
+  }
+});
+
+document.getElementById('tabBtnJuegos')?.addEventListener('click', cargarJuegos);
+
+function calcularTotalEtapas() {
+  const inputs = document.querySelectorAll('#listaEtapas .etapa-minutos');
+  const total  = Array.from(inputs).reduce((s, el) => s + (parseInt(el.value) || 0), 0);
+  document.getElementById('totalDuracion').textContent = `${total} minutos`;
+  return total;
+}
+
+function crearFilaEtapa(nombre = '', minutos = 15, activa = 1) {
+  const div = document.createElement('div');
+  div.className = 'etapa-row';
+  div.innerHTML = `
+    <input type="text"   class="form-control etapa-nombre"  placeholder="Nombre de la etapa" value="${nombre.replace(/"/g,'&quot;')}" maxlength="60">
+    <input type="number" class="form-control etapa-minutos" placeholder="Min" min="1" max="300" value="${minutos}">
+    <span class="input-group-text text-muted" style="font-size:.8rem">min</span>
+    <button type="button" class="btn btn-outline-secondary btn-move" title="Subir"><i class="bi bi-arrow-up"></i></button>
+    <button type="button" class="btn btn-outline-secondary btn-move" title="Bajar"><i class="bi bi-arrow-down"></i></button>
+    <button type="button" class="btn btn-outline-danger btn-eliminar-etapa" title="Eliminar"><i class="bi bi-trash"></i></button>`;
+  div.dataset.activa = activa ? '1' : '0';
+
+  div.querySelector('.etapa-minutos').addEventListener('input', calcularTotalEtapas);
+  div.querySelector('[title="Subir"]').addEventListener('click', () => {
+    const prev = div.previousElementSibling;
+    if (prev) { div.parentNode.insertBefore(div, prev); calcularTotalEtapas(); }
+  });
+  div.querySelector('[title="Bajar"]').addEventListener('click', () => {
+    const next = div.nextElementSibling;
+    if (next) { div.parentNode.insertBefore(next, div); calcularTotalEtapas(); }
+  });
+  div.querySelector('.btn-eliminar-etapa').addEventListener('click', () => {
+    div.remove(); calcularTotalEtapas();
+  });
+  return div;
+}
+
+function limpiarModalJuego() {
+  document.getElementById('juegoId').value      = '';
+  document.getElementById('jNombre').value      = '';
+  document.getElementById('jDuracion').value    = '30';
+  document.getElementById('jMinMiembros').value = '1';
+  document.getElementById('jMaxMiembros').value = '20';
+  document.getElementById('jActivo').checked    = true;
+  document.getElementById('jUsaEtapas').checked = false;
+  document.getElementById('listaEtapas').innerHTML = '';
+  document.getElementById('totalDuracion').textContent = '0 minutos';
+  document.getElementById('wrapDuracionManual').classList.remove('d-none');
+  document.getElementById('seccionEtapas').classList.add('d-none');
+  document.getElementById('activoWrapJ').style.display = 'none';
+  document.getElementById('juegoError').classList.add('d-none');
+}
+
+async function editarJuego(id) {
+  const res    = await fetch('/api/atracciones/todas');
+  const juegos = await res.json();
+  const j      = juegos.find(x => x.id === id);
+  if (!j) return;
+
+  limpiarModalJuego();
+  document.getElementById('modalJuegoTitle').textContent = 'Editar Juego';
+  document.getElementById('juegoId').value      = j.id;
+  document.getElementById('jNombre').value      = j.nombre;
+  document.getElementById('jMinMiembros').value = j.min_miembros || 1;
+  document.getElementById('jMaxMiembros').value = j.max_miembros || 20;
+  document.getElementById('jActivo').checked    = !!j.activa;
+  document.getElementById('activoWrapJ').style.display = 'block';
+
+  if (j.usa_etapas) {
+    document.getElementById('jUsaEtapas').checked = true;
+    document.getElementById('wrapDuracionManual').classList.add('d-none');
+    document.getElementById('seccionEtapas').classList.remove('d-none');
+    const lista = document.getElementById('listaEtapas');
+    (j.etapas || []).forEach(e => lista.appendChild(crearFilaEtapa(e.nombre, e.duracion_minutos, e.activa ?? 1)));
+    calcularTotalEtapas();
+  } else {
+    document.getElementById('jDuracion').value = j.duracion_minutos;
+  }
+  modalJuego().show();
+}
+
+document.getElementById('btnGuardarJuego')?.addEventListener('click', async () => {
+  const id        = document.getElementById('juegoId').value;
+  const nombre    = document.getElementById('jNombre').value.trim();
+  const usaEtapas = document.getElementById('jUsaEtapas').checked;
+  const activa    = document.getElementById('jActivo').checked ? 1 : 0;
+  const minM      = parseInt(document.getElementById('jMinMiembros').value, 10) || 1;
+  const maxM      = parseInt(document.getElementById('jMaxMiembros').value, 10) || 20;
+  const errEl     = document.getElementById('juegoError');
+  errEl.classList.add('d-none');
+
+  if (!nombre) { errEl.textContent = 'El nombre es requerido'; errEl.classList.remove('d-none'); return; }
+  if (minM < 1 || maxM < minM) { errEl.textContent = 'El rango de personas no es válido'; errEl.classList.remove('d-none'); return; }
+
+  let payload = { nombre, activa, min_miembros: minM, max_miembros: maxM, usa_etapas: usaEtapas };
+
+  if (usaEtapas) {
+    const filas = document.querySelectorAll('#listaEtapas .etapa-row');
+    if (!filas.length) { errEl.textContent = 'Debe agregar al menos una etapa'; errEl.classList.remove('d-none'); return; }
+    const etapas = Array.from(filas).map(fila => ({
+      nombre: fila.querySelector('.etapa-nombre').value.trim(),
+      duracion_minutos: parseInt(fila.querySelector('.etapa-minutos').value, 10) || 1,
+      activa: fila.dataset.activa !== '0' ? 1 : 0,
+    }));
+    if (etapas.some(e => !e.nombre)) { errEl.textContent = 'Todas las etapas deben tener nombre'; errEl.classList.remove('d-none'); return; }
+    payload.etapas = etapas;
+  } else {
+    const duracion = parseInt(document.getElementById('jDuracion').value, 10);
+    if (!duracion || duracion < 1) { errEl.textContent = 'La duración debe ser mayor a 0'; errEl.classList.remove('d-none'); return; }
+    payload.duracion_minutos = duracion;
+  }
+
+  const url    = id ? `/api/atracciones/${id}` : '/api/atracciones';
+  const method = id ? 'PUT' : 'POST';
+  const res    = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+  const data   = await res.json();
+
+  if (!res.ok) { errEl.textContent = data.error || 'Error al guardar'; errEl.classList.remove('d-none'); return; }
+  modalJuego().hide();
+  mostrarToast(id ? 'Juego actualizado' : 'Juego creado', 'success');
+  cargarJuegos();
+  await cargarAtracciones();
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

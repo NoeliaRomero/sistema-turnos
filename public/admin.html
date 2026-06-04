@@ -28,17 +28,31 @@
     .duracion-badge { background:#ede9fe; color:#5b21b6; font-size:.8rem; font-weight:600; padding:3px 10px; border-radius:20px; }
     .perm-group { background:#f8f9ff; border:1px solid #dee2e6; border-radius:10px; padding:14px 16px; }
     .perm-group .form-check-label { font-weight:500; }
+    /* Juegos tab */
+    .etapas-badge { background:#e0f2fe; color:#0369a1; font-size:.75rem; font-weight:600; padding:2px 8px; border-radius:20px; }
+    #seccionEtapas { background:#f8fafc; border-radius:10px; padding:16px; border:1px solid #e2e8f0; }
+    .etapa-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+    .etapa-row input[type="text"]   { flex:1; }
+    .etapa-row input[type="number"] { width:90px; }
+    #totalDuracion { background:#ede9fe; color:#5b21b6; font-weight:700; border-radius:8px; padding:8px 14px; font-size:.95rem; }
+    /* Turnos tab */
+    .turno-card-admin { border-radius:10px; border:2px solid #dee2e6; background:white; padding:12px 16px; margin-bottom:8px; }
+    .turno-card-admin.estado-esperando { border-left:5px solid #ffc107; }
+    .turno-card-admin.estado-llamado   { border-left:5px solid #f59e0b; background:#fffbeb; }
+    .turno-card-admin.estado-jugando   { border-left:5px solid #0d6efd; background:#f0f6ff; }
+    .biper-sm { font-size:1.4rem; font-weight:900; color:#0d1b4b; }
+    .estado-badge-llamado { background:#fef3c7; color:#92400e; }
+    .estado-badge-jugando { background:#dbeafe; color:#1d4ed8; }
+    .estado-badge-espera  { background:#fef9c3; color:#854d0e; }
   </style>
 </head>
 <body>
 
+<!-- Bug 8: Navbar SIN botones Recepción ni Operador -->
 <nav class="navbar navbar-dark navbar-custom px-4 py-3">
   <span class="navbar-brand fw-bold fs-5"><i class="bi bi-shield-lock me-2"></i>Administración</span>
   <div class="d-flex align-items-center gap-2">
-    <a href="/recepcion.html" class="btn btn-outline-light btn-sm"><i class="bi bi-person-lines-fill me-1"></i>Recepción</a>
-    <a href="/operador.html"  class="btn btn-outline-light btn-sm"><i class="bi bi-person-gear me-1"></i>Operador</a>
-    <a href="/juegos.html"  class="btn btn-outline-light btn-sm" id="btnJuegosNav"><i class="bi bi-controller me-1"></i>Juegos</a>
-    <a href="/pantalla.html"class="btn btn-outline-light btn-sm" target="_blank"><i class="bi bi-display me-1"></i>TV</a>
+    <a href="/pantalla.html" class="btn btn-outline-light btn-sm" target="_blank"><i class="bi bi-display me-1"></i>TV</a>
     <span class="text-white-50 small ms-1" id="usuarioNombre"></span>
     <button class="btn btn-outline-light btn-sm" id="btnLogout"><i class="bi bi-box-arrow-right me-1"></i>Salir</button>
   </div>
@@ -46,6 +60,7 @@
 
 <div class="container-fluid px-4 mt-4">
 
+  <!-- Bug 2 + 9: Tabs: Estadísticas | Turnos | Usuarios | Gestión de Juegos -->
   <ul class="nav nav-tabs mb-4" id="mainTabs">
     <li class="nav-item">
       <button class="nav-link active px-4" id="tabBtnStats" data-bs-toggle="tab" data-bs-target="#tabStats">
@@ -53,8 +68,18 @@
       </button>
     </li>
     <li class="nav-item">
+      <button class="nav-link px-4" id="tabBtnTurnos" data-bs-toggle="tab" data-bs-target="#tabTurnos">
+        <i class="bi bi-list-ol me-2"></i>Turnos
+      </button>
+    </li>
+    <li class="nav-item">
       <button class="nav-link px-4" data-bs-toggle="tab" data-bs-target="#tabUsuarios">
         <i class="bi bi-people me-2"></i>Usuarios
+      </button>
+    </li>
+    <li class="nav-item" id="tabItemJuegos" style="display:none">
+      <button class="nav-link px-4" id="tabBtnJuegos" data-bs-toggle="tab" data-bs-target="#tabJuegos">
+        <i class="bi bi-controller me-2"></i>Gestión de Juegos
       </button>
     </li>
   </ul>
@@ -123,26 +148,42 @@
         </div>
         <div class="col-lg-6">
           <div class="card p-4">
-            <h6 class="fw-bold mb-3"><i class="bi bi-person-check me-2 text-info"></i>Actividad por operador</h6>
+            <h6 class="fw-bold mb-3"><i class="bi bi-person-check me-2 text-info"></i>Actividad por usuario</h6>
             <div class="chart-container"><canvas id="chartOperadores"></canvas></div>
           </div>
         </div>
       </div>
 
+      <!-- Bug 10: tabla extendida con operadores y recepcionistas -->
       <div class="card p-4 mb-4">
-        <h6 class="fw-bold mb-3"><i class="bi bi-table me-2 text-secondary"></i>Resumen por operador</h6>
+        <h6 class="fw-bold mb-3"><i class="bi bi-table me-2 text-secondary"></i>Resumen por usuario</h6>
         <div class="table-responsive">
           <table class="table table-hover align-middle mb-0">
             <thead><tr>
-              <th>Operador</th><th>Atracción</th>
-              <th class="text-center">Llamados</th>
-              <th class="text-center">Finalizados</th>
-              <th class="text-center">Tiempo prom. servicio</th>
+              <th>Usuario</th>
+              <th>Rol</th>
+              <th>Atracción</th>
+              <th class="text-center">Turnos llamados</th>
+              <th class="text-center">Turnos finalizados</th>
+              <th class="text-center">Tiempo prom.</th>
+              <th class="text-center">Tiempo total</th>
+              <th class="text-center">Movimientos</th>
             </tr></thead>
             <tbody id="tablaOps"></tbody>
           </table>
         </div>
       </div>
+    </div>
+
+    <!-- ── TAB TURNOS (Bug 9) ─────────────────────────────────────────── -->
+    <div class="tab-pane fade" id="tabTurnos">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold mb-0"><i class="bi bi-list-ol me-2 text-primary"></i>Cola de Turnos en Vivo</h5>
+        <button class="btn btn-outline-secondary btn-sm" id="btnRefreshTurnos">
+          <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+        </button>
+      </div>
+      <div id="turnos-por-juego"></div>
     </div>
 
     <!-- ── TAB USUARIOS ────────────────────────────────────────────────── -->
@@ -169,6 +210,36 @@
       </div>
     </div>
 
+    <!-- ── TAB GESTIÓN DE JUEGOS (Bug 2) ──────────────────────────────── -->
+    <div class="tab-pane fade" id="tabJuegos">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="fw-bold mb-0"><i class="bi bi-grid-3x3-gap me-2 text-primary"></i>Juegos / Atracciones</h5>
+        <button class="btn btn-primary px-4" id="btnNuevoJuego">
+          <i class="bi bi-plus-lg me-2"></i>Nuevo Juego
+        </button>
+      </div>
+      <div class="card">
+        <div class="table-responsive">
+          <table class="table table-hover align-middle mb-0">
+            <thead class="table-light">
+              <tr>
+                <th class="ps-4">Nombre del Juego</th>
+                <th>Duración</th>
+                <th>Personas</th>
+                <th class="text-center">Estado</th>
+                <th class="text-end pe-4">Acciones</th>
+              </tr>
+            </thead>
+            <tbody id="tablaJuegos"></tbody>
+          </table>
+        </div>
+      </div>
+      <div class="text-muted small mt-3">
+        <i class="bi bi-info-circle me-1"></i>
+        La duración estimada se muestra al operador como referencia del tiempo de juego.
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -182,7 +253,6 @@
       </div>
       <div class="modal-body">
         <input type="hidden" id="userId">
-
         <div class="mb-3">
           <label class="form-label fw-semibold">Nombre completo <span class="text-danger">*</span></label>
           <input type="text" class="form-control" id="uNombre" placeholder="Ej: Juan Pérez">
@@ -211,8 +281,6 @@
             <option value="">Sin asignar</option>
           </select>
         </div>
-
-        <!-- Permisos adicionales (ocultos para admin) -->
         <div id="permisosWrap" style="display:none">
           <label class="form-label fw-semibold mb-2">Permisos adicionales</label>
           <div class="perm-group">
@@ -242,11 +310,9 @@
             </div>
           </div>
           <div class="form-text mt-2">
-            <i class="bi bi-info-circle me-1"></i>
-            El Administrador siempre tiene todos los permisos.
+            <i class="bi bi-info-circle me-1"></i>El Administrador siempre tiene todos los permisos.
           </div>
         </div>
-
         <div id="modalError" class="alert alert-danger d-none mt-3"></div>
       </div>
       <div class="modal-footer border-0 pt-0">
@@ -257,16 +323,90 @@
   </div>
 </div>
 
-<!-- Modal Confirmar desactivar -->
+<!-- Modal Confirmar eliminar usuario (Bug 11) -->
 <div class="modal fade" id="modalEliminar" tabindex="-1">
   <div class="modal-dialog modal-sm modal-dialog-centered">
     <div class="modal-content border-0 rounded-4 text-center p-4">
       <div class="fs-1 mb-2">⚠️</div>
-      <h6 class="fw-bold">¿Desactivar usuario?</h6>
-      <p class="text-muted small mb-3">No podrá ingresar al sistema pero sus datos se conservan.</p>
+      <h6 class="fw-bold" id="modalEliminarTitulo">¿Eliminar usuario?</h6>
+      <p class="text-muted small mb-3" id="modalEliminarTexto">Esta acción no se puede deshacer.</p>
       <div class="d-flex gap-2">
         <button class="btn btn-secondary flex-fill" data-bs-dismiss="modal">Cancelar</button>
-        <button class="btn btn-danger flex-fill" id="btnConfirmarEliminar">Desactivar</button>
+        <button class="btn btn-danger flex-fill" id="btnConfirmarEliminar">Confirmar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Juego (Bug 2) -->
+<div class="modal fade" id="modalJuego" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 rounded-4">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold" id="modalJuegoTitle">Nuevo Juego</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="juegoId">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Nombre del juego <span class="text-danger">*</span></label>
+          <input type="text" class="form-control form-control-lg" id="jNombre" placeholder="Ej: Laser Tag" maxlength="60">
+        </div>
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="jUsaEtapas">
+            <label class="form-check-label fw-semibold" for="jUsaEtapas">Utilizar etapas</label>
+          </div>
+          <div class="form-text">Si está activado, la duración se calcula sumando las etapas definidas</div>
+        </div>
+        <div class="mb-3" id="wrapDuracionManual">
+          <label class="form-label fw-semibold">Duración estimada (minutos) <span class="text-danger">*</span></label>
+          <div class="input-group input-group-lg">
+            <input type="number" class="form-control" id="jDuracion" min="1" max="300" value="30">
+            <span class="input-group-text">min</span>
+          </div>
+        </div>
+        <div class="mb-3 d-none" id="seccionEtapas">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-semibold">Etapas del juego</span>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="btnAgregarEtapa">
+              <i class="bi bi-plus-lg me-1"></i>Agregar etapa
+            </button>
+          </div>
+          <div id="listaEtapas"></div>
+          <div class="d-flex align-items-center gap-2 mt-3">
+            <i class="bi bi-clock-fill text-primary"></i>
+            <span class="text-muted small">Tiempo total:</span>
+            <span id="totalDuracion">0 minutos</span>
+          </div>
+        </div>
+        <div class="row g-3 mb-3">
+          <div class="col-6">
+            <label class="form-label fw-semibold">Mínimo de personas</label>
+            <div class="input-group">
+              <input type="number" class="form-control" id="jMinMiembros" min="1" max="100" value="1">
+              <span class="input-group-text"><i class="bi bi-people"></i></span>
+            </div>
+          </div>
+          <div class="col-6">
+            <label class="form-label fw-semibold">Máximo de personas</label>
+            <div class="input-group">
+              <input type="number" class="form-control" id="jMaxMiembros" min="1" max="100" value="20">
+              <span class="input-group-text"><i class="bi bi-people-fill"></i></span>
+            </div>
+          </div>
+        </div>
+        <div class="mb-3" id="activoWrapJ" style="display:none">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="jActivo" checked>
+            <label class="form-check-label fw-semibold" for="jActivo">Juego activo</label>
+          </div>
+        </div>
+        <div id="juegoError" class="alert alert-danger d-none"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-primary px-4 fw-bold" id="btnGuardarJuego">Guardar</button>
       </div>
     </div>
   </div>
@@ -274,6 +414,7 @@
 
 <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer"></div>
 
+<script src="/socket.io/socket.io.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="/js/admin.js"></script>
 </body>
