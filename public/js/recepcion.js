@@ -261,7 +261,7 @@ document.getElementById('btnMas').addEventListener('click', () => {
 document.getElementById('formRegistro').addEventListener('submit', async e => {
   e.preventDefault();
   const atraccion_id     = document.getElementById('selectJuego').value;
-  const biper_numero     = document.getElementById('inputBiper').value;
+  const biper_numero     = document.getElementById('inputBiper').value.trim();
   const nombre_cliente   = document.getElementById('inputNombre').value.trim();
   const cantidad_miembros = parseInt(document.getElementById('inputMiembros').value) || 1;
 
@@ -275,20 +275,29 @@ document.getElementById('formRegistro').addEventListener('submit', async e => {
     mostrarToast(`Este juego requiere entre ${minM} y ${maxM} personas`, 'warning'); return;
   }
 
-  const res  = await fetch('/api/turnos', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ atraccion_id, biper_numero, nombre_cliente, cantidad_miembros })
-  });
-  const data = await res.json();
+  const btnSubmit = e.target.querySelector('[type=submit]');
+  btnSubmit.disabled = true;
+  try {
+    const res  = await fetch('/api/turnos', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ atraccion_id, biper_numero, nombre_cliente, cantidad_miembros })
+    });
+    let data = {};
+    try { data = await res.json(); } catch (_) {}
 
-  if (!res.ok) { mostrarToast(data.error || 'Error al registrar', 'danger'); return; }
+    if (!res.ok) { mostrarToast(data.error || `Error al registrar (${res.status})`, 'danger'); return; }
 
-  mostrarToast(`✅ ${nombre_cliente} – Biper ${data.biper_numero} registrado`, 'success');
-  document.getElementById('formRegistro').reset();
-  document.getElementById('inputMiembros').value = '1';
-  document.getElementById('duracionJuego').textContent = '';
-  document.getElementById('tiempoEsperaWrap').classList.add('d-none');
-  await cargarCola();
+    mostrarToast(`✅ ${nombre_cliente} – Biper ${data.biper_numero} registrado`, 'success');
+    document.getElementById('formRegistro').reset();
+    document.getElementById('inputMiembros').value = '1';
+    document.getElementById('duracionJuego').textContent = '';
+    document.getElementById('tiempoEsperaWrap').classList.add('d-none');
+    await cargarCola();
+  } catch (err) {
+    mostrarToast('Error de conexión al registrar el turno', 'danger');
+  } finally {
+    btnSubmit.disabled = false;
+  }
 });
 
 // ── Finalizar turno desde recepción ──────────────────────────────────────────
