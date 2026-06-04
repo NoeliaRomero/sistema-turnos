@@ -23,7 +23,7 @@ async function init() {
   await cargarAtracciones();
   await cargarTurnos();
 
-  timerInterval = setInterval(actualizarTimers, 30000);
+  timerInterval = setInterval(actualizarTimers, 1000);
 }
 
 document.getElementById('btnLogout').addEventListener('click', async () => {
@@ -115,18 +115,18 @@ function cardActivo(t) {
   return cardJugando(t);
 }
 
-// Estado 'llamado': biper sonó, esperando que el cliente llegue (5 min)
+// Estado 'llamado': biper sonó, cliente tiene 5 min para llegar
+// Solo se muestra el botón "No Llegó" — ningún botón de finalizar
 function cardLlamado(t) {
-  const llamadoHace   = tiempoTranscurrido(t.called_at);
-  const restoSegundos = Math.max(0, 5 * 60 - llamadoHace * 60);
-  const restoMin      = Math.floor(restoSegundos / 60);
-  const restoSeg      = restoSegundos % 60;
+  const msPasados     = t.called_at ? (Date.now() - new Date(t.called_at).getTime()) : 0;
+  const restoMs       = Math.max(0, 5 * 60 * 1000 - msPasados);
+  const restoMin      = Math.floor(restoMs / 60000);
+  const restoSeg      = Math.floor((restoMs % 60000) / 1000);
 
-  // Bug 4: "No llegó" solo habilitado para el operador asignado en estado llamado
   const esAsignado = me.atraccion_id === t.atraccion_id || me.rol === 'admin';
   const cancelBtn  = (me.permiso_cancelar_turno && esAsignado)
-    ? `<button class="btn btn-outline-danger btn-sm" onclick="cancelarTurno(${t.id})" title="Cliente no llegó">
-         <i class="bi bi-x-circle me-1"></i>No llegó
+    ? `<button class="btn btn-danger btn-sm px-3 fw-bold" onclick="cancelarTurno(${t.id})">
+         <i class="bi bi-person-x me-1"></i>No Llegó
        </button>` : '';
 
   return `
@@ -141,8 +141,9 @@ function cardLlamado(t) {
               <span class="badge bg-warning text-dark px-2">
                 <i class="bi bi-bell-fill me-1"></i>Llamado
               </span>
-              <span class="timer-badge" id="timer-${t.id}" data-called="${t.called_at}" data-tipo="llamado">
-                <i class="bi bi-alarm me-1"></i>Tiempo restante: ${restoMin}:${String(restoSeg).padStart(2,'0')}
+              <span class="timer-badge timer-countdown" id="timer-${t.id}"
+                    data-called="${t.called_at}" data-tipo="llamado">
+                <i class="bi bi-alarm me-1"></i>${restoMin}:${String(restoSeg).padStart(2,'0')} para iniciar
               </span>
             </div>
           </div>
@@ -154,18 +155,20 @@ function cardLlamado(t) {
     </div>`;
 }
 
-// Estado 'jugando': cliente llegó, en actividad — puede finalizar
+// Estado 'jugando': cliente llegó, actividad en curso
+// Botones de finalizar — SIN "No Llegó"
 function cardJugando(t) {
   const baseTime  = t.jugando_desde || t.called_at;
   const elapsed   = tiempoTranscurrido(baseTime);
   const duracion  = t.duracion_minutos || 0;
   const vencido   = duracion > 0 && elapsed > duracion;
 
-  let etapaHtml   = '';
+  let etapaHtml    = '';
   let btnFinalizar = '';
 
   if (t.usa_etapas && t.etapa_actual_nombre) {
-    const sigTexto = t.etapa_siguiente_nombre
+    const esMasEtapas = !!t.etapa_siguiente_nombre;
+    const sigTexto = esMasEtapas
       ? `<span class="etapa-sig"><i class="bi bi-arrow-right me-1"></i>Próxima: <strong>${t.etapa_siguiente_nombre}</strong></span>`
       : `<span class="etapa-sig text-muted"><i class="bi bi-flag-fill me-1"></i>Última etapa</span>`;
     etapaHtml = `
@@ -174,20 +177,21 @@ function cardJugando(t) {
         ${sigTexto}
       </div>`;
 
-    // Bug 7: botón correcto según si hay siguiente etapa o no
-    if (t.etapa_siguiente_nombre) {
+    if (esMasEtapas) {
+      // Etapa intermedia → Avanzar Etapa
       btnFinalizar = `<button class="btn btn-primary btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id})">
-        <i class="bi bi-skip-forward-fill me-1"></i>Avanzar a ${t.etapa_siguiente_nombre}
+        <i class="bi bi-skip-forward-fill me-1"></i>Avanzar Etapa
       </button>`;
     } else {
+      // Última etapa → Finalizar Juego
       btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id})">
-        <i class="bi bi-check-lg me-1"></i>Finalizar Etapa
+        <i class="bi bi-trophy me-1"></i>Finalizar Juego
       </button>`;
     }
   } else {
-    // Bug 7: sin etapas → "Finalizar"
+    // Sin etapas → Finalizar Juego
     btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id})">
-      <i class="bi bi-check-lg me-1"></i>Finalizar
+      <i class="bi bi-trophy me-1"></i>Finalizar Juego
     </button>`;
   }
 
@@ -201,7 +205,12 @@ function cardJugando(t) {
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
               <span class="atraccion-tag">${t.atraccion_nombre}</span>
               ${duracion ? `<span class="duracion-tag"><i class="bi bi-clock me-1"></i>${duracion} min est.</span>` : ''}
-              <span class="timer-badge ${vencido ? 'timer-vencido' : ''}" data-base="${baseTime}" data-duracion="${duracion}" data-tipo="jugando" id="timer-${t.id}">
+              <span class="badge bg-primary text-white px-2">
+                <i class="bi bi-play-circle me-1"></i>Jugando
+              </span>
+              <span class="timer-badge ${vencido ? 'timer-vencido' : ''}"
+                    data-base="${baseTime}" data-duracion="${duracion}" data-tipo="jugando"
+                    id="timer-${t.id}">
                 <i class="bi bi-stopwatch me-1"></i>${elapsed} min en juego
               </span>
             </div>
@@ -230,13 +239,13 @@ function actualizarTimers() {
     el.className   = `timer-badge ${vencido ? 'timer-vencido' : ''}`;
   });
 
-  // Actualizar countdown de llamado (tiempo restante)
+  // Actualizar countdown de llamado (segundos restantes)
   document.querySelectorAll('[data-called][data-tipo="llamado"]').forEach(el => {
-    const llamadoHace   = tiempoTranscurrido(el.dataset.called);
-    const restoSegundos = Math.max(0, 5 * 60 - llamadoHace * 60);
-    const restoMin      = Math.floor(restoSegundos / 60);
-    const restoSeg      = restoSegundos % 60;
-    el.innerHTML = `<i class="bi bi-alarm me-1"></i>Tiempo restante: ${restoMin}:${String(restoSeg).padStart(2,'0')}`;
+    const msPasados = el.dataset.called ? (Date.now() - new Date(el.dataset.called).getTime()) : 0;
+    const restoMs   = Math.max(0, 5 * 60 * 1000 - msPasados);
+    const restoMin  = Math.floor(restoMs / 60000);
+    const restoSeg  = Math.floor((restoMs % 60000) / 1000);
+    el.innerHTML = `<i class="bi bi-alarm me-1"></i>${restoMin}:${String(restoSeg).padStart(2,'0')} para iniciar`;
   });
 }
 

@@ -33,7 +33,7 @@ router.get('/', (req, res) => {
       SUM(CASE WHEN estado='finalizado' THEN 1 ELSE 0 END)       AS finalizados,
       SUM(CASE WHEN estado='esperando'  THEN 1 ELSE 0 END)       AS en_espera,
       SUM(CASE WHEN estado IN ('llamado','jugando') THEN 1 ELSE 0 END) AS llamados,
-      SUM(CASE WHEN estado='cancelado'  THEN 1 ELSE 0 END)       AS cancelados
+      SUM(CASE WHEN estado IN ('cancelado','no_llego') THEN 1 ELSE 0 END) AS cancelados
     FROM turnos WHERE ${wSimple}
   `).get();
 

@@ -33,7 +33,13 @@
       background: #fee2e2; color: #991b1b;
       animation: blink 1.5s ease infinite;
     }
-    @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:.6; } }
+    .timer-countdown {
+      background: #fef3c7; color: #92400e;
+      font-weight: 700;
+      animation: pulse 1s ease infinite;
+    }
+    @keyframes blink  { 0%,100% { opacity:1; } 50% { opacity:.6; } }
+    @keyframes pulse  { 0%,100% { opacity:1; } 50% { opacity:.75; } }
 
     /* Etapas en tarjetas de operador */
     .etapa-info { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 6px; }

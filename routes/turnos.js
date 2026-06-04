@@ -366,8 +366,8 @@ module.exports = (io) => {
     res.json(turno);
   });
 
-  // ── Cancelar turno (No llegó) ─────────────────────────────────────────────────
-  // Bug 4: solo en estado 'llamado', solo el operador asignado (o admin)
+  // ── No Llegó ──────────────────────────────────────────────────────────────────
+  // Solo válido en estado 'llamado' (ventana de 5 min), solo el operador asignado
   router.put('/:id/cancelar', requirePermission('permiso_cancelar_turno'), (req, res) => {
     const { id } = req.params;
     const usuario = req.session.usuario;
@@ -378,31 +378,42 @@ module.exports = (io) => {
 
     if (!turnoActual) {
       return res.status(400).json({
-        error: 'Solo se puede marcar "No llegó" en turnos con estado Llamado'
+        error: 'Solo se puede marcar "No llegó" durante los primeros 5 minutos del llamado'
       });
     }
 
     if (usuario.rol === 'operador' && usuario.atraccion_id &&
         usuario.atraccion_id !== turnoActual.atraccion_id) {
-      return res.status(403).json({ error: 'Solo el operador asignado puede cancelar este turno' });
+      return res.status(403).json({ error: 'Solo el operador asignado puede marcar "No llegó"' });
     }
 
-    // Limpiar el timer de llamado→jugando
+    // Cancelar el timer de llamado→jugando
     if (timerLlamado.has(Number(id))) {
       clearTimeout(timerLlamado.get(Number(id)));
       timerLlamado.delete(Number(id));
     }
 
+    // Cerrar etapa activa y todas las pendientes si el juego usa etapas
+    if (turnoActual.etapa_actual_id) {
+      db.prepare(`
+        UPDATE turno_etapas_historial
+        SET finalizada_at = datetime('now','localtime'), finalizada_por = ?
+        WHERE turno_id = ? AND finalizada_at IS NULL
+      `).run(usuario.id, id);
+    }
+
+    // Estado específico 'no_llego' diferente de 'cancelado'
     db.prepare(`
       UPDATE turnos
-      SET estado='cancelado', finished_at=datetime('now','localtime'), finalizado_por=?
+      SET estado='no_llego', finished_at=datetime('now','localtime'),
+          finalizado_por=?, etapa_actual_id=NULL
       WHERE id=?
     `).run(usuario.id, id);
 
     const turno = db.prepare(SELECT_TURNO).get(Number(id));
     io.emit('turno:finalizado', turno);
 
-    // Bug 13: auto-llamar siguiente
+    // Liberar el juego y llamar al siguiente automáticamente (Bug 13)
     setImmediate(() => autoLlamarSiguiente(turnoActual.atraccion_id));
     res.json(turno);
   });
