@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gestión de Grupo SPM – FlowTurn Demo</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    body { background: #f0f4f8; }
+    .navbar-custom { background: #7c2d12; }
+    .demo-pill { background:#fef3c7; color:#92400e; font-size:.72rem; font-weight:700; padding:2px 10px; border-radius:20px; letter-spacing:1px; }
+    .card { border:none; border-radius:14px; box-shadow:0 2px 16px rgba(0,0,0,.08); }
+    .section-label { font-size:.7rem; font-weight:800; letter-spacing:2px; text-transform:uppercase; color:#9ca3af; margin-bottom:12px; }
+    .biper-num { background:#7c2d12; color:white; font-size:2rem; font-weight:900; min-width:64px; text-align:center; padding:10px 18px; border-radius:14px; }
+
+    /* Timeline de atracciones */
+    .atrac-card { background:white; border-radius:12px; padding:16px 18px; position:relative; overflow:hidden; }
+    .atrac-card::before { content:''; position:absolute; left:0; top:0; bottom:0; width:5px; border-radius:5px 0 0 5px; }
+    .atrac-card.completado::before { background:#10b981; }
+    .atrac-card.jugando::before   { background:#3b82f6; }
+    .atrac-card.pendiente::before { background:#e2e8f0; }
+    .atrac-card.siguiente::before { background:#f59e0b; }
+
+    .status-chip { font-size:.78rem; font-weight:700; padding:3px 12px; border-radius:20px; }
+    .chip-completado { background:#d1fae5; color:#065f46; }
+    .chip-jugando    { background:#dbeafe; color:#1d4ed8; }
+    .chip-pendiente  { background:#f1f5f9; color:#64748b; }
+    .chip-siguiente  { background:#fef3c7; color:#92400e; }
+
+    .atrac-nombre { font-size:1.05rem; font-weight:800; color:#1e293b; }
+    .atrac-sub    { font-size:.82rem; color:#64748b; }
+    .atrac-icono  { font-size:1.6rem; }
+
+    /* Siguiente recomendación */
+    .next-card { background:linear-gradient(135deg,#1e293b 0%,#334155 100%); border-radius:14px; color:white; padding:20px; }
+    .next-label { font-size:.7rem; font-weight:800; letter-spacing:2px; text-transform:uppercase; color:#94a3b8; }
+    .next-nombre { font-size:1.4rem; font-weight:900; }
+    .pulse-dot { width:10px; height:10px; border-radius:50%; background:#10b981; animation: pulse 1.5s infinite; display:inline-block; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.4)} }
+
+    /* Progreso general */
+    .prog-bar-wrap { background:#e2e8f0; border-radius:20px; height:10px; }
+    .prog-bar { background:linear-gradient(90deg,#7c2d12,#f59e0b); border-radius:20px; height:10px; transition: width .5s; }
+
+    .nav-demo { background:#0f172a; }
+    .nav-demo .nav-link { color:#94a3b8; font-size:.85rem; font-weight:600; border-radius:8px; padding:6px 14px; }
+    .nav-demo .nav-link:hover { color:white; background:#1e293b; }
+    .nav-demo .nav-link.active { color:#fbbf24; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark navbar-custom px-4 py-3">
+  <span class="navbar-brand fw-bold fs-5"><i class="bi bi-lightning-charge-fill me-2 text-warning"></i>FlowTurn SPM</span>
+  <span class="demo-pill"><i class="bi bi-eye me-1"></i>DEMO VISUAL</span>
+</nav>
+<nav class="navbar nav-demo px-4 py-2">
+  <div class="d-flex gap-1 flex-wrap">
+    <a href="index.html"       class="nav-link"><i class="bi bi-grid-3x3-gap me-1"></i>Inicio</a>
+    <a href="recepcion.html"   class="nav-link"><i class="bi bi-person-plus me-1"></i>Recepción</a>
+    <a href="grupo.html"       class="nav-link active"><i class="bi bi-people me-1"></i>Gestión Grupo</a>
+    <a href="operador.html"    class="nav-link"><i class="bi bi-person-workspace me-1"></i>Operador</a>
+    <a href="dashboard.html"   class="nav-link"><i class="bi bi-bar-chart me-1"></i>Dashboard</a>
+    <a href="pantalla-tv.html" class="nav-link"><i class="bi bi-display me-1"></i>Pantalla TV</a>
+  </div>
+</nav>
+
+<div class="container-fluid px-4 py-4" style="max-width:1100px;">
+
+  <!-- Header del grupo -->
+  <div class="card p-4 mb-4">
+    <div class="row align-items-center g-3">
+      <div class="col-auto">
+        <div class="biper-num">15</div>
+      </div>
+      <div class="col">
+        <div style="font-size:1.5rem; font-weight:900; color:#1e293b;">Familia Rodríguez</div>
+        <div class="d-flex flex-wrap gap-2 mt-1">
+          <span style="background:#f1f5f9; color:#475569; font-size:.82rem; font-weight:600; padding:3px 12px; border-radius:20px;"><i class="bi bi-people-fill me-1"></i>4 integrantes</span>
+          <span style="background:#f1f5f9; color:#475569; font-size:.82rem; font-weight:600; padding:3px 12px; border-radius:20px;"><i class="bi bi-clock me-1"></i>Ingreso 15:30</span>
+          <span style="background:#dbeafe; color:#1d4ed8; font-size:.82rem; font-weight:600; padding:3px 12px; border-radius:20px;"><span class="pulse-dot me-1"></span>En curso</span>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="section-label">Progreso general</div>
+        <div class="prog-bar-wrap">
+          <div class="prog-bar" style="width:25%" id="prog-bar"></div>
+        </div>
+        <div class="d-flex justify-content-between mt-1">
+          <span style="font-size:.78rem; color:#64748b;">1 de 4 completadas</span>
+          <span style="font-size:.78rem; font-weight:700; color:#7c2d12;">25%</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-4">
+    <!-- Columna izquierda: timeline -->
+    <div class="col-lg-7">
+      <div class="card p-4">
+        <div class="section-label"><i class="bi bi-list-check me-1"></i>Recorrido de Atracciones</div>
+        <div class="d-flex flex-column gap-3" id="timeline">
+          <!-- generado por JS -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Columna derecha: siguiente + stats -->
+    <div class="col-lg-5">
+      <div class="next-card mb-4">
+        <div class="next-label mb-2"><i class="bi bi-arrow-right-circle me-1"></i>Próxima actividad sugerida</div>
+        <div class="next-nombre">Escape Room</div>
+        <div class="d-flex align-items-center gap-2 mt-2">
+          <span style="font-size:.82rem; color:#94a3b8;"><i class="bi bi-clock me-1"></i>Espera estimada:</span>
+          <span style="font-size:.9rem; font-weight:800; color:#4ade80;">5 min</span>
+        </div>
+        <div class="d-flex align-items-center gap-2 mt-1">
+          <span style="font-size:.82rem; color:#94a3b8;"><i class="bi bi-bar-chart me-1"></i>Ocupación:</span>
+          <span style="font-size:.9rem; font-weight:800; color:#4ade80;">20%</span>
+        </div>
+        <div class="mt-3">
+          <button class="btn btn-sm w-100" style="background:#10b981; color:white; border:none; border-radius:10px; font-weight:700; padding:10px;" onclick="alert('Demo: Notificando al biper 15...')">
+            <i class="bi bi-bell-fill me-2"></i>Llamar al biper 15
+          </button>
+        </div>
+      </div>
+
+      <!-- Resumen de estados -->
+      <div class="card p-4">
+        <div class="section-label"><i class="bi bi-pie-chart me-1"></i>Resumen del Grupo</div>
+        <div class="row g-2 text-center">
+          <div class="col-6">
+            <div style="background:#d1fae5; border-radius:10px; padding:12px;">
+              <div style="font-size:1.6rem; font-weight:900; color:#065f46;">1</div>
+              <div style="font-size:.72rem; font-weight:700; color:#059669; text-transform:uppercase; letter-spacing:1px;">Completadas</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div style="background:#dbeafe; border-radius:10px; padding:12px;">
+              <div style="font-size:1.6rem; font-weight:900; color:#1d4ed8;">1</div>
+              <div style="font-size:.72rem; font-weight:700; color:#3b82f6; text-transform:uppercase; letter-spacing:1px;">Jugando</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div style="background:#fef3c7; border-radius:10px; padding:12px;">
+              <div style="font-size:1.6rem; font-weight:900; color:#92400e;">1</div>
+              <div style="font-size:.72rem; font-weight:700; color:#d97706; text-transform:uppercase; letter-spacing:1px;">Siguiente</div>
+            </div>
+          </div>
+          <div class="col-6">
+            <div style="background:#f1f5f9; border-radius:10px; padding:12px;">
+              <div style="font-size:1.6rem; font-weight:900; color:#64748b;">1</div>
+              <div style="font-size:.72rem; font-weight:700; color:#94a3b8; text-transform:uppercase; letter-spacing:1px;">Pendientes</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const recorrido = [
+  { orden:1, nombre:'Karting',        icono:'🏎️', estado:'completado', hora:'15:32', duracion:'18 min', nota:'Finalizado exitosamente' },
+  { orden:2, nombre:'Paintball',      icono:'🎨', estado:'jugando',    hora:'16:05', duracion:'En curso', nota:'Tiempo estimado: 15 min más' },
+  { orden:3, nombre:'Escape Room',    icono:'🔐', estado:'siguiente',  hora:'—',     duracion:'5 min espera', nota:'Recomendado por baja ocupación' },
+  { orden:4, nombre:'Tiro al Blanco', icono:'🎯', estado:'pendiente',  hora:'—',     duracion:'10 min espera', nota:'' },
+];
+
+const estadoMap = {
+  completado: { chip:'chip-completado', label:'✔ Finalizado',           icon:'bi-check-circle-fill text-success' },
+  jugando:    { chip:'chip-jugando',    label:'▶ Jugando',               icon:'bi-play-circle-fill text-primary' },
+  siguiente:  { chip:'chip-siguiente',  label:'⭐ Siguiente recomendada', icon:'bi-star-fill text-warning' },
+  pendiente:  { chip:'chip-pendiente',  label:'⏳ Pendiente',             icon:'bi-hourglass-split text-secondary' },
+};
+
+document.getElementById('timeline').innerHTML = recorrido.map(a => {
+  const e = estadoMap[a.estado];
+  return `
+    <div class="atrac-card ${a.estado}">
+      <div class="d-flex align-items-start gap-3">
+        <div style="background:#f1f5f9; border-radius:10px; width:44px; height:44px; display:flex; align-items:center; justify-content:center; font-size:1.4rem; flex-shrink:0;">${a.icono}</div>
+        <div class="flex-grow-1">
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div class="atrac-nombre">${a.nombre}</div>
+            <span class="status-chip ${e.chip}">${e.label}</span>
+          </div>
+          <div class="d-flex gap-3 mt-1 flex-wrap">
+            ${a.hora !== '—' ? `<span class="atrac-sub"><i class="bi bi-clock me-1"></i>${a.hora}</span>` : ''}
+            <span class="atrac-sub"><i class="bi bi-stopwatch me-1"></i>${a.duracion}</span>
+            ${a.nota ? `<span class="atrac-sub text-muted fst-italic">${a.nota}</span>` : ''}
+          </div>
+        </div>
+        <div style="font-size:1.2rem; opacity:.6;"><i class="bi ${e.icon}"></i></div>
+      </div>
+    </div>
+  `;
+}).join('');
+</script>
+</body>
+</html>

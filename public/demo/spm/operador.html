@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Operador SPM – FlowTurn Demo</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    body { background: #f0f4f8; }
+    .navbar-custom { background: #7c2d12; }
+    .demo-pill { background:#fef3c7; color:#92400e; font-size:.72rem; font-weight:700; padding:2px 10px; border-radius:20px; letter-spacing:1px; }
+    .card { border:none; border-radius:14px; box-shadow:0 2px 16px rgba(0,0,0,.08); }
+    .section-label { font-size:.7rem; font-weight:800; letter-spacing:2px; text-transform:uppercase; color:#9ca3af; margin-bottom:12px; }
+
+    /* Selector de atracción */
+    .atrac-tab { border:2px solid #e2e8f0; border-radius:10px; padding:10px 16px; cursor:pointer; text-align:center; transition: all .15s; }
+    .atrac-tab:hover { border-color:#fbbf24; }
+    .atrac-tab.activa { border-color:#7c2d12; background:#fef7f5; }
+    .atrac-tab-icon { font-size:1.4rem; }
+    .atrac-tab-name { font-size:.82rem; font-weight:700; color:#1e293b; }
+    .atrac-tab-wait { font-size:.72rem; }
+
+    /* Header de la atracción activa */
+    .atrac-header { background:linear-gradient(135deg,#7c2d12 0%,#c2410c 100%); border-radius:14px; color:white; padding:20px 24px; }
+    .atrac-header-nombre { font-size:1.8rem; font-weight:900; }
+    .atrac-stat { background:rgba(255,255,255,.18); border-radius:10px; padding:10px 16px; text-align:center; }
+    .atrac-stat-val { font-size:1.4rem; font-weight:900; }
+    .atrac-stat-lbl { font-size:.7rem; text-transform:uppercase; letter-spacing:1px; opacity:.8; }
+
+    /* Grupos pendientes */
+    .grupo-row { background:white; border-radius:12px; padding:14px 16px; border-left:5px solid #e2e8f0; transition: all .15s; }
+    .grupo-row.pendiente { border-left-color:#fbbf24; }
+    .grupo-row.jugando   { border-left-color:#3b82f6; background:#f0f7ff; }
+    .grupo-row.nodisponible { border-left-color:#e2e8f0; background:#f8fafc; opacity:.85; }
+    .biper-mini { background:#7c2d12; color:white; font-weight:900; font-size:.95rem; min-width:38px; text-align:center; padding:4px 10px; border-radius:8px; }
+    .pos-badge { width:26px; height:26px; border-radius:50%; background:#fef3c7; color:#92400e; font-weight:800; font-size:.82rem; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+    .motivo-chip { background:#fee2e2; color:#991b1b; font-size:.75rem; font-weight:700; padding:2px 10px; border-radius:20px; }
+    .jugando-chip { background:#dbeafe; color:#1d4ed8; font-size:.75rem; font-weight:700; padding:2px 10px; border-radius:20px; }
+
+    /* Capacidad visual */
+    .cap-track { background:#e2e8f0; border-radius:20px; height:8px; }
+    .cap-fill { border-radius:20px; height:8px; transition: width .4s; }
+    .cap-verde  { background:#10b981; }
+    .cap-amaril { background:#f59e0b; }
+    .cap-rojo   { background:#ef4444; }
+
+    .nav-demo { background:#0f172a; }
+    .nav-demo .nav-link { color:#94a3b8; font-size:.85rem; font-weight:600; border-radius:8px; padding:6px 14px; }
+    .nav-demo .nav-link:hover { color:white; background:#1e293b; }
+    .nav-demo .nav-link.active { color:#fbbf24; }
+
+    .pulse-dot { width:9px; height:9px; border-radius:50%; background:#10b981; animation: pulse 1.5s infinite; display:inline-block; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.4)} }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark navbar-custom px-4 py-3">
+  <span class="navbar-brand fw-bold fs-5"><i class="bi bi-lightning-charge-fill me-2 text-warning"></i>FlowTurn SPM</span>
+  <span class="demo-pill"><i class="bi bi-eye me-1"></i>DEMO VISUAL</span>
+</nav>
+<nav class="navbar nav-demo px-4 py-2">
+  <div class="d-flex gap-1 flex-wrap">
+    <a href="index.html"       class="nav-link"><i class="bi bi-grid-3x3-gap me-1"></i>Inicio</a>
+    <a href="recepcion.html"   class="nav-link"><i class="bi bi-person-plus me-1"></i>Recepción</a>
+    <a href="grupo.html"       class="nav-link"><i class="bi bi-people me-1"></i>Gestión Grupo</a>
+    <a href="operador.html"    class="nav-link active"><i class="bi bi-person-workspace me-1"></i>Operador</a>
+    <a href="dashboard.html"   class="nav-link"><i class="bi bi-bar-chart me-1"></i>Dashboard</a>
+    <a href="pantalla-tv.html" class="nav-link"><i class="bi bi-display me-1"></i>Pantalla TV</a>
+  </div>
+</nav>
+
+<div class="container-fluid px-4 py-4" style="max-width:1100px;">
+
+  <!-- Selector de atracción -->
+  <div class="card p-4 mb-4">
+    <div class="section-label"><i class="bi bi-toggles me-1"></i>Seleccionar Atracción</div>
+    <div class="row g-2" id="atrac-tabs"></div>
+  </div>
+
+  <!-- Header de la atracción activa -->
+  <div class="atrac-header mb-4" id="atrac-header"></div>
+
+  <div class="row g-4">
+    <!-- Pendientes -->
+    <div class="col-lg-6">
+      <div class="card p-4">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <div class="section-label mb-0"><i class="bi bi-hourglass-split me-1"></i>Cola de Espera</div>
+          <span id="badge-pendientes" class="badge" style="background:#fef3c7; color:#92400e; font-weight:700;"></span>
+        </div>
+        <div class="d-flex flex-column gap-2" id="lista-pendientes"></div>
+      </div>
+    </div>
+
+    <!-- No disponibles -->
+    <div class="col-lg-6">
+      <div class="card p-4">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+          <div class="section-label mb-0"><i class="bi bi-slash-circle me-1"></i>No Disponibles Ahora</div>
+          <span id="badge-nodisponibles" class="badge" style="background:#fee2e2; color:#991b1b; font-weight:700;"></span>
+        </div>
+        <div class="d-flex flex-column gap-2" id="lista-nodisponibles"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const atracciones = [
+  {
+    id:'karting', nombre:'Karting', icono:'🏎️', espera:'45 min', ocupacion:80, capacidad:10, total:10,
+    pendientes:[
+      { biper:7, nombre:'Familia Pérez',   integrantes:3, espera:'15 min' },
+      { biper:12,nombre:'Familia Gómez',   integrantes:5, espera:'30 min' },
+    ],
+    nodisponibles:[
+      { biper:15, nombre:'Familia Rodríguez', integrantes:4, motivo:'Jugando en Paintball' },
+      { biper:3,  nombre:'Familia López',     integrantes:2, motivo:'En Escape Room' },
+    ],
+    jugando: 8,
+  },
+  {
+    id:'paintball', nombre:'Paintball', icono:'🎨', espera:'15 min', ocupacion:40, capacidad:8, total:20,
+    pendientes:[
+      { biper:9, nombre:'Familia Torres',  integrantes:4, espera:'5 min' },
+      { biper:11,nombre:'Grupo Martínez',  integrantes:6, espera:'10 min' },
+      { biper:4, nombre:'Familia Díaz',    integrantes:3, espera:'15 min' },
+    ],
+    nodisponibles:[
+      { biper:2, nombre:'Familia Ramos',  integrantes:5, motivo:'En Escape Room' },
+    ],
+    jugando: 8,
+  },
+  {
+    id:'escape', nombre:'Escape Room', icono:'🔐', espera:'5 min', ocupacion:20, capacidad:2, total:10,
+    pendientes:[
+      { biper:15, nombre:'Familia Rodríguez', integrantes:4, espera:'5 min' },
+    ],
+    nodisponibles:[
+      { biper:6, nombre:'Familia Silva', integrantes:3, motivo:'Jugando en Karting' },
+    ],
+    jugando: 2,
+  },
+  {
+    id:'tiro', nombre:'Tiro al Blanco', icono:'🎯', espera:'10 min', ocupacion:35, capacidad:4, total:10,
+    pendientes:[
+      { biper:8,  nombre:'Familia Núñez',  integrantes:2, espera:'8 min' },
+      { biper:10, nombre:'Grupo Herrera',  integrantes:4, espera:'10 min' },
+    ],
+    nodisponibles:[
+      { biper:1, nombre:'Familia Castro', integrantes:5, motivo:'Jugando en Paintball' },
+    ],
+    jugando: 4,
+  },
+];
+
+let activa = 0;
+
+function colorCapacidad(pct) {
+  if(pct < 50) return 'cap-verde';
+  if(pct < 80) return 'cap-amaril';
+  return 'cap-rojo';
+}
+
+function renderTabs() {
+  document.getElementById('atrac-tabs').innerHTML = atracciones.map((a,i) => `
+    <div class="col-6 col-md-3">
+      <div class="atrac-tab ${i===activa?'activa':''}" onclick="setActiva(${i})">
+        <div class="atrac-tab-icon">${a.icono}</div>
+        <div class="atrac-tab-name">${a.nombre}</div>
+        <div class="atrac-tab-wait text-muted">${a.espera}</div>
+      </div>
+    </div>
+  `).join('');
+}
+
+function renderHeader() {
+  const a = atracciones[activa];
+  const pct = a.ocupacion;
+  const col = colorCapacidad(pct);
+  document.getElementById('atrac-header').innerHTML = `
+    <div class="d-flex align-items-center gap-3 mb-3">
+      <span style="font-size:2.5rem;">${a.icono}</span>
+      <div>
+        <div class="atrac-header-nombre">${a.nombre}</div>
+        <div style="opacity:.85; font-size:.9rem;"><span class="pulse-dot me-2"></span>Atracción activa</div>
+      </div>
+    </div>
+    <div class="row g-3">
+      <div class="col-6 col-md-3"><div class="atrac-stat">
+        <div class="atrac-stat-val">${a.espera}</div>
+        <div class="atrac-stat-lbl">Espera</div>
+      </div></div>
+      <div class="col-6 col-md-3"><div class="atrac-stat">
+        <div class="atrac-stat-val">${a.ocupacion}%</div>
+        <div class="atrac-stat-lbl">Ocupación</div>
+      </div></div>
+      <div class="col-6 col-md-3"><div class="atrac-stat">
+        <div class="atrac-stat-val">${a.jugando}/${a.total}</div>
+        <div class="atrac-stat-lbl">Capacidad</div>
+      </div></div>
+      <div class="col-6 col-md-3"><div class="atrac-stat">
+        <div class="atrac-stat-val">${a.pendientes.length}</div>
+        <div class="atrac-stat-lbl">En espera</div>
+      </div></div>
+    </div>
+    <div class="mt-3">
+      <div class="d-flex justify-content-between mb-1">
+        <span style="font-size:.78rem; opacity:.8;">Nivel de ocupación</span>
+        <span style="font-size:.78rem; font-weight:800;">${pct}%</span>
+      </div>
+      <div class="cap-track"><div class="cap-fill ${col}" style="width:${pct}%"></div></div>
+    </div>
+  `;
+}
+
+function renderListas() {
+  const a = atracciones[activa];
+  document.getElementById('badge-pendientes').textContent = a.pendientes.length + ' grupos';
+  document.getElementById('lista-pendientes').innerHTML = a.pendientes.length
+    ? a.pendientes.map((g,i) => `
+        <div class="grupo-row pendiente d-flex align-items-center gap-3">
+          <div class="pos-badge">${i+1}</div>
+          <div class="biper-mini">${g.biper}</div>
+          <div class="flex-grow-1">
+            <div style="font-weight:700; color:#1e293b; font-size:.95rem;">${g.nombre}</div>
+            <div style="font-size:.78rem; color:#64748b;"><i class="bi bi-people me-1"></i>${g.integrantes} personas · <i class="bi bi-clock me-1"></i>${g.espera}</div>
+          </div>
+          <button class="btn btn-sm" style="background:#7c2d12; color:white; border:none; border-radius:8px; font-size:.78rem; font-weight:700; white-space:nowrap;" onclick="llamar(${g.biper}, '${g.nombre}')">
+            <i class="bi bi-bell me-1"></i>Llamar
+          </button>
+        </div>
+      `).join('')
+    : '<div class="text-center text-muted py-4"><i class="bi bi-check-circle fs-2 d-block mb-2"></i>Sin grupos en espera</div>';
+
+  document.getElementById('badge-nodisponibles').textContent = a.nodisponibles.length + ' grupos';
+  document.getElementById('lista-nodisponibles').innerHTML = a.nodisponibles.length
+    ? a.nodisponibles.map(g => `
+        <div class="grupo-row nodisponible d-flex align-items-center gap-3">
+          <div class="biper-mini" style="opacity:.6;">${g.biper}</div>
+          <div class="flex-grow-1">
+            <div style="font-weight:700; color:#475569; font-size:.95rem;">${g.nombre}</div>
+            <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
+              <span style="font-size:.78rem; color:#64748b;"><i class="bi bi-people me-1"></i>${g.integrantes} personas</span>
+              <span class="motivo-chip"><i class="bi bi-x-circle me-1"></i>${g.motivo}</span>
+            </div>
+          </div>
+        </div>
+      `).join('')
+    : '<div class="text-center text-muted py-4"><i class="bi bi-check-circle fs-2 d-block mb-2"></i>Todos disponibles</div>';
+}
+
+function setActiva(i) { activa = i; renderAll(); }
+function renderAll() { renderTabs(); renderHeader(); renderListas(); }
+function llamar(biper, nombre) { alert(`Demo: Llamando al biper ${biper} (${nombre})...\n→ Se mostraría en Pantalla TV`); }
+
+renderAll();
+</script>
+</body>
+</html>

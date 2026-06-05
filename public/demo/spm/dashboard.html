@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard SPM – FlowTurn Demo</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    body { background: #0f172a; color: #f1f5f9; }
+    .navbar-custom { background: #7c2d12; }
+    .demo-pill { background:#fef3c7; color:#92400e; font-size:.72rem; font-weight:700; padding:2px 10px; border-radius:20px; letter-spacing:1px; }
+    .card-dark { background:#1e293b; border:1px solid #334155; border-radius:16px; }
+    .section-label { font-size:.7rem; font-weight:800; letter-spacing:2px; text-transform:uppercase; color:#64748b; margin-bottom:12px; }
+
+    /* KPI top */
+    .kpi-card { background:#1e293b; border:1px solid #334155; border-radius:14px; padding:20px; }
+    .kpi-val  { font-size:2.2rem; font-weight:900; }
+    .kpi-lbl  { font-size:.75rem; text-transform:uppercase; letter-spacing:1px; color:#64748b; font-weight:700; margin-top:2px; }
+    .kpi-delta { font-size:.78rem; font-weight:700; }
+    .delta-up   { color:#4ade80; }
+    .delta-down { color:#f87171; }
+
+    /* Tabla de atracciones */
+    .atrac-row { background:#1e293b; border:1px solid #334155; border-radius:12px; padding:16px 18px; transition: background .15s; }
+    .atrac-row:hover { background:#263147; }
+    .atrac-nombre-big { font-size:1.05rem; font-weight:800; }
+    .tag-critico  { background:#450a0a; color:#f87171; font-size:.72rem; font-weight:700; padding:2px 10px; border-radius:20px; }
+    .tag-medio    { background:#451a03; color:#fbbf24; font-size:.72rem; font-weight:700; padding:2px 10px; border-radius:20px; }
+    .tag-libre    { background:#052e16; color:#4ade80; font-size:.72rem; font-weight:700; padding:2px 10px; border-radius:20px; }
+
+    /* Barras de progreso */
+    .bar-wrap  { background:#334155; border-radius:20px; height:8px; }
+    .bar-fill  { border-radius:20px; height:8px; transition: width .5s; }
+    .bar-green  { background:linear-gradient(90deg,#10b981,#34d399); }
+    .bar-yellow { background:linear-gradient(90deg,#f59e0b,#fbbf24); }
+    .bar-red    { background:linear-gradient(90deg,#ef4444,#f87171); }
+
+    /* Sparkline fake */
+    .sparkline { display:flex; align-items:flex-end; gap:3px; height:32px; }
+    .spark-bar { background:#334155; border-radius:3px 3px 0 0; width:8px; transition: background .2s; }
+    .spark-bar:hover { background:#fbbf24; }
+
+    /* Activity feed */
+    .activity-item { display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-bottom:1px solid #334155; }
+    .activity-item:last-child { border-bottom:none; }
+    .act-dot { width:8px; height:8px; border-radius:50%; flex-shrink:0; margin-top:5px; }
+
+    .nav-demo { background:#0a0f1a; border-bottom:1px solid #1e293b; }
+    .nav-demo .nav-link { color:#64748b; font-size:.85rem; font-weight:600; border-radius:8px; padding:6px 14px; }
+    .nav-demo .nav-link:hover { color:white; background:#1e293b; }
+    .nav-demo .nav-link.active { color:#fbbf24; }
+
+    .pulse-dot { width:8px; height:8px; border-radius:50%; background:#10b981; animation: pulse 1.5s infinite; display:inline-block; }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(1.5)} }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark navbar-custom px-4 py-3">
+  <span class="navbar-brand fw-bold fs-5"><i class="bi bi-lightning-charge-fill me-2 text-warning"></i>FlowTurn SPM</span>
+  <div class="d-flex align-items-center gap-2">
+    <span style="font-size:.8rem; color:rgba(255,255,255,.6);"><span class="pulse-dot me-1"></span>15:47 hs · Datos en vivo simulados</span>
+    <span class="demo-pill"><i class="bi bi-eye me-1"></i>DEMO</span>
+  </div>
+</nav>
+<nav class="navbar nav-demo px-4 py-2">
+  <div class="d-flex gap-1 flex-wrap">
+    <a href="index.html"       class="nav-link"><i class="bi bi-grid-3x3-gap me-1"></i>Inicio</a>
+    <a href="recepcion.html"   class="nav-link"><i class="bi bi-person-plus me-1"></i>Recepción</a>
+    <a href="grupo.html"       class="nav-link"><i class="bi bi-people me-1"></i>Gestión Grupo</a>
+    <a href="operador.html"    class="nav-link"><i class="bi bi-person-workspace me-1"></i>Operador</a>
+    <a href="dashboard.html"   class="nav-link active"><i class="bi bi-bar-chart me-1"></i>Dashboard</a>
+    <a href="pantalla-tv.html" class="nav-link"><i class="bi bi-display me-1"></i>Pantalla TV</a>
+  </div>
+</nav>
+
+<div class="container-fluid px-4 py-4" style="max-width:1300px;">
+
+  <!-- KPIs globales -->
+  <div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+      <div class="kpi-card">
+        <div class="kpi-val text-warning">23</div>
+        <div class="kpi-lbl">Grupos activos</div>
+        <div class="kpi-delta delta-up mt-1"><i class="bi bi-arrow-up-short"></i>+3 última hora</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="kpi-card">
+        <div class="kpi-val" style="color:#60a5fa;">82</div>
+        <div class="kpi-lbl">Personas en parque</div>
+        <div class="kpi-delta delta-up mt-1"><i class="bi bi-arrow-up-short"></i>+12 esta tarde</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="kpi-card">
+        <div class="kpi-val" style="color:#34d399;">18</div>
+        <div class="kpi-lbl">Turnos asignados</div>
+        <div class="kpi-delta delta-down mt-1"><i class="bi bi-arrow-down-short"></i>–2 últimos 30 min</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="kpi-card">
+        <div class="kpi-val" style="color:#f87171;">2</div>
+        <div class="kpi-lbl">Atracciones saturadas</div>
+        <div class="kpi-delta mt-1" style="color:#f59e0b;"><i class="bi bi-exclamation-triangle me-1"></i>Atención requerida</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Tabla principal de atracciones -->
+  <div class="card-dark p-4 mb-4">
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <div class="section-label mb-0"><i class="bi bi-table me-1"></i>Estado de Atracciones</div>
+      <span style="font-size:.78rem; color:#64748b;">Actualizado hace 12 seg</span>
+    </div>
+
+    <!-- Encabezados -->
+    <div class="row g-0 px-3 mb-2" style="font-size:.7rem; font-weight:800; letter-spacing:1.5px; text-transform:uppercase; color:#475569;">
+      <div class="col-3 col-md-2">Atracción</div>
+      <div class="col-2 d-none d-md-block">Espera</div>
+      <div class="col-3 col-md-2">Ocupación</div>
+      <div class="col-3 col-md-2">Saturación</div>
+      <div class="col-2 d-none d-md-block">Capacidad</div>
+      <div class="col-3 col-md-2">Estado</div>
+    </div>
+
+    <div class="d-flex flex-column gap-2" id="tabla-atracciones"></div>
+  </div>
+
+  <div class="row g-4">
+    <!-- Actividad reciente -->
+    <div class="col-lg-6">
+      <div class="card-dark p-4">
+        <div class="section-label"><i class="bi bi-activity me-1"></i>Actividad Reciente</div>
+        <div id="activity-feed"></div>
+      </div>
+    </div>
+
+    <!-- Distribución de grupos -->
+    <div class="col-lg-6">
+      <div class="card-dark p-4">
+        <div class="section-label"><i class="bi bi-people me-1"></i>Distribución de Grupos por Atracción</div>
+        <div id="distribucion"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const atracciones = [
+  { nombre:'Karting',        icono:'🏎️', espera:'45 min', ocupacion:80, saturacion:90, capacidad:8,  total:10, estado:'critico'  },
+  { nombre:'Paintball',      icono:'🎨', espera:'15 min', ocupacion:40, saturacion:35, capacidad:8,  total:20, estado:'medio'    },
+  { nombre:'Escape Room',    icono:'🔐', espera:'5 min',  ocupacion:20, saturacion:15, capacidad:2,  total:10, estado:'libre'    },
+  { nombre:'Tiro al Blanco', icono:'🎯', espera:'10 min', ocupacion:35, saturacion:30, capacidad:4,  total:10, estado:'libre'    },
+  { nombre:'Laser Tag',      icono:'🔫', espera:'20 min', ocupacion:60, saturacion:55, capacidad:6,  total:12, estado:'medio'    },
+  { nombre:'Simulador VR',   icono:'🥽', espera:'35 min', ocupacion:85, saturacion:92, capacidad:5,  total:6,  estado:'critico'  },
+];
+
+const estadoLabel = { critico:'tag-critico', medio:'tag-medio', libre:'tag-libre' };
+const estadoText  = { critico:'⚠ Crítico', medio:'~ Moderado', libre:'✓ Libre' };
+
+function barClass(pct) {
+  if(pct < 50) return 'bar-green';
+  if(pct < 80) return 'bar-yellow';
+  return 'bar-red';
+}
+
+// Tabla
+document.getElementById('tabla-atracciones').innerHTML = atracciones.map(a => `
+  <div class="atrac-row row g-0 align-items-center">
+    <div class="col-3 col-md-2 d-flex align-items-center gap-2">
+      <span style="font-size:1.3rem;">${a.icono}</span>
+      <span class="atrac-nombre-big d-none d-md-block">${a.nombre}</span>
+      <span class="atrac-nombre-big d-md-none" style="font-size:.82rem;">${a.nombre}</span>
+    </div>
+    <div class="col-2 d-none d-md-block">
+      <span style="font-weight:700; color:${a.espera.includes('45')||a.espera.includes('35') ? '#f87171' : a.espera.includes('20')||a.espera.includes('15') ? '#fbbf24' : '#4ade80'};">${a.espera}</span>
+    </div>
+    <div class="col-3 col-md-2">
+      <div style="font-weight:800; font-size:.9rem; margin-bottom:3px;">${a.ocupacion}%</div>
+      <div class="bar-wrap"><div class="bar-fill ${barClass(a.ocupacion)}" style="width:${a.ocupacion}%"></div></div>
+    </div>
+    <div class="col-3 col-md-2">
+      <div style="font-weight:800; font-size:.9rem; margin-bottom:3px;">${a.saturacion}%</div>
+      <div class="bar-wrap"><div class="bar-fill ${barClass(a.saturacion)}" style="width:${a.saturacion}%"></div></div>
+    </div>
+    <div class="col-2 d-none d-md-block">
+      <span style="font-weight:700;">${a.capacidad}/${a.total}</span>
+      <div style="font-size:.72rem; color:#64748b;">lugares</div>
+    </div>
+    <div class="col-3 col-md-2">
+      <span class="${estadoLabel[a.estado]}">${estadoText[a.estado]}</span>
+    </div>
+  </div>
+`).join('');
+
+// Activity feed
+const actividades = [
+  { color:'#4ade80', texto:'Familia Rodríguez completó <strong>Karting</strong>', tiempo:'hace 2 min' },
+  { color:'#60a5fa', texto:'Biper 15 llamado a <strong>Paintball</strong>', tiempo:'hace 5 min' },
+  { color:'#f87171', texto:'<strong>Simulador VR</strong> alcanzó 92% de saturación', tiempo:'hace 7 min' },
+  { color:'#fbbf24', texto:'Familia Gómez registrada con 4 atracciones', tiempo:'hace 11 min' },
+  { color:'#4ade80', texto:'Familia Torres completó <strong>Escape Room</strong>', tiempo:'hace 14 min' },
+  { color:'#f87171', texto:'<strong>Karting</strong> superó el 80% de ocupación', tiempo:'hace 18 min' },
+  { color:'#60a5fa', texto:'Biper 7 llamado a <strong>Laser Tag</strong>', tiempo:'hace 22 min' },
+];
+document.getElementById('activity-feed').innerHTML = actividades.map(a => `
+  <div class="activity-item">
+    <div class="act-dot" style="background:${a.color}"></div>
+    <div class="flex-grow-1">
+      <div style="font-size:.85rem; color:#cbd5e1;">${a.texto}</div>
+      <div style="font-size:.72rem; color:#475569;">${a.tiempo}</div>
+    </div>
+  </div>
+`).join('');
+
+// Distribución
+document.getElementById('distribucion').innerHTML = atracciones.map(a => `
+  <div class="d-flex align-items-center gap-3 mb-3">
+    <span style="font-size:1.1rem; width:24px; text-align:center;">${a.icono}</span>
+    <div class="flex-grow-1">
+      <div class="d-flex justify-content-between mb-1">
+        <span style="font-size:.82rem; font-weight:700; color:#cbd5e1;">${a.nombre}</span>
+        <span style="font-size:.78rem; color:#64748b;">${a.capacidad} grupos</span>
+      </div>
+      <div class="bar-wrap"><div class="bar-fill ${barClass(a.ocupacion)}" style="width:${a.ocupacion}%"></div></div>
+    </div>
+    <span style="font-size:.8rem; font-weight:800; min-width:36px; text-align:right; color:${a.ocupacion>79?'#f87171':a.ocupacion>49?'#fbbf24':'#4ade80'}">${a.ocupacion}%</span>
+  </div>
+`).join('');
+</script>
+</body>
+</html>

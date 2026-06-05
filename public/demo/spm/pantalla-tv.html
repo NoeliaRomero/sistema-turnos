@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pantalla TV SPM – FlowTurn Demo</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: #0a0f1a;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    /* Barra superior */
+    .tv-topbar {
+      background: #7c2d12;
+      padding: 14px 32px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .tv-brand { color:white; font-size:1.3rem; font-weight:900; letter-spacing:-0.5px; }
+    .tv-clock { color:rgba(255,255,255,.8); font-size:1.2rem; font-weight:700; font-variant-numeric: tabular-nums; }
+    .demo-pill { background:#fef3c7; color:#92400e; font-size:.72rem; font-weight:700; padding:2px 10px; border-radius:20px; letter-spacing:1px; }
+
+    /* Área principal del llamado */
+    .tv-main {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+
+    .llamado-card {
+      background: #0f172a;
+      border: 2px solid #1e293b;
+      border-radius: 24px;
+      padding: 0;
+      width: 100%;
+      max-width: 680px;
+      overflow: hidden;
+      animation: fadeInScale .5s ease;
+    }
+    @keyframes fadeInScale {
+      from { opacity:0; transform: scale(.96); }
+      to   { opacity:1; transform: scale(1);   }
+    }
+
+    .llamado-header {
+      background: linear-gradient(135deg, #7c2d12 0%, #b45309 100%);
+      padding: 32px 40px 24px;
+      text-align: center;
+    }
+    .llamado-label {
+      font-size: .75rem; font-weight: 800; letter-spacing: 4px;
+      text-transform: uppercase; color: rgba(255,255,255,.7); margin-bottom: 8px;
+    }
+    .biper-grande {
+      font-size: 6rem; font-weight: 900; color: white; line-height: 1;
+      text-shadow: 0 4px 20px rgba(0,0,0,.4);
+    }
+    .biper-label {
+      font-size: .9rem; color: rgba(255,255,255,.7); font-weight: 600;
+      letter-spacing: 3px; text-transform: uppercase; margin-top: 4px;
+    }
+
+    .llamado-body {
+      padding: 32px 40px;
+      text-align: center;
+    }
+    .familia-nombre {
+      font-size: 2.2rem; font-weight: 900; color: white; letter-spacing: -0.5px;
+    }
+    .dirigirse-label {
+      font-size: .8rem; font-weight: 800; letter-spacing: 4px;
+      text-transform: uppercase; color: #64748b; margin: 24px 0 12px;
+    }
+    .atraccion-destino {
+      background: linear-gradient(135deg, #1e293b 0%, #263147 100%);
+      border: 2px solid #334155;
+      border-radius: 16px;
+      padding: 20px 32px;
+      display: inline-flex;
+      align-items: center;
+      gap: 16px;
+    }
+    .atraccion-icono-tv { font-size: 2.4rem; }
+    .atraccion-nombre-tv { font-size: 2rem; font-weight: 900; color: #fbbf24; letter-spacing: -0.5px; }
+    .atraccion-sala {
+      font-size: .82rem; color: #64748b; font-weight: 600;
+      margin-top: 4px; letter-spacing: 1px; text-transform: uppercase;
+    }
+
+    /* Barra inferior con cola -->*/
+    .tv-footer {
+      background: #0a0f1a;
+      border-top: 1px solid #1e293b;
+      padding: 16px 32px;
+      display: flex;
+      align-items: center;
+      gap: 0;
+      overflow: hidden;
+    }
+    .footer-label {
+      font-size:.7rem; font-weight:800; letter-spacing:2px; text-transform:uppercase;
+      color:#475569; white-space:nowrap; padding-right:20px; border-right:1px solid #1e293b;
+      margin-right:20px; flex-shrink:0;
+    }
+    .ticker-wrap { overflow:hidden; flex:1; }
+    .ticker { display:flex; gap:32px; animation: ticker 18s linear infinite; white-space:nowrap; }
+    @keyframes ticker { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+    .ticker-item {
+      display:inline-flex; align-items:center; gap:8px;
+      font-size:.82rem; font-weight:700; color:#94a3b8;
+    }
+    .ticker-biper { background:#1e293b; color:#fbbf24; font-weight:900; padding:2px 10px; border-radius:8px; font-size:.82rem; }
+
+    /* Controles demo -->*/
+    .controls-bar {
+      background: #111827;
+      padding: 12px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+    .ctrl-label { font-size:.72rem; color:#475569; font-weight:700; text-transform:uppercase; letter-spacing:1px; }
+    .btn-ctrl { background:#1e293b; color:#cbd5e1; border:1px solid #334155; border-radius:8px; padding:6px 14px; font-size:.82rem; font-weight:600; cursor:pointer; transition: all .15s; }
+    .btn-ctrl:hover { background:#334155; color:white; }
+    .btn-ctrl.active { background:#7c2d12; color:white; border-color:#7c2d12; }
+
+    /* Indicador pulso llamado -->*/
+    .pulse-ring {
+      width:16px; height:16px; border-radius:50%; background:#10b981;
+      box-shadow: 0 0 0 0 rgba(16,185,129,.6);
+      animation: pulse-ring 1.5s infinite;
+      flex-shrink:0;
+    }
+    @keyframes pulse-ring {
+      0%   { box-shadow: 0 0 0 0 rgba(16,185,129,.6); }
+      70%  { box-shadow: 0 0 0 12px rgba(16,185,129,0); }
+      100% { box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+    }
+
+    /* Nav -->*/
+    .nav-demo { background:#060c17; border-bottom:1px solid #1e293b; }
+    .nav-demo .nav-link { color:#475569; font-size:.82rem; font-weight:600; border-radius:8px; padding:5px 12px; }
+    .nav-demo .nav-link:hover { color:white; background:#1e293b; }
+    .nav-demo .nav-link.active { color:#fbbf24; }
+  </style>
+</head>
+<body>
+
+<!-- Top bar -->
+<div class="tv-topbar">
+  <div class="tv-brand"><i class="bi bi-lightning-charge-fill text-warning me-2"></i>FlowTurn</div>
+  <span class="demo-pill"><i class="bi bi-eye me-1"></i>DEMO VISUAL</span>
+  <div class="tv-clock" id="reloj">15:47:32</div>
+</div>
+
+<!-- Nav -->
+<nav class="navbar nav-demo px-4 py-1">
+  <div class="d-flex gap-1 flex-wrap">
+    <a href="index.html"       class="nav-link"><i class="bi bi-grid-3x3-gap me-1"></i>Inicio</a>
+    <a href="recepcion.html"   class="nav-link"><i class="bi bi-person-plus me-1"></i>Recepción</a>
+    <a href="grupo.html"       class="nav-link"><i class="bi bi-people me-1"></i>Gestión Grupo</a>
+    <a href="operador.html"    class="nav-link"><i class="bi bi-person-workspace me-1"></i>Operador</a>
+    <a href="dashboard.html"   class="nav-link"><i class="bi bi-bar-chart me-1"></i>Dashboard</a>
+    <a href="pantalla-tv.html" class="nav-link active"><i class="bi bi-display me-1"></i>Pantalla TV</a>
+  </div>
+</nav>
+
+<!-- Área principal -->
+<div class="tv-main">
+  <div class="w-100" style="max-width:680px;">
+    <!-- Estado: esperando -->
+    <div id="estado-espera" style="display:none; text-align:center;">
+      <div style="color:#334155; font-size:5rem;"><i class="bi bi-display"></i></div>
+      <div style="color:#334155; font-size:1.2rem; font-weight:700; margin-top:16px; letter-spacing:2px; text-transform:uppercase;">En espera de llamado...</div>
+    </div>
+
+    <!-- Llamado activo -->
+    <div id="llamado-card" class="llamado-card">
+      <div class="llamado-header">
+        <div class="llamado-label">Llamado · Biper</div>
+        <div class="biper-grande" id="biper-num">15</div>
+        <div class="biper-label">Número de biper</div>
+      </div>
+      <div class="llamado-body">
+        <div style="font-size:.75rem; font-weight:800; letter-spacing:3px; text-transform:uppercase; color:#64748b; margin-bottom:6px;">Grupo</div>
+        <div class="familia-nombre" id="familia-nombre">FAMILIA RODRÍGUEZ</div>
+        <div class="d-flex align-items-center justify-content-center gap-2 mt-2">
+          <div class="pulse-ring"></div>
+          <span style="font-size:.82rem; color:#4ade80; font-weight:700;">Llamado activo</span>
+        </div>
+        <div class="dirigirse-label">Dirigirse a</div>
+        <div class="d-flex justify-content-center">
+          <div class="atraccion-destino">
+            <div class="atraccion-icono-tv" id="atrac-icono">🔐</div>
+            <div>
+              <div class="atraccion-nombre-tv" id="atrac-nombre">ESCAPE ROOM</div>
+              <div class="atraccion-sala" id="atrac-sala">Sector B · Planta baja</div>
+            </div>
+          </div>
+        </div>
+        <div class="mt-4 d-flex justify-content-center gap-4">
+          <div style="text-align:center;">
+            <div style="font-size:1.4rem; font-weight:900; color:#4ade80;">5 min</div>
+            <div style="font-size:.72rem; color:#475569; text-transform:uppercase; letter-spacing:1px;">Espera</div>
+          </div>
+          <div style="width:1px; background:#1e293b;"></div>
+          <div style="text-align:center;">
+            <div style="font-size:1.4rem; font-weight:900; color:#60a5fa;">20%</div>
+            <div style="font-size:.72rem; color:#475569; text-transform:uppercase; letter-spacing:1px;">Ocupación</div>
+          </div>
+          <div style="width:1px; background:#1e293b;"></div>
+          <div style="text-align:center;">
+            <div style="font-size:1.4rem; font-weight:900; color:#fbbf24;">4</div>
+            <div style="font-size:.72rem; color:#475569; text-transform:uppercase; letter-spacing:1px;">Integrantes</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Ticker cola -->
+<div class="tv-footer">
+  <div class="footer-label"><i class="bi bi-hourglass-split me-1"></i>Próximos</div>
+  <div class="ticker-wrap">
+    <div class="ticker" id="ticker">
+      <!-- generado por JS -->
+    </div>
+  </div>
+</div>
+
+<!-- Controles demo -->
+<div class="controls-bar">
+  <span class="ctrl-label"><i class="bi bi-sliders me-1"></i>Simular llamado:</span>
+  <button class="btn-ctrl active" onclick="simular(0)">Biper 15 · Escape Room</button>
+  <button class="btn-ctrl" onclick="simular(1)">Biper 7 · Karting</button>
+  <button class="btn-ctrl" onclick="simular(2)">Biper 12 · Paintball</button>
+  <button class="btn-ctrl" onclick="simular(3)">Biper 3 · Tiro al Blanco</button>
+  <button class="btn-ctrl" onclick="simular(4)">Biper 9 · Laser Tag</button>
+  <div class="ms-auto">
+    <a href="index.html" class="btn-ctrl"><i class="bi bi-arrow-left me-1"></i>Volver al menú</a>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+const llamados = [
+  { biper:15, nombre:'FAMILIA RODRÍGUEZ', icono:'🔐', atrac:'ESCAPE ROOM',    sala:'Sector B · Planta baja',   espera:'5 min',  ocupacion:'20%', integrantes:4 },
+  { biper:7,  nombre:'FAMILIA PÉREZ',     icono:'🏎️', atrac:'KARTING',        sala:'Pista exterior · Sector A', espera:'45 min', ocupacion:'80%', integrantes:3 },
+  { biper:12, nombre:'FAMILIA GÓMEZ',     icono:'🎨', atrac:'PAINTBALL',      sala:'Campo central · Planta 1',  espera:'15 min', ocupacion:'40%', integrantes:5 },
+  { biper:3,  nombre:'FAMILIA LÓPEZ',     icono:'🎯', atrac:'TIRO AL BLANCO', sala:'Galería · Sector C',        espera:'10 min', ocupacion:'35%', integrantes:2 },
+  { biper:9,  nombre:'FAMILIA TORRES',    icono:'🔫', atrac:'LASER TAG',      sala:'Arena · Planta 1',          espera:'20 min', ocupacion:'60%', integrantes:4 },
+];
+
+const proximos = [
+  { biper:7,  nombre:'Familia Pérez',     atrac:'Karting'   },
+  { biper:12, nombre:'Familia Gómez',     atrac:'Paintball' },
+  { biper:3,  nombre:'Familia López',     atrac:'Escape Room' },
+  { biper:9,  nombre:'Familia Torres',    atrac:'Laser Tag' },
+  { biper:11, nombre:'Grupo Martínez',    atrac:'Tiro al Blanco' },
+  { biper:4,  nombre:'Familia Díaz',      atrac:'Karting'   },
+  { biper:8,  nombre:'Familia Núñez',     atrac:'Paintball' },
+];
+
+// Ticker (duplicado para loop infinito)
+const tickerHTML = [...proximos, ...proximos].map(p =>
+  `<div class="ticker-item"><span class="ticker-biper">${p.biper}</span><span>${p.nombre}</span><span style="color:#475569;">→</span><span style="color:#94a3b8;">${p.atrac}</span></div>`
+).join('');
+document.getElementById('ticker').innerHTML = tickerHTML;
+
+function simular(idx) {
+  const l = llamados[idx];
+  document.getElementById('biper-num').textContent       = l.biper;
+  document.getElementById('familia-nombre').textContent  = l.nombre;
+  document.getElementById('atrac-icono').textContent     = l.icono;
+  document.getElementById('atrac-nombre').textContent    = l.atrac;
+  document.getElementById('atrac-sala').textContent      = l.sala;
+
+  // Actualizar stats dinámicamente en el card
+  const stats = document.querySelectorAll('.llamado-body .d-flex.justify-content-center.gap-4 > div');
+  if(stats[0]) stats[0].querySelector('div:first-child').textContent = l.espera;
+  if(stats[2]) stats[2].querySelector('div:first-child').textContent = l.ocupacion;
+  if(stats[4]) stats[4].querySelector('div:first-child').textContent = l.integrantes;
+
+  // Activar botón
+  document.querySelectorAll('.btn-ctrl').forEach((b,i) => b.classList.toggle('active', i===idx));
+
+  // Animar
+  const card = document.getElementById('llamado-card');
+  card.style.animation = 'none';
+  requestAnimationFrame(() => { card.style.animation = 'fadeInScale .4s ease'; });
+}
+
+// Reloj
+function tick() {
+  const now = new Date();
+  document.getElementById('reloj').textContent =
+    now.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+}
+setInterval(tick, 1000);
+tick();
+</script>
+</body>
+</html>
