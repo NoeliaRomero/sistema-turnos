@@ -29,6 +29,7 @@ app.use('/api/turnos',     require('./routes/turnos')(io));
 app.use('/api/usuarios',   require('./routes/usuarios'));
 app.use('/api/stats',      require('./routes/stats'));
 app.use('/api/superadmin', require('./routes/superadmin'));
+app.use('/api/vipers',    require('./routes/vipers'));
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 io.on('connection', socket => {

@@ -44,6 +44,15 @@ db.exec(`
   );
 `);
 
+// ── Tabla vipers ─────────────────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS vipers (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    codigo_viper TEXT    UNIQUE NOT NULL,
+    activo       INTEGER DEFAULT 0
+  );
+`);
+
 // ── Migraciones ───────────────────────────────────────────────────────────────
 [
   "ALTER TABLE turnos      ADD COLUMN llamado_por              INTEGER REFERENCES usuarios(id)",

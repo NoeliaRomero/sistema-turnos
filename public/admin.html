@@ -57,6 +57,11 @@
         <i class="bi bi-people me-2"></i>Usuarios
       </button>
     </li>
+    <li class="nav-item">
+      <button class="nav-link px-4" data-bs-toggle="tab" data-bs-target="#tabConfiguraciones">
+        <i class="bi bi-gear me-2"></i>Configuraciones del Sistema
+      </button>
+    </li>
   </ul>
 
   <div class="tab-content">
@@ -169,6 +174,133 @@
       </div>
     </div>
 
+    <!-- ── TAB CONFIGURACIONES DEL SISTEMA ──────────────────────────────── -->
+    <div class="tab-pane fade" id="tabConfiguraciones">
+
+      <!-- Tabs internos -->
+      <ul class="nav nav-tabs mb-4" id="configTabs">
+        <li class="nav-item">
+          <button class="nav-link active px-4" data-bs-toggle="tab" data-bs-target="#tabConfigGeneral">
+            <i class="bi bi-sliders me-2"></i>Configuraciones del Sistema
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link px-4" data-bs-toggle="tab" data-bs-target="#tabConfigViper">
+            <i class="bi bi-cpu me-2"></i>Configuración VIPER
+          </button>
+        </li>
+        <li class="nav-item">
+          <button class="nav-link px-4" data-bs-toggle="tab" data-bs-target="#tabConfigBackup">
+            <i class="bi bi-cloud-arrow-up me-2"></i>Configuración de Backups
+          </button>
+        </li>
+      </ul>
+
+      <div class="tab-content">
+
+        <!-- Sub-tab: Configuraciones del Sistema (informativo) -->
+        <div class="tab-pane fade show active" id="tabConfigGeneral">
+          <h5 class="fw-bold mb-1"><i class="bi bi-gear me-2 text-primary"></i>Configuraciones del Sistema</h5>
+          <p class="text-muted mb-4">Administrá las configuraciones generales del sistema desde este panel.</p>
+          <div class="row g-3">
+            <div class="col-md-4">
+              <div class="card p-4 h-100">
+                <div class="d-flex align-items-center gap-3 mb-3">
+                  <div class="rounded-3 p-2" style="background:#ede9fe">
+                    <i class="bi bi-cpu fs-4 text-purple" style="color:#6f42c1"></i>
+                  </div>
+                  <h6 class="fw-bold mb-0">VIPER</h6>
+                </div>
+                <p class="text-muted small mb-0">Gestioná los dispositivos VIPER: registro, estado y señales de activación.</p>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="card p-4 h-100">
+                <div class="d-flex align-items-center gap-3 mb-3">
+                  <div class="rounded-3 p-2" style="background:#d1fae5">
+                    <i class="bi bi-cloud-arrow-up fs-4" style="color:#065f46"></i>
+                  </div>
+                  <h6 class="fw-bold mb-0">Backups</h6>
+                </div>
+                <p class="text-muted small mb-0">Próximamente: administrá copias de seguridad automáticas y manuales del sistema.</p>
+              </div>
+            </div>
+            <div class="col-md-4">
+              <div class="card p-4 h-100">
+                <div class="d-flex align-items-center gap-3 mb-3">
+                  <div class="rounded-3 p-2" style="background:#fef3c7">
+                    <i class="bi bi-tools fs-4" style="color:#92400e"></i>
+                  </div>
+                  <h6 class="fw-bold mb-0">Futuras configuraciones</h6>
+                </div>
+                <p class="text-muted small mb-0">Este espacio está reservado para nuevas configuraciones del sistema.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sub-tab: Configuración VIPER -->
+        <div class="tab-pane fade" id="tabConfigViper">
+          <div class="d-flex justify-content-between align-items-center mb-3">
+            <h5 class="fw-bold mb-0"><i class="bi bi-cpu me-2 text-primary"></i>Configuración VIPER</h5>
+            <button class="btn btn-primary px-4" id="btnNuevoViper">
+              <i class="bi bi-plus-lg me-2"></i>Agregar VIPER
+            </button>
+          </div>
+          <div class="card">
+            <div class="table-responsive">
+              <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th class="ps-4">ID</th>
+                    <th>Código VIPER</th>
+                    <th class="text-center">Estado</th>
+                    <th class="text-end pe-4">Acción</th>
+                  </tr>
+                </thead>
+                <tbody id="tablaVipers"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sub-tab: Configuración de Backups (reservado) -->
+        <div class="tab-pane fade" id="tabConfigBackup">
+          <h5 class="fw-bold mb-1"><i class="bi bi-cloud-arrow-up me-2 text-primary"></i>Configuración de Backups</h5>
+          <p class="text-muted mb-4">Esta sección permitirá administrar copias de seguridad automáticas y manuales del sistema.</p>
+          <div class="card p-5 text-center">
+            <i class="bi bi-cloud-arrow-up fs-1 text-muted opacity-50 d-block mb-3"></i>
+            <h6 class="fw-bold text-muted">Próximamente disponible</h6>
+            <p class="text-muted small mb-0">Aquí podrás programar backups automáticos, descargar copias manuales y restaurar datos del sistema.</p>
+          </div>
+        </div>
+
+      </div><!-- /tab-content interno -->
+    </div><!-- /tabConfiguraciones -->
+
+  </div>
+</div>
+
+<!-- Modal VIPER -->
+<div class="modal fade" id="modalViper" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold">Agregar VIPER</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Código VIPER <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="vCodigoViper" placeholder="Ingrese el código del VIPER">
+        </div>
+        <div id="viperError" class="alert alert-danger d-none"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-primary px-4 fw-bold" id="btnGuardarViper">Guardar</button>
+      </div>
+    </div>
   </div>
 </div>
 
