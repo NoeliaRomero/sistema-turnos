@@ -44,14 +44,14 @@
     <!-- Columna izquierda: menú -->
     <div class="col-12 col-md-3">
       <div class="list-group config-menu" id="configMenu">
-        <button type="button" class="list-group-item active" data-panel="juegos">
-          <i class="bi bi-controller"></i>Juegos
+        <button type="button" class="list-group-item active" data-panel="general">
+          <i class="bi bi-sliders"></i>Configuración del Sistema
         </button>
         <button type="button" class="list-group-item" data-panel="viper">
-          <i class="bi bi-cpu"></i>VIPER
+          <i class="bi bi-cpu"></i>Configuración VIPER
         </button>
         <button type="button" class="list-group-item" data-panel="backups">
-          <i class="bi bi-cloud-arrow-up"></i>Backups
+          <i class="bi bi-cloud-arrow-up"></i>Configuración de Backups
         </button>
       </div>
     </div>
@@ -59,10 +59,33 @@
     <!-- Columna derecha: contenido dinámico -->
     <div class="col-12 col-md-9">
 
-      <!-- Panel Juegos (reutiliza la pantalla existente de gestión de juegos) -->
-      <div class="config-panel" id="panelJuegos">
-        <div class="card p-0" style="overflow:hidden">
-          <iframe src="/juegos.html" style="width:100%; height:75vh; border:none;"></iframe>
+      <!-- Panel Configuración del Sistema (informativo) -->
+      <div class="config-panel" id="panelGeneral">
+        <h5 class="fw-bold mb-1"><i class="bi bi-sliders me-2 text-primary"></i>Configuración del Sistema</h5>
+        <p class="text-muted mb-4">Administrá las configuraciones generales del sistema desde este panel.</p>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="card p-4 h-100">
+              <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="rounded-3 p-2" style="background:#ede9fe">
+                  <i class="bi bi-cpu fs-4" style="color:#6f42c1"></i>
+                </div>
+                <h6 class="fw-bold mb-0">VIPER</h6>
+              </div>
+              <p class="text-muted small mb-0">Gestioná los dispositivos VIPER: registro, estado y señales de activación.</p>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card p-4 h-100">
+              <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="rounded-3 p-2" style="background:#d1fae5">
+                  <i class="bi bi-cloud-arrow-up fs-4" style="color:#065f46"></i>
+                </div>
+                <h6 class="fw-bold mb-0">Backups</h6>
+              </div>
+              <p class="text-muted small mb-0">Próximamente: administrá copias de seguridad automáticas y manuales del sistema.</p>
+            </div>
+          </div>
         </div>
       </div>
 

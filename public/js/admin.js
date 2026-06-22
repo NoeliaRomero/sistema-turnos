@@ -35,10 +35,10 @@ async function init() {
       </div>`;
   }
 
-  // Ocultar enlace a Juegos si no tiene feature_juegos
+  // Ocultar tab Juegos si no tiene feature_juegos
   if (!adminMe.feature_juegos) {
-    const btnJuegos = document.getElementById('btnJuegosNav');
-    if (btnJuegos) btnJuegos.style.display = 'none';
+    const tabJuegos = document.getElementById('tabBtnJuegos');
+    if (tabJuegos) tabJuegos.closest('.nav-item').style.display = 'none';
   }
 
   await cargarAtracciones();
