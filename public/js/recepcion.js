@@ -15,6 +15,7 @@ async function init() {
   if (me.permiso_gestionar_juegos) document.getElementById('btnJuegos').style.display = 'inline-flex';
 
   await cargarAtracciones();
+  await cargarVipersActivos();
   await cargarCola();
 }
 
@@ -35,6 +36,20 @@ async function cargarAtracciones() {
     const maxM = a.max_miembros || 30;
     sel.innerHTML += `<option value="${a.id}" data-duracion="${a.duracion_minutos}" data-min-miembros="${minM}" data-max-miembros="${maxM}">${a.nombre} (${a.duracion_minutos} min)</option>`;
   });
+}
+
+// ── VIPERs activos (selección opcional al registrar un grupo) ──────────────────
+async function cargarVipersActivos() {
+  const sel = document.getElementById('selectViper');
+  if (!sel) return;
+  try {
+    const res    = await fetch('/api/vipers/activos');
+    const vipers = res.ok ? await res.json() : [];
+    sel.innerHTML = '<option value="">Sin VIPER físico</option>';
+    vipers.forEach(v => {
+      sel.innerHTML += `<option value="${v.id}">${v.codigo_viper}</option>`;
+    });
+  } catch (_) { /* el módulo VIPER es opcional, no debe romper el registro */ }
 }
 
 document.getElementById('selectJuego').addEventListener('change', () => {
@@ -264,6 +279,7 @@ document.getElementById('formRegistro').addEventListener('submit', async e => {
   const biper_numero     = document.getElementById('inputBiper').value;
   const nombre_cliente   = document.getElementById('inputNombre').value.trim();
   const cantidad_miembros = parseInt(document.getElementById('inputMiembros').value) || 1;
+  const viper_id          = document.getElementById('selectViper')?.value || null;
 
   if (!atraccion_id || !biper_numero || !nombre_cliente) {
     mostrarToast('Completá juego, biper y nombre del grupo', 'warning'); return;
@@ -277,7 +293,7 @@ document.getElementById('formRegistro').addEventListener('submit', async e => {
 
   const res  = await fetch('/api/turnos', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ atraccion_id, biper_numero, nombre_cliente, cantidad_miembros })
+    body: JSON.stringify({ atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id })
   });
   const data = await res.json();
 

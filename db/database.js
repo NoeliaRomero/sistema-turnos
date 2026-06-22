@@ -51,6 +51,12 @@ db.exec(`
     codigo_viper TEXT    UNIQUE NOT NULL,
     activo       INTEGER DEFAULT 0
   );
+
+  CREATE TABLE IF NOT EXISTS configuracion_serial (
+    id      INTEGER PRIMARY KEY CHECK (id = 1),
+    puerto  TEXT,
+    baudios INTEGER DEFAULT 115200
+  );
 `);
 
 // ── Migraciones ───────────────────────────────────────────────────────────────
@@ -58,6 +64,7 @@ db.exec(`
   "ALTER TABLE turnos      ADD COLUMN llamado_por              INTEGER REFERENCES usuarios(id)",
   "ALTER TABLE turnos      ADD COLUMN finalizado_por           INTEGER REFERENCES usuarios(id)",
   "ALTER TABLE turnos      ADD COLUMN cantidad_miembros        INTEGER DEFAULT 1",
+  "ALTER TABLE turnos      ADD COLUMN viper_id                 INTEGER REFERENCES vipers(id)",
   "ALTER TABLE atracciones ADD COLUMN duracion_minutos         INTEGER DEFAULT 30",
   "ALTER TABLE atracciones ADD COLUMN min_miembros             INTEGER DEFAULT 1",
   "ALTER TABLE atracciones ADD COLUMN max_miembros             INTEGER DEFAULT 20",
@@ -68,7 +75,23 @@ db.exec(`
   "ALTER TABLE usuarios    ADD COLUMN feature_graficos         INTEGER DEFAULT 1",
   "ALTER TABLE usuarios    ADD COLUMN feature_cancelar_turno  INTEGER DEFAULT 1",
   "ALTER TABLE usuarios    ADD COLUMN feature_llamar_turno    INTEGER DEFAULT 1",
+  "ALTER TABLE vipers      ADD COLUMN estado                   TEXT DEFAULT 'PENDIENTE'",
+  "ALTER TABLE vipers      ADD COLUMN codigo_raw                TEXT",
+  "ALTER TABLE vipers      ADD COLUMN baudrate                  INTEGER DEFAULT 115200",
+  "ALTER TABLE vipers      ADD COLUMN fecha_validacion          DATETIME",
+  "ALTER TABLE vipers      ADD COLUMN ultimo_test               DATETIME",
+  "ALTER TABLE vipers      ADD COLUMN ultimo_error              TEXT",
 ].forEach(sql => { try { db.exec(sql); } catch (_) {} });
+
+// Normalizar estado de VIPERs creados antes de esta migración (basados en "activo")
+db.exec(`
+  UPDATE vipers SET estado = 'ACTIVO'    WHERE activo = 1 AND (estado IS NULL OR estado = 'PENDIENTE');
+  UPDATE vipers SET estado = 'PENDIENTE' WHERE estado IS NULL;
+`);
+
+if (db.prepare('SELECT COUNT(*) AS c FROM configuracion_serial').get().c === 0) {
+  db.prepare('INSERT INTO configuracion_serial (id, puerto, baudios) VALUES (1, NULL, 115200)').run();
+}
 
 // ── Datos iniciales ───────────────────────────────────────────────────────────
 if (db.prepare('SELECT COUNT(*) AS c FROM atracciones').get().c === 0) {

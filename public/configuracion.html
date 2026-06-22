@@ -21,6 +21,16 @@
     }
     .config-menu .list-group-item.active { background:#1e1b4b; color:#fff; }
     .config-menu .list-group-item:hover:not(.active) { background:#f0f4f8; }
+
+    .estado-badge { font-size:.72rem; padding:3px 10px; border-radius:20px; font-weight:600; }
+    .estado-PENDIENTE { background:#fef3c7; color:#92400e; }
+    .estado-VALIDANDO { background:#dbeafe; color:#1e40af; }
+    .estado-ACTIVO    { background:#d1fae5; color:#065f46; }
+    .estado-ERROR     { background:#fee2e2; color:#991b1b; }
+    #serialLog {
+      background:#0f172a; color:#a7f3d0; font-family:monospace; font-size:.8rem;
+      border-radius:10px; padding:12px; height:160px; overflow-y:auto; white-space:pre-wrap;
+    }
   </style>
 </head>
 <body>
@@ -87,6 +97,30 @@
             </div>
           </div>
         </div>
+
+        <div class="card p-4 mt-4">
+          <h6 class="fw-bold mb-3"><i class="bi bi-usb-symbol me-2 text-primary"></i>Configuración Serial (Arduino)</h6>
+          <form id="formSerialConfig" class="row g-3 align-items-end">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold small">Puerto COM</label>
+              <select class="form-select" id="selectPuertoCom"></select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Baudios</label>
+              <select class="form-select" id="selectBaudios">
+                <option value="9600">9600</option>
+                <option value="115200" selected>115200</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small d-block">Estado de conexión</label>
+              <span class="estado-badge" id="badgeConexionSerial">Desconocido</span>
+            </div>
+            <div class="col-md-2">
+              <button type="submit" class="btn btn-primary w-100">Guardar</button>
+            </div>
+          </form>
+        </div>
       </div>
 
       <!-- Panel VIPER -->
@@ -97,7 +131,7 @@
             <i class="bi bi-plus-lg me-2"></i>Agregar VIPER
           </button>
         </div>
-        <div class="card">
+        <div class="card mb-3">
           <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
               <thead class="table-light">
@@ -105,12 +139,18 @@
                   <th class="ps-4">ID</th>
                   <th>Código VIPER</th>
                   <th class="text-center">Estado</th>
+                  <th class="text-center">Código</th>
                   <th class="text-end pe-4">Acción</th>
                 </tr>
               </thead>
               <tbody id="tablaVipers"></tbody>
             </table>
           </div>
+        </div>
+
+        <div class="card p-3">
+          <h6 class="fw-bold small text-muted text-uppercase mb-2">Log Serial</h6>
+          <div id="serialLog"></div>
         </div>
       </div>
 
@@ -152,8 +192,53 @@
   </div>
 </div>
 
+<!-- Modal Enviar Señal -->
+<div class="modal fade" id="modalEnviarSenal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold">Enviar señal al Arduino</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small">Se enviará el siguiente mensaje por el puerto serial configurado. El VIPER quedará en estado <strong>VALIDANDO</strong> a la espera de la captura del código RAW.</p>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Mensaje a enviar</label>
+          <textarea class="form-control" id="senalMensaje" rows="2">READY_PARA_TEST_DE_CABLE</textarea>
+        </div>
+        <div id="senalError" class="alert alert-danger d-none"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-primary px-4 fw-bold" id="btnConfirmarEnviarSenal">
+          <i class="bi bi-broadcast me-1"></i>Enviar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Ver Código -->
+<div class="modal fade" id="modalVerCodigo" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 rounded-4">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold">Código RAW capturado</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <textarea class="form-control" id="codigoRawTexto" rows="6" readonly style="font-family:monospace; font-size:.85rem;"></textarea>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer"></div>
 
+<script src="/socket.io/socket.io.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 <script src="/js/configuracion.js"></script>
 </body>

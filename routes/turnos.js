@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db/database');
 const { requireAuth, requirePermission } = require('../middleware/auth');
+const serialService = require('../server/services/serialService');
 
 const SELECT_TURNO = `
   SELECT t.*, a.nombre AS atraccion_nombre, a.duracion_minutos,
@@ -91,18 +92,25 @@ module.exports = (io) => {
 
   // ── Registrar turno (recepcion) ─────────────────────────────────────────────
   router.post('/', requireAuth('admin','recepcion'), (req, res) => {
-    const { atraccion_id, biper_numero, nombre_cliente, cantidad_miembros } = req.body;
+    const { atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id } = req.body;
     if (!atraccion_id || !biper_numero) {
       return res.status(400).json({ error: 'atraccion_id y biper_numero son requeridos' });
     }
+
+    // Si se asocia un VIPER, solamente puede usarse uno validado y ACTIVO
+    if (viper_id) {
+      const viper = db.prepare("SELECT id FROM vipers WHERE id = ? AND estado = 'ACTIVO'").get(viper_id);
+      if (!viper) return res.status(400).json({ error: 'El VIPER seleccionado no está activo' });
+    }
+
     const enUso = db
       .prepare("SELECT id FROM turnos WHERE biper_numero=? AND estado IN ('esperando','llamado')")
       .get(String(biper_numero));
     if (enUso) return res.status(409).json({ error: `El biper ${biper_numero} ya está en uso` });
 
     const result = db.prepare(
-      'INSERT INTO turnos (atraccion_id, biper_numero, nombre_cliente, cantidad_miembros) VALUES (?,?,?,?)'
-    ).run(atraccion_id, String(biper_numero), nombre_cliente || null, cantidad_miembros || 1);
+      'INSERT INTO turnos (atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id) VALUES (?,?,?,?,?)'
+    ).run(atraccion_id, String(biper_numero), nombre_cliente || null, cantidad_miembros || 1, viper_id || null);
 
     const turno = db.prepare(SELECT_TURNO).get(Number(result.lastInsertRowid));
     io.emit('turno:nuevo', turno);
@@ -143,9 +151,20 @@ module.exports = (io) => {
 
     const turno = db.prepare(SELECT_TURNO).get(Number(id));
 
-    // Emitir evento para activar biper físico
+    // Emitir evento para activar biper físico (UI / pantallas)
     io.emit('turno:llamado', turno);
     io.emit('biper:activar', { numero: turno.biper_numero, turno });
+
+    // Si el turno tiene un VIPER asociado, transmitir su código RAW por
+    // serial al Arduino. El número del VIPER nunca se envía al dispositivo.
+    if (turno.viper_id) {
+      const viper = db.prepare("SELECT codigo_raw FROM vipers WHERE id = ? AND estado = 'ACTIVO'").get(turno.viper_id);
+      if (viper?.codigo_raw) {
+        serialService.enviarRaw(viper.codigo_raw, io).catch(err => {
+          console.error('[SERIAL] Error al transmitir RAW del turno', id, err.message);
+        });
+      }
+    }
 
     res.json(turno);
   });
