@@ -66,6 +66,49 @@ module.exports = (io) => {
     }
   });
 
+  // Editar VIPER (código, código RF, canal, estado)
+  router.put('/:id', requireAuth('admin'), (req, res) => {
+    const viper = db.prepare('SELECT * FROM vipers WHERE id = ?').get(req.params.id);
+    if (!viper) return res.status(404).json({ error: 'VIPER no encontrado' });
+
+    const codigo = req.body.codigo_viper?.trim();
+    if (!codigo) return res.status(400).json({ error: 'El código VIPER es requerido' });
+
+    const estadosValidos = ['PENDIENTE', 'VALIDANDO', 'ACTIVO', 'ERROR'];
+    const estado = req.body.estado?.trim() || viper.estado;
+    if (!estadosValidos.includes(estado)) {
+      return res.status(400).json({ error: 'Estado inválido' });
+    }
+
+    const dup = db.prepare('SELECT id FROM vipers WHERE codigo_viper = ? COLLATE NOCASE AND id != ?')
+      .get(codigo, viper.id);
+    if (dup) return res.status(409).json({ error: 'Ya existe un VIPER con ese código' });
+
+    const codigoRf = req.body.codigo_rf?.trim() || null;
+    const canal = parseInt(req.body.canal) || viper.canal || 1;
+
+    db.prepare(`
+      UPDATE vipers
+      SET codigo_viper = ?, codigo_rf = ?, canal = ?, estado = ?, activo = ?
+      WHERE id = ?
+    `).run(codigo, codigoRf, canal, estado, estado === 'ACTIVO' ? 1 : 0, viper.id);
+
+    serialService.registrarEvento({ viperId: viper.id, usuario: req.session.usuario, accion: 'EDITAR_VIPER', resultado: 'OK' });
+    res.json({ ok: true });
+  });
+
+  // Eliminar VIPER
+  router.delete('/:id', requireAuth('admin'), (req, res) => {
+    const viper = db.prepare('SELECT * FROM vipers WHERE id = ?').get(req.params.id);
+    if (!viper) return res.status(404).json({ error: 'VIPER no encontrado' });
+
+    serialService.registrarEvento({ viperId: null, usuario: req.session.usuario, accion: 'ELIMINAR_VIPER', resultado: 'OK', detalle: viper.codigo_viper });
+    db.prepare('UPDATE turnos SET viper_id = NULL WHERE viper_id = ?').run(viper.id);
+    db.prepare('UPDATE viper_eventos SET viper_id = NULL WHERE viper_id = ?').run(viper.id);
+    db.prepare('DELETE FROM vipers WHERE id = ?').run(viper.id);
+    res.json({ ok: true });
+  });
+
   // ── Configuración RF ─────────────────────────────────────────────────────
   router.get('/rf-config', requireAuth('admin'), (req, res) => {
     res.json(db.prepare('SELECT * FROM configuracion_rf WHERE id = 1').get());
@@ -86,8 +129,10 @@ module.exports = (io) => {
   });
 
   // ── Diagnóstico / herramientas ───────────────────────────────────────────
-  router.get('/estado-arduino', requireAuth('admin'), (req, res) => {
-    res.json(serialService.getEstadoArduino());
+  // El estado se determina con una prueba real PING/PONG contra el Arduino,
+  // nunca sólo a partir de la configuración guardada o del puerto abierto.
+  router.get('/estado-arduino', requireAuth('admin'), async (req, res) => {
+    res.json(await serialService.getEstadoArduino(io));
   });
 
   router.post('/ping', requireAuth('admin'), async (req, res) => {

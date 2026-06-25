@@ -27,7 +27,10 @@ let aprendizaje  = null; // { timer, resolve, reject }
 let conectadoEn  = null; // Date - cuándo se abrió la conexión actual
 let firmwareVer  = null; // versión informada por el Arduino (FIRMWARE:x.y.z)
 let ultimaConexion = null; // Date - última vez que se estableció conexión
+let ultimaPruebaResultado = null;    // 'Exitosa' | 'Fallida' | null
+let ultimaComunicacionExitosa = null; // Date - último PONG/RAW recibido realmente del dispositivo
 
+const PING_STATUS_TIMEOUT_MS = 3000; // timeout corto, sólo para el chequeo de estado (no bloquea la UI)
 const PREFIJO_FIRMWARE = 'FIRMWARE:';
 const PREFIJO_CONFIG   = 'CONFIG:';
 const TIMEOUT_APRENDIZAJE_MS = 15000;
@@ -257,29 +260,62 @@ async function enviarRaw(codigoRaw, io) {
   });
 }
 
-// Envía PING y espera PONG del Arduino (prueba de conexión).
-async function ping(io) {
+// Envía PING y espera PONG del Arduino (prueba de conexión real, no sólo
+// estado del puerto). Registra el resultado para el diagnóstico.
+async function ping(io, timeoutMs = TIMEOUT_MS) {
   ioRef = io || ioRef;
-  await asegurarConexion(io);
+  try {
+    await asegurarConexion(io);
+  } catch (err) {
+    ultimaPruebaResultado = 'Fallida';
+    throw err;
+  }
   if (pendientePing) throw new Error('Ya hay una prueba de conexión en curso.');
 
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       pendientePing = null;
+      ultimaPruebaResultado = 'Fallida';
       reject(new Error('Error de comunicación: no se recibió respuesta del Arduino.'));
-    }, TIMEOUT_MS);
+    }, timeoutMs);
 
-    pendientePing = { resolve: () => { clearTimeout(timer); resolve(true); } };
+    pendientePing = {
+      resolve: () => {
+        clearTimeout(timer);
+        ultimaPruebaResultado = 'Exitosa';
+        ultimaComunicacionExitosa = new Date();
+        resolve(true);
+      },
+    };
 
     port.write('PING\n', err => {
       if (err) {
         clearTimeout(timer);
         pendientePing = null;
+        ultimaPruebaResultado = 'Fallida';
         return reject(err);
       }
       log('PING enviado');
     });
   });
+}
+
+// Determina el estado real de conexión comunicándose efectivamente con el
+// Arduino (abre el puerto si es necesario, envía PING y espera PONG). No se
+// considera "Conectado" sólo porque exista configuración guardada o el
+// puerto esté abierto: se exige una respuesta válida del dispositivo.
+async function verificarEstadoReal(io) {
+  if (!SerialPort) return 'Desconectado';
+  const cfg = getConfig();
+  if (!cfg?.puerto) return 'Desconectado';
+
+  try {
+    await ping(io, PING_STATUS_TIMEOUT_MS);
+    return 'Conectado';
+  } catch (err) {
+    if (!estaConectado()) return 'Desconectado';
+    return 'Error de comunicación';
+  }
 }
 
 // Solicita al Arduino que se reinicie remotamente.
@@ -350,16 +386,26 @@ async function aprenderCodigo(io) {
   });
 }
 
-// Estado informativo del Arduino para el panel de diagnóstico.
-function getEstadoArduino() {
+// Estado informativo del Arduino para el panel de diagnóstico. El campo
+// "estado" se determina con una comunicación real (PING/PONG), nunca a
+// partir de la sola existencia de configuración guardada o del puerto abierto.
+async function getEstadoArduino(io) {
   const cfg = getConfig();
-  const tiempoActivoMs = conectadoEn ? Date.now() - conectadoEn.getTime() : 0;
+  const estado = await verificarEstadoReal(io);
+  const tiempoActivoMs = conectadoEn && estado === 'Conectado' ? Date.now() - conectadoEn.getTime() : 0;
   return {
-    estado: estaConectado() ? 'Conectado' : 'Desconectado',
+    estado,
     firmware: firmwareVer,
     puerto: cfg?.puerto || null,
+    puerto_conectado: estado === 'Conectado' ? cfg?.puerto || null : null,
     ultima_conexion: ultimaConexion ? ultimaConexion.toISOString() : null,
     tiempo_activo_ms: tiempoActivoMs,
+    diagnostico: {
+      puerto_configurado: cfg?.puerto || null,
+      puerto_conectado: estado === 'Conectado' ? cfg?.puerto || null : null,
+      ultima_prueba_resultado: ultimaPruebaResultado,
+      ultima_comunicacion_exitosa: ultimaComunicacionExitosa ? ultimaComunicacionExitosa.toISOString() : null,
+    },
   };
 }
 
@@ -381,6 +427,7 @@ module.exports = {
   enviarSenal,
   enviarRaw,
   ping,
+  verificarEstadoReal,
   reiniciarArduino,
   leerConfiguracionActual,
   aprenderCodigo,

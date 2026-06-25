@@ -212,6 +212,14 @@
             <div class="col-md-4"><strong>Última conexión:</strong> <span id="arduinoUltimaConexion">–</span></div>
             <div class="col-md-4"><strong>Tiempo activo:</strong> <span id="arduinoTiempoActivo">–</span></div>
           </div>
+          <hr>
+          <h6 class="fw-bold small text-muted text-uppercase mb-2">Diagnóstico del puerto serial</h6>
+          <div class="row g-2 small">
+            <div class="col-md-3"><strong>Puerto configurado:</strong> <span id="diagPuertoConfigurado">–</span></div>
+            <div class="col-md-3"><strong>Puerto conectado:</strong> <span id="diagPuertoConectado">–</span></div>
+            <div class="col-md-3"><strong>Última prueba:</strong> <span id="diagUltimaPrueba">–</span></div>
+            <div class="col-md-3"><strong>Última comunicación exitosa:</strong> <span id="diagUltimaComunicacion">–</span></div>
+          </div>
         </div>
 
         <!-- Configuración RF -->
@@ -405,6 +413,67 @@
       <div class="modal-footer border-0 pt-0">
         <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
         <button class="btn btn-primary px-4 fw-bold" id="btnConfirmarAsociarRf">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Editar VIPER -->
+<div class="modal fade" id="modalEditarViper" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold">Editar VIPER</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Código VIPER <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="eCodigoViper">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Código RF</label>
+          <input type="text" class="form-control" id="eCodigoRf" style="font-family:monospace;">
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Canal</label>
+            <input type="number" class="form-control" id="eCanal" min="1" value="1">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Estado</label>
+            <select class="form-select" id="eEstado">
+              <option value="PENDIENTE">Pendiente</option>
+              <option value="VALIDANDO">Validando</option>
+              <option value="ACTIVO">Activo</option>
+              <option value="ERROR">Error</option>
+            </select>
+          </div>
+        </div>
+        <div id="editarViperError" class="alert alert-danger d-none mt-3"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-primary px-4 fw-bold" id="btnGuardarEdicionViper">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Confirmar Eliminación VIPER -->
+<div class="modal fade" id="modalEliminarViper" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold">¿Desea eliminar este VIPER?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted mb-0">Esta acción no podrá deshacerse.</p>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-danger px-4 fw-bold" id="btnConfirmarEliminarViper">Confirmar</button>
       </div>
     </div>
   </div>

@@ -57,10 +57,13 @@ const ESTADO_BADGE = {
   ERROR:     '<span class="estado-badge estado-ERROR">Error</span>',
 };
 
+let vipersCache = [];
+
 async function cargarVipers() {
   const res = await fetch('/api/vipers');
   if (!res.ok) return;
   const vipers = await res.json();
+  vipersCache = vipers;
   const tbody = document.getElementById('tablaVipers');
   if (!tbody) return;
   tbody.innerHTML = vipers.length === 0
@@ -89,6 +92,8 @@ function renderAccion(v) {
   if (v.tiene_codigo) {
     botones.push(`<button class="btn btn-sm btn-outline-secondary" onclick="verCodigo(${v.id})">Ver código</button>`);
   }
+  botones.push(`<button class="btn btn-sm btn-outline-dark" onclick="abrirEditarViper(${v.id})">Editar</button>`);
+  botones.push(`<button class="btn btn-sm btn-outline-danger" onclick="abrirEliminarViper(${v.id})">Eliminar</button>`);
   return botones.join(' ');
 }
 
@@ -191,6 +196,77 @@ document.getElementById('btnGuardarViper').addEventListener('click', async () =>
   }
 });
 
+// ── Editar VIPER ───────────────────────────────────────────────────────────────
+const modalEditarViperInst = new bootstrap.Modal(document.getElementById('modalEditarViper'));
+let viperEditando = null;
+
+function abrirEditarViper(id) {
+  const v = vipersCache.find(x => x.id === id);
+  if (!v) return;
+  viperEditando = id;
+  document.getElementById('eCodigoViper').value = v.codigo_viper || '';
+  document.getElementById('eCodigoRf').value = v.codigo_rf || '';
+  document.getElementById('eCanal').value = v.canal || 1;
+  document.getElementById('eEstado').value = v.estado || 'PENDIENTE';
+  document.getElementById('editarViperError').classList.add('d-none');
+  modalEditarViperInst.show();
+}
+
+document.getElementById('btnGuardarEdicionViper').addEventListener('click', async () => {
+  const codigo = document.getElementById('eCodigoViper').value.trim();
+  const errEl  = document.getElementById('editarViperError');
+  errEl.classList.add('d-none');
+
+  if (!codigo) {
+    errEl.textContent = 'El código VIPER es obligatorio.';
+    errEl.classList.remove('d-none');
+    return;
+  }
+
+  const res = await fetch(`/api/vipers/${viperEditando}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      codigo_viper: codigo,
+      codigo_rf: document.getElementById('eCodigoRf').value.trim(),
+      canal: document.getElementById('eCanal').value,
+      estado: document.getElementById('eEstado').value,
+    }),
+  });
+
+  if (res.ok) {
+    modalEditarViperInst.hide();
+    mostrarToast('VIPER actualizado correctamente', 'success');
+    cargarVipers();
+  } else {
+    const data = await res.json();
+    errEl.textContent = data.error || 'Error al actualizar el VIPER.';
+    errEl.classList.remove('d-none');
+  }
+});
+
+// ── Eliminar VIPER ─────────────────────────────────────────────────────────────
+const modalEliminarViperInst = new bootstrap.Modal(document.getElementById('modalEliminarViper'));
+let viperEliminando = null;
+
+function abrirEliminarViper(id) {
+  viperEliminando = id;
+  modalEliminarViperInst.show();
+}
+
+document.getElementById('btnConfirmarEliminarViper').addEventListener('click', async () => {
+  const res = await fetch(`/api/vipers/${viperEliminando}`, { method: 'DELETE' });
+  if (res.ok) {
+    modalEliminarViperInst.hide();
+    mostrarToast('VIPER eliminado correctamente', 'success');
+    cargarVipers();
+  } else {
+    const data = await res.json();
+    modalEliminarViperInst.hide();
+    mostrarToast(data.error || 'Error al eliminar el VIPER.', 'danger');
+  }
+});
+
 // ── Configuración Serial ─────────────────────────────────────────────────────────
 async function cargarSerialConfig() {
   try {
@@ -288,6 +364,13 @@ async function cargarEstadoArduino() {
   document.getElementById('arduinoUltimaConexion').textContent = data.ultima_conexion
     ? new Date(data.ultima_conexion).toLocaleTimeString() : '–';
   document.getElementById('arduinoTiempoActivo').textContent = formatearDuracion(data.tiempo_activo_ms);
+
+  const diag = data.diagnostico || {};
+  document.getElementById('diagPuertoConfigurado').textContent = diag.puerto_configurado || '–';
+  document.getElementById('diagPuertoConectado').textContent = diag.puerto_conectado || '–';
+  document.getElementById('diagUltimaPrueba').textContent = diag.ultima_prueba_resultado || '–';
+  document.getElementById('diagUltimaComunicacion').textContent = diag.ultima_comunicacion_exitosa
+    ? new Date(diag.ultima_comunicacion_exitosa).toLocaleString() : '–';
 }
 
 // ── Configuración RF ──────────────────────────────────────────────────────────
