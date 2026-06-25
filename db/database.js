@@ -57,6 +57,26 @@ db.exec(`
     puerto  TEXT,
     baudios INTEGER DEFAULT 115200
   );
+
+  CREATE TABLE IF NOT EXISTS configuracion_rf (
+    id              INTEGER PRIMARY KEY CHECK (id = 1),
+    frecuencia      TEXT    DEFAULT '433.92 MHz',
+    canal           INTEGER DEFAULT 1,
+    retransmisiones INTEGER DEFAULT 3,
+    intervalo_ms    INTEGER DEFAULT 100
+  );
+
+  CREATE TABLE IF NOT EXISTS viper_eventos (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    viper_id     INTEGER REFERENCES vipers(id),
+    usuario_id   INTEGER REFERENCES usuarios(id),
+    usuario_nombre TEXT,
+    accion       TEXT    NOT NULL,
+    resultado    TEXT,
+    ack_estado   TEXT,
+    detalle      TEXT,
+    created_at   DATETIME DEFAULT (datetime('now','localtime'))
+  );
 `);
 
 // ── Migraciones ───────────────────────────────────────────────────────────────
@@ -81,7 +101,19 @@ db.exec(`
   "ALTER TABLE vipers      ADD COLUMN fecha_validacion          DATETIME",
   "ALTER TABLE vipers      ADD COLUMN ultimo_test               DATETIME",
   "ALTER TABLE vipers      ADD COLUMN ultimo_error              TEXT",
+  "ALTER TABLE vipers      ADD COLUMN codigo_rf                 TEXT",
+  "ALTER TABLE vipers      ADD COLUMN canal                     INTEGER DEFAULT 1",
+  "ALTER TABLE vipers      ADD COLUMN fecha_creacion             DATETIME",
+  "ALTER TABLE vipers      ADD COLUMN ultima_activacion          DATETIME",
 ].forEach(sql => { try { db.exec(sql); } catch (_) {} });
+
+// Completar fecha_creacion de VIPERs creados antes de esta migración
+db.exec(`UPDATE vipers SET fecha_creacion = datetime('now','localtime') WHERE fecha_creacion IS NULL`);
+
+if (db.prepare('SELECT COUNT(*) AS c FROM configuracion_rf').get().c === 0) {
+  db.prepare('INSERT INTO configuracion_rf (id, frecuencia, canal, retransmisiones, intervalo_ms) VALUES (1, ?, ?, ?, ?)')
+    .run('433.92 MHz', 1, 3, 100);
+}
 
 // Normalizar estado de VIPERs creados antes de esta migración (basados en "activo")
 db.exec(`

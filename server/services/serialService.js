@@ -19,10 +19,18 @@ try {
   // de tirar abajo el servidor.
 }
 
-let port       = null;
-let parser     = null;
-let ioRef      = null;
-let pendiente  = null; // { viperId, timer }
+let port         = null;
+let parser       = null;
+let ioRef        = null;
+let pendiente    = null; // { viperId, timer }
+let aprendizaje  = null; // { timer, resolve, reject }
+let conectadoEn  = null; // Date - cuándo se abrió la conexión actual
+let firmwareVer  = null; // versión informada por el Arduino (FIRMWARE:x.y.z)
+let ultimaConexion = null; // Date - última vez que se estableció conexión
+
+const PREFIJO_FIRMWARE = 'FIRMWARE:';
+const PREFIJO_CONFIG   = 'CONFIG:';
+const TIMEOUT_APRENDIZAJE_MS = 15000;
 
 function log(mensaje) {
   console.log(`[SERIAL] ${mensaje}`);
@@ -85,13 +93,15 @@ function conectar(io) {
         return reject(err);
       }
       log(`Conectado ${cfg.puerto}`);
+      conectadoEn = new Date();
+      ultimaConexion = conectadoEn;
       resolve();
     });
 
     parser = port.pipe(new ReadlineParser({ delimiter: '\n' }));
     parser.on('data', manejarLinea);
 
-    port.on('close', () => log('Puerto cerrado'));
+    port.on('close', () => { log('Puerto cerrado'); conectadoEn = null; });
     port.on('error', e => log(`Error de puerto: ${e.message}`));
   });
 }
@@ -113,12 +123,46 @@ function manejarLinea(lineaCruda) {
   if (linea.startsWith(PREFIJO_RAW)) {
     log('RAW recibido');
     const raw = linea.slice(PREFIJO_RAW.length).trim();
-    resolverPendiente(raw);
+    if (aprendizaje) {
+      resolverAprendizaje(raw);
+    } else {
+      resolverPendiente(raw);
+    }
+    return;
+  }
+
+  if (linea === 'PONG') {
+    log('PONG recibido');
+    if (pendientePing) { pendientePing.resolve(); pendientePing = null; }
+    return;
+  }
+
+  if (linea.startsWith(PREFIJO_FIRMWARE)) {
+    firmwareVer = linea.slice(PREFIJO_FIRMWARE.length).trim();
+    log(`Firmware informado: ${firmwareVer}`);
+    return;
+  }
+
+  if (linea.startsWith(PREFIJO_CONFIG)) {
+    log(`Configuración del dispositivo: ${linea.slice(PREFIJO_CONFIG.length).trim()}`);
+    if (pendienteConfig) { pendienteConfig.resolve(linea.slice(PREFIJO_CONFIG.length).trim()); pendienteConfig = null; }
     return;
   }
 
   // Otros mensajes informativos del Arduino (ej. READY_PARA_TEST_DE_CABLE)
   log(`Recibido: ${linea}`);
+}
+
+let pendientePing  = null; // { resolve }
+let pendienteConfig = null; // { resolve }
+
+function resolverAprendizaje(raw) {
+  if (!aprendizaje) return;
+  const { timer, resolve } = aprendizaje;
+  clearTimeout(timer);
+  aprendizaje = null;
+  log('Código RF aprendido');
+  resolve(raw);
 }
 
 function resolverPendiente(raw) {
@@ -130,12 +174,13 @@ function resolverPendiente(raw) {
   const ahora = new Date().toISOString();
   db.prepare(`
     UPDATE vipers
-    SET estado = 'ACTIVO', codigo_raw = ?, fecha_validacion = ?, ultimo_error = NULL
+    SET estado = 'ACTIVO', codigo_raw = ?, fecha_validacion = ?, ultimo_error = NULL, ultima_activacion = ?
     WHERE id = ?
-  `).run(raw, ahora, viperId);
+  `).run(raw, ahora, ahora, viperId);
 
   log('VIPER validado');
   log('Código guardado');
+  registrarEvento({ viperId, accion: 'VALIDAR_VIPER', resultado: 'OK', ackEstado: 'ENTREGADO' });
   emitirActualizacion(viperId);
 }
 
@@ -191,6 +236,7 @@ function marcarTimeout(viperId) {
 function marcarError(viperId, mensaje) {
   db.prepare("UPDATE vipers SET estado = 'ERROR', ultimo_error = ? WHERE id = ?").run(mensaje, viperId);
   log(`Error: ${mensaje}`);
+  registrarEvento({ viperId, accion: 'VALIDAR_VIPER', resultado: 'ERROR', ackEstado: 'ERROR', detalle: mensaje });
   emitirActualizacion(viperId);
 }
 
@@ -211,6 +257,120 @@ async function enviarRaw(codigoRaw, io) {
   });
 }
 
+// Envía PING y espera PONG del Arduino (prueba de conexión).
+async function ping(io) {
+  ioRef = io || ioRef;
+  await asegurarConexion(io);
+  if (pendientePing) throw new Error('Ya hay una prueba de conexión en curso.');
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendientePing = null;
+      reject(new Error('Error de comunicación: no se recibió respuesta del Arduino.'));
+    }, TIMEOUT_MS);
+
+    pendientePing = { resolve: () => { clearTimeout(timer); resolve(true); } };
+
+    port.write('PING\n', err => {
+      if (err) {
+        clearTimeout(timer);
+        pendientePing = null;
+        return reject(err);
+      }
+      log('PING enviado');
+    });
+  });
+}
+
+// Solicita al Arduino que se reinicie remotamente.
+async function reiniciarArduino(io) {
+  ioRef = io || ioRef;
+  await asegurarConexion(io);
+  return new Promise((resolve, reject) => {
+    port.write('REINICIAR\n', err => {
+      if (err) {
+        log(`Error al reiniciar: ${err.message}`);
+        return reject(err);
+      }
+      log('Comando de reinicio enviado');
+      conectadoEn = null;
+      resolve(true);
+    });
+  });
+}
+
+// Consulta la configuración almacenada actualmente en el Arduino.
+async function leerConfiguracionActual(io) {
+  ioRef = io || ioRef;
+  await asegurarConexion(io);
+  if (pendienteConfig) throw new Error('Ya hay una consulta de configuración en curso.');
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      pendienteConfig = null;
+      reject(new Error('No se recibió la configuración del Arduino.'));
+    }, TIMEOUT_MS);
+
+    pendienteConfig = { resolve: cfg => { clearTimeout(timer); resolve(cfg); } };
+
+    port.write('LEER_CONFIG\n', err => {
+      if (err) {
+        clearTimeout(timer);
+        pendienteConfig = null;
+        return reject(err);
+      }
+      log('Solicitud de configuración enviada');
+    });
+  });
+}
+
+// Pone al Arduino en modo escucha para aprender un nuevo código RF.
+async function aprenderCodigo(io) {
+  ioRef = io || ioRef;
+  await asegurarConexion(io);
+  if (aprendizaje) throw new Error('Ya hay un aprendizaje de código en curso.');
+  if (pendiente) throw new Error('Hay una validación en curso. Esperá a que finalice.');
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      aprendizaje = null;
+      reject(new Error('No se detectó ningún código RF dentro del tiempo de espera.'));
+    }, TIMEOUT_APRENDIZAJE_MS);
+
+    aprendizaje = { timer, resolve, reject };
+
+    port.write('APRENDER\n', err => {
+      if (err) {
+        clearTimeout(timer);
+        aprendizaje = null;
+        return reject(err);
+      }
+      log('Modo aprendizaje iniciado, esperando código RF...');
+    });
+  });
+}
+
+// Estado informativo del Arduino para el panel de diagnóstico.
+function getEstadoArduino() {
+  const cfg = getConfig();
+  const tiempoActivoMs = conectadoEn ? Date.now() - conectadoEn.getTime() : 0;
+  return {
+    estado: estaConectado() ? 'Conectado' : 'Desconectado',
+    firmware: firmwareVer,
+    puerto: cfg?.puerto || null,
+    ultima_conexion: ultimaConexion ? ultimaConexion.toISOString() : null,
+    tiempo_activo_ms: tiempoActivoMs,
+  };
+}
+
+// Registra un evento del módulo VIPER en el historial (para auditoría/diagnóstico).
+function registrarEvento({ viperId = null, usuario = null, accion, resultado = null, ackEstado = null, detalle = null }) {
+  db.prepare(`
+    INSERT INTO viper_eventos (viper_id, usuario_id, usuario_nombre, accion, resultado, ack_estado, detalle)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(viperId, usuario?.id || null, usuario?.nombre || null, accion, resultado, ackEstado, detalle);
+}
+
 module.exports = {
   listarPuertos,
   getConfig,
@@ -220,4 +380,10 @@ module.exports = {
   desconectar,
   enviarSenal,
   enviarRaw,
+  ping,
+  reiniciarArduino,
+  leerConfiguracionActual,
+  aprenderCodigo,
+  getEstadoArduino,
+  registrarEvento,
 };

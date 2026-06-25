@@ -10,6 +10,11 @@ const socket = io();
   document.getElementById('usuarioNombre').textContent = me.nombre;
   cargarVipers();
   cargarSerialConfig();
+  cargarEstadoArduino();
+  cargarRfConfig();
+  cargarMetricasViper();
+  cargarEventosViper();
+  setInterval(cargarEstadoArduino, 15000);
 })();
 
 document.getElementById('btnVolver').addEventListener('click', () => {
@@ -236,6 +241,235 @@ document.getElementById('formSerialConfig').addEventListener('submit', async e =
     mostrarToast(data.error || 'Error al guardar la configuración', 'danger');
   }
 });
+
+// ── Configuración Serial (dentro del panel VIPER) ────────────────────────────
+document.getElementById('formSerialConfigViper').addEventListener('submit', async e => {
+  e.preventDefault();
+  const puerto  = document.getElementById('vSerialPuerto').value.trim();
+  const baudios = document.getElementById('vSerialBaudios').value;
+
+  const res = await fetch('/api/serial/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ puerto, baudios }),
+  });
+
+  if (res.ok) {
+    mostrarToast('Configuración guardada', 'success');
+    cargarSerialConfig();
+    cargarEstadoArduino();
+  } else {
+    const data = await res.json();
+    mostrarToast(data.error || 'Error al guardar la configuración', 'danger');
+  }
+});
+
+// ── Estado del Arduino ────────────────────────────────────────────────────────
+function formatearDuracion(ms) {
+  if (!ms) return '00:00:00';
+  const totalSeg = Math.floor(ms / 1000);
+  const h = String(Math.floor(totalSeg / 3600)).padStart(2, '0');
+  const m = String(Math.floor((totalSeg % 3600) / 60)).padStart(2, '0');
+  const s = String(totalSeg % 60).padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
+
+async function cargarEstadoArduino() {
+  const res = await fetch('/api/vipers/estado-arduino');
+  if (!res.ok) return;
+  const data = await res.json();
+
+  const badge = document.getElementById('arduinoEstado');
+  badge.textContent = data.estado;
+  badge.className = 'estado-badge ' + (data.estado === 'Conectado' ? 'estado-ACTIVO' : 'estado-ERROR');
+
+  document.getElementById('arduinoFirmware').textContent = data.firmware || '–';
+  document.getElementById('arduinoPuerto').textContent = data.puerto || '–';
+  document.getElementById('arduinoUltimaConexion').textContent = data.ultima_conexion
+    ? new Date(data.ultima_conexion).toLocaleTimeString() : '–';
+  document.getElementById('arduinoTiempoActivo').textContent = formatearDuracion(data.tiempo_activo_ms);
+}
+
+// ── Configuración RF ──────────────────────────────────────────────────────────
+async function cargarRfConfig() {
+  const res = await fetch('/api/vipers/rf-config');
+  if (!res.ok) return;
+  const cfg = await res.json();
+  if (cfg.frecuencia) document.getElementById('rfFrecuencia').value = cfg.frecuencia;
+  if (cfg.canal) document.getElementById('rfCanal').value = String(cfg.canal);
+  document.getElementById('rfRetransmisiones').value = cfg.retransmisiones ?? 3;
+  document.getElementById('rfIntervalo').value = cfg.intervalo_ms ?? 100;
+}
+
+document.getElementById('formRfConfig').addEventListener('submit', async e => {
+  e.preventDefault();
+  const body = {
+    frecuencia: document.getElementById('rfFrecuencia').value,
+    canal: document.getElementById('rfCanal').value,
+    retransmisiones: document.getElementById('rfRetransmisiones').value,
+    intervalo_ms: document.getElementById('rfIntervalo').value,
+  };
+  const res = await fetch('/api/vipers/rf-config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) {
+    mostrarToast('Configuración RF guardada', 'success');
+  } else {
+    const data = await res.json();
+    mostrarToast(data.error || 'Error al guardar la configuración RF', 'danger');
+  }
+});
+
+// ── Herramientas de Diagnóstico ───────────────────────────────────────────────
+function mostrarResultadoDiagnostico(texto, tipo = 'info') {
+  const el = document.getElementById('diagnosticoResultado');
+  el.className = `alert alert-${tipo} small mb-0`;
+  el.style.fontFamily = 'monospace';
+  el.style.whiteSpace = 'pre-wrap';
+  el.textContent = texto;
+  el.classList.remove('d-none');
+}
+
+document.getElementById('btnProbarConexion').addEventListener('click', async () => {
+  mostrarResultadoDiagnostico('Probando conexión...', 'info');
+  const res = await fetch('/api/vipers/ping', { method: 'POST' });
+  if (res.ok) {
+    mostrarResultadoDiagnostico('✓ Conexión correcta', 'success');
+  } else {
+    const data = await res.json();
+    mostrarResultadoDiagnostico(`✗ Error de comunicación\n${data.detalle || data.error || ''}`, 'danger');
+  }
+  cargarEstadoArduino();
+});
+
+document.getElementById('btnReiniciarArduino').addEventListener('click', async () => {
+  if (!confirm('¿Reiniciar el Arduino de forma remota?')) return;
+  mostrarResultadoDiagnostico('Reiniciando Arduino...', 'info');
+  const res = await fetch('/api/vipers/reiniciar-arduino', { method: 'POST' });
+  if (res.ok) {
+    mostrarResultadoDiagnostico('✓ Comando de reinicio enviado', 'success');
+  } else {
+    const data = await res.json();
+    mostrarResultadoDiagnostico(`✗ Error al reiniciar\n${data.error || ''}`, 'danger');
+  }
+  cargarEstadoArduino();
+});
+
+document.getElementById('btnLeerConfig').addEventListener('click', async () => {
+  mostrarResultadoDiagnostico('Consultando configuración del Arduino...', 'info');
+  const res = await fetch('/api/vipers/leer-configuracion');
+  if (res.ok) {
+    const data = await res.json();
+    mostrarResultadoDiagnostico(data.configuracion || '(sin datos)', 'secondary');
+  } else {
+    const data = await res.json();
+    mostrarResultadoDiagnostico(`✗ Error\n${data.error || ''}`, 'danger');
+  }
+});
+
+// ── Aprendizaje de Código VIPER ───────────────────────────────────────────────
+const modalAsociarRfInst = new bootstrap.Modal(document.getElementById('modalAsociarRf'));
+
+document.getElementById('btnAprenderViper').addEventListener('click', async () => {
+  mostrarResultadoDiagnostico('Arduino en modo escucha, esperando código RF...', 'info');
+  const res = await fetch('/api/vipers/aprender', { method: 'POST' });
+  if (!res.ok) {
+    const data = await res.json();
+    mostrarResultadoDiagnostico(`✗ Error\n${data.error || ''}`, 'danger');
+    return;
+  }
+  const data = await res.json();
+  mostrarResultadoDiagnostico(`Código detectado:\n${data.codigo}`, 'success');
+
+  const vipersRes = await fetch('/api/vipers');
+  const vipers = vipersRes.ok ? await vipersRes.json() : [];
+  const select = document.getElementById('rfAsociarViperId');
+  select.innerHTML = vipers.map(v => `<option value="${v.id}">${escapeHtml(v.codigo_viper)}</option>`).join('');
+
+  document.getElementById('rfCodigoDetectado').value = data.codigo;
+  document.getElementById('rfAsociarError').classList.add('d-none');
+  modalAsociarRfInst.show();
+});
+
+document.getElementById('btnConfirmarAsociarRf').addEventListener('click', async () => {
+  const viperId = document.getElementById('rfAsociarViperId').value;
+  const codigo  = document.getElementById('rfCodigoDetectado').value;
+  const errEl   = document.getElementById('rfAsociarError');
+  errEl.classList.add('d-none');
+
+  if (!viperId) {
+    errEl.textContent = 'Seleccioná un VIPER para asociar el código.';
+    errEl.classList.remove('d-none');
+    return;
+  }
+
+  const res = await fetch(`/api/vipers/${viperId}/codigo-rf`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ codigo_rf: codigo }),
+  });
+
+  if (res.ok) {
+    modalAsociarRfInst.hide();
+    mostrarToast('Código RF asociado correctamente', 'success');
+  } else {
+    const data = await res.json();
+    errEl.textContent = data.error || 'Error al asociar el código.';
+    errEl.classList.remove('d-none');
+  }
+});
+
+// ── Métricas del sistema ──────────────────────────────────────────────────────
+async function cargarMetricasViper() {
+  const res = await fetch('/api/vipers/metricas');
+  if (!res.ok) return;
+  const m = await res.json();
+  document.getElementById('metRegistrados').textContent = m.vipers_registrados;
+  document.getElementById('metActivos').textContent = m.vipers_activos;
+  document.getElementById('metLlamadasHoy').textContent = m.llamadas_hoy;
+  document.getElementById('metLlamadasMes').textContent = m.llamadas_mes;
+  document.getElementById('metUltimoActivado').textContent = m.ultimo_viper_activado || '–';
+  document.getElementById('metTasaExito').textContent = m.tasa_exito != null ? `${m.tasa_exito}%` : '–';
+}
+
+// ── Historial de Eventos ──────────────────────────────────────────────────────
+const ACK_LABEL = {
+  ENTREGADO: '✓ Señal entregada',
+  ERROR: '⚠ Error',
+};
+
+async function cargarEventosViper() {
+  const params = new URLSearchParams();
+  const fecha   = document.getElementById('filtroEventoFecha').value;
+  const usuario = document.getElementById('filtroEventoUsuario').value.trim();
+  const estado  = document.getElementById('filtroEventoEstado').value;
+  if (fecha)   params.set('fecha', fecha);
+  if (usuario) params.set('usuario', usuario);
+  if (estado)  params.set('estado', estado);
+
+  const res = await fetch(`/api/vipers/eventos?${params.toString()}`);
+  if (!res.ok) return;
+  const eventos = await res.json();
+  const tbody = document.getElementById('tablaEventosViper');
+
+  tbody.innerHTML = eventos.length === 0
+    ? '<tr><td colspan="5" class="text-center text-muted py-3">Sin eventos registrados</td></tr>'
+    : eventos.map(ev => `
+      <tr>
+        <td class="small">${new Date(ev.created_at).toLocaleString()}</td>
+        <td class="small">${escapeHtml(ev.usuario_nombre || '–')}</td>
+        <td class="small">${escapeHtml(ev.accion)}</td>
+        <td class="small">${escapeHtml(ev.codigo_viper || '–')}</td>
+        <td class="small">${ev.ack_estado ? (ACK_LABEL[ev.ack_estado] || ev.ack_estado) : (ev.resultado || '–')}</td>
+      </tr>`).join('');
+}
+
+document.getElementById('btnFiltrarEventos').addEventListener('click', cargarEventosViper);
+
+// Refrescar métricas y eventos cuando cambia el estado de un VIPER
+socket.on('viper:actualizado', () => { cargarMetricasViper(); cargarEventosViper(); });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function mostrarToast(mensaje, tipo = 'success') {
