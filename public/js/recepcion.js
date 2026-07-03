@@ -353,8 +353,9 @@ async function llamarGrupo(id, hayJugando, nombreJuego, nombreFamilia) {
 
 document.getElementById('btnConfLlamarSi').addEventListener('click', async () => {
   modalConfLlamar().hide();
-  if (_pendingLlamarId) await _ejecutarLlamar(_pendingLlamarId);
+  const idParaLlamar = _pendingLlamarId;
   _pendingLlamarId = null;
+  if (idParaLlamar) await _ejecutarLlamar(idParaLlamar);
 });
 document.getElementById('btnConfLlamarNo').addEventListener('click', () => {
   modalConfLlamar().hide();
@@ -365,8 +366,9 @@ const modalConfCapacidad = () => bootstrap.Modal.getOrCreateInstance(document.ge
 
 document.getElementById('btnConfCapacidadSi').addEventListener('click', async () => {
   modalConfCapacidad().hide();
-  if (_pendingLlamarId) await _ejecutarLlamar(_pendingLlamarId, true);
+  const idParaLlamar = _pendingLlamarId;
   _pendingLlamarId = null;
+  if (idParaLlamar) await _ejecutarLlamar(idParaLlamar, true);
 });
 document.getElementById('btnConfCapacidadNo').addEventListener('click', () => {
   modalConfCapacidad().hide();
