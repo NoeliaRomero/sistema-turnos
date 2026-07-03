@@ -361,11 +361,37 @@ document.getElementById('btnConfLlamarNo').addEventListener('click', () => {
   _pendingLlamarId = null;
 });
 
-async function _ejecutarLlamar(id) {
-  const res  = await fetch(`/api/turnos/${id}/llamar`, { method: 'PUT' });
+const modalConfCapacidad = () => bootstrap.Modal.getOrCreateInstance(document.getElementById('modalConfCapacidad'));
+
+document.getElementById('btnConfCapacidadSi').addEventListener('click', async () => {
+  modalConfCapacidad().hide();
+  if (_pendingLlamarId) await _ejecutarLlamar(_pendingLlamarId, true);
+  _pendingLlamarId = null;
+});
+document.getElementById('btnConfCapacidadNo').addEventListener('click', () => {
+  modalConfCapacidad().hide();
+  _pendingLlamarId = null;
+});
+
+async function _ejecutarLlamar(id, force = false) {
+  const res  = await fetch(`/api/turnos/${id}/llamar`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(force ? { force: true } : {}),
+  });
   const data = await res.json();
   if (!res.ok) {
     mostrarToast(data.error || 'No se pudo llamar al grupo', 'danger');
+    return;
+  }
+  if (data.advertencia === 'capacidad_excedida') {
+    _pendingLlamarId = id;
+    document.getElementById('confCapacidadTexto').innerHTML =
+      `Actualmente hay <strong>${data.personasJugando}</strong> persona${data.personasJugando !== 1 ? 's' : ''} jugando.<br>
+       Este grupo tiene <strong>${data.personasGrupo}</strong> persona${data.personasGrupo !== 1 ? 's' : ''}.<br>
+       Si lo llamás habrá <strong>${data.totalPersonas}</strong> personas jugando y el máximo permitido es <strong>${data.maximoPermitido}</strong>.<br>
+       ¿Deseás llamarlo igualmente?`;
+    modalConfCapacidad().show();
     return;
   }
   mostrarToast(`📣 Biper ${data.biper_numero} – ${data.nombre_cliente || 'Grupo'} llamado a jugar`, 'success');

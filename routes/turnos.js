@@ -120,6 +120,7 @@ module.exports = (io) => {
   // ── Llamar turno (activa biper) ──────────────────────────────────────────────
   router.put('/:id/llamar', requirePermission('permiso_llamar_turno'), (req, res) => {
     const { id } = req.params;
+    const force = req.body?.force === true;
 
     // Verificar que el turno existe y está esperando
     const turnoActual = db.prepare(
@@ -141,6 +142,28 @@ module.exports = (io) => {
       return res.status(400).json({
         error: 'Debe llamarse primero al grupo que llegó antes en la cola'
       });
+    }
+
+    // Validación de capacidad (omitible con force=true)
+    if (!force) {
+      const atraccion = db.prepare('SELECT max_miembros FROM atracciones WHERE id = ?').get(turnoActual.atraccion_id);
+      const { personasJugando } = db.prepare(`
+        SELECT COALESCE(SUM(cantidad_miembros), 0) AS personasJugando
+        FROM turnos WHERE atraccion_id = ? AND estado = 'llamado'
+      `).get(turnoActual.atraccion_id);
+      const personasGrupo   = turnoActual.cantidad_miembros || 1;
+      const totalPersonas   = personasJugando + personasGrupo;
+      const maximoPermitido = atraccion?.max_miembros || 20;
+
+      if (totalPersonas > maximoPermitido) {
+        return res.status(200).json({
+          advertencia: 'capacidad_excedida',
+          personasJugando,
+          personasGrupo,
+          totalPersonas,
+          maximoPermitido,
+        });
+      }
     }
 
     db.prepare(`
