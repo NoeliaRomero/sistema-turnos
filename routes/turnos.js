@@ -71,7 +71,7 @@ module.exports = (io) => {
         FROM turnos t
         LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id
         WHERE t.atraccion_id = ? AND t.estado = 'esperando'
-        ORDER BY t.created_at ASC
+        ORDER BY t.orden_cola ASC, t.id ASC
       `).all(a.id);
 
       let acumulado = jugando.reduce((s, t) => s + t.tiempo_restante, 0);
@@ -151,9 +151,9 @@ module.exports = (io) => {
     }
 
     const enUso = db
-      .prepare("SELECT id FROM turnos WHERE biper_numero=? AND estado IN ('esperando','llamado')")
-      .get(String(biper_numero));
-    if (enUso) return res.status(409).json({ error: `El biper ${biper_numero} ya está en uso` });
+      .prepare("SELECT id FROM turnos WHERE biper_numero=? AND atraccion_id=? AND estado IN ('esperando','llamado')")
+      .get(String(biper_numero), atraccion_id);
+    if (enUso) return res.status(409).json({ error: `El biper ${biper_numero} ya está en uso en este juego` });
 
     const juego = db.prepare('SELECT * FROM atracciones WHERE id = ?').get(atraccion_id);
 
@@ -166,9 +166,14 @@ module.exports = (io) => {
       `).get(atraccion_id);
     }
 
+    const { maxOrden } = db.prepare(
+      "SELECT COALESCE(MAX(orden_cola), 0) AS maxOrden FROM turnos WHERE atraccion_id = ? AND estado = 'esperando'"
+    ).get(atraccion_id);
+    const nuevoOrden = maxOrden + 1;
+
     const result = db.prepare(
-      'INSERT INTO turnos (atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id, etapa_actual_id) VALUES (?,?,?,?,?,?)'
-    ).run(atraccion_id, String(biper_numero), nombre_cliente || null, cantidad_miembros || 1, viper_id || null, primeraEtapa?.id ?? null);
+      'INSERT INTO turnos (atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id, etapa_actual_id, orden_cola) VALUES (?,?,?,?,?,?,?)'
+    ).run(atraccion_id, String(biper_numero), nombre_cliente || null, cantidad_miembros || 1, viper_id || null, primeraEtapa?.id ?? null, nuevoOrden);
 
     const turnoId = Number(result.lastInsertRowid);
 
@@ -199,13 +204,39 @@ module.exports = (io) => {
     const primero = db.prepare(`
       SELECT id FROM turnos
       WHERE atraccion_id = ? AND estado = 'esperando'
-      ORDER BY created_at ASC, id ASC LIMIT 1
+      ORDER BY orden_cola ASC, id ASC LIMIT 1
     `).get(turnoActual.atraccion_id);
 
     if (primero && primero.id !== turnoActual.id) {
       return res.status(400).json({
         error: 'Debe llamarse primero al grupo que llegó antes en la cola'
       });
+    }
+
+    // Validación de biper en otro juego (omitible con force=true)
+    if (!force) {
+      const conflictoViper = db.prepare(`
+        SELECT t.id, t.nombre_cliente, t.biper_numero, t.called_at,
+               a.nombre AS atraccion_nombre, a.duracion_minutos
+        FROM turnos t
+        JOIN atracciones a ON t.atraccion_id = a.id
+        WHERE t.biper_numero = ?
+          AND t.atraccion_id != ?
+          AND t.estado = 'llamado'
+      `).get(turnoActual.biper_numero, turnoActual.atraccion_id);
+
+      if (conflictoViper) {
+        const elapsed   = conflictoViper.called_at
+          ? Math.floor((Date.now() - new Date(conflictoViper.called_at).getTime()) / 60000) : 0;
+        const restante  = Math.max(0, conflictoViper.duracion_minutos - elapsed);
+        return res.status(200).json({
+          advertencia:    'biper_en_otro_juego',
+          biper_numero:   turnoActual.biper_numero,
+          juego_origen:   conflictoViper.atraccion_nombre,
+          nombre_cliente: conflictoViper.nombre_cliente,
+          tiempo_restante: restante,
+        });
+      }
     }
 
     // Validación de capacidad (omitible con force=true)
@@ -325,6 +356,43 @@ module.exports = (io) => {
     res.json(turno);
   });
 
+  // ── Mover turno en la cola (subir / bajar) ──────────────────────────────────
+  router.put('/:id/mover', requireAuth('admin', 'recepcion'), (req, res) => {
+    const { id } = req.params;
+    const { direccion } = req.body; // 'subir' | 'bajar'
+
+    if (!['subir', 'bajar'].includes(direccion)) {
+      return res.status(400).json({ error: 'direccion debe ser "subir" o "bajar"' });
+    }
+
+    const turnoA = db.prepare(
+      "SELECT id, atraccion_id, orden_cola FROM turnos WHERE id = ? AND estado = 'esperando'"
+    ).get(Number(id));
+
+    if (!turnoA) {
+      return res.status(400).json({ error: 'El turno no existe o ya no está en espera' });
+    }
+
+    const op     = direccion === 'subir' ? '<' : '>';
+    const order  = direccion === 'subir' ? 'DESC' : 'ASC';
+    const turnoB = db.prepare(`
+      SELECT id, orden_cola FROM turnos
+      WHERE atraccion_id = ? AND estado = 'esperando' AND orden_cola ${op} ?
+      ORDER BY orden_cola ${order} LIMIT 1
+    `).get(turnoA.atraccion_id, turnoA.orden_cola);
+
+    if (!turnoB) {
+      return res.status(400).json({ error: 'No se puede mover en esa dirección' });
+    }
+
+    // Swap atómico de orden_cola
+    db.prepare('UPDATE turnos SET orden_cola = ? WHERE id = ?').run(turnoB.orden_cola, turnoA.id);
+    db.prepare('UPDATE turnos SET orden_cola = ? WHERE id = ?').run(turnoA.orden_cola, turnoB.id);
+
+    io.emit('turno:reordenado', { atraccion_id: turnoA.atraccion_id });
+    res.json({ ok: true });
+  });
+
   // ── Cancelar turno ───────────────────────────────────────────────────────────
   router.put('/:id/cancelar', requirePermission('permiso_cancelar_turno'), (req, res) => {
     const { id } = req.params;
@@ -349,7 +417,7 @@ function _notificarRecepcion(io, req, turno) {
     FROM turnos t
     JOIN atracciones a ON t.atraccion_id = a.id
     WHERE t.atraccion_id = ? AND t.estado = 'esperando'
-    ORDER BY t.created_at ASC LIMIT 1
+    ORDER BY t.orden_cola ASC, t.id ASC LIMIT 1
   `).get(turno.atraccion_id);
 
   io.emit('recepcion:notificacion', {

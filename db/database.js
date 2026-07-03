@@ -107,7 +107,14 @@ db.exec(`
   "ALTER TABLE vipers      ADD COLUMN canal                     INTEGER DEFAULT 1",
   "ALTER TABLE vipers      ADD COLUMN fecha_creacion             DATETIME",
   "ALTER TABLE vipers      ADD COLUMN ultima_activacion          DATETIME",
+  "ALTER TABLE turnos      ADD COLUMN orden_cola                INTEGER",
 ].forEach(sql => { try { db.exec(sql); } catch (_) {} });
+
+// Inicializar orden_cola para turnos existentes sin valor
+db.exec(`
+  UPDATE turnos SET orden_cola = id
+  WHERE orden_cola IS NULL AND estado = 'esperando'
+`);
 
 // ── Tabla juego_etapas ────────────────────────────────────────────────────────
 db.exec(`

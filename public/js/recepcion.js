@@ -238,6 +238,16 @@ function renderJuegoPane(j) {
         }
       }
 
+      const esUltimo   = t.posicion === j.cola.length;
+      const btnSubir   = `<button class="btn btn-outline-secondary btn-sm py-0 px-2" title="Subir en la cola"
+        ${esPrimero ? 'disabled' : ''} onclick="moverTurno(${t.id},'subir')">
+        <i class="bi bi-chevron-up"></i>
+      </button>`;
+      const btnBajar   = `<button class="btn btn-outline-secondary btn-sm py-0 px-2" title="Bajar en la cola"
+        ${esUltimo ? 'disabled' : ''} onclick="moverTurno(${t.id},'bajar')">
+        <i class="bi bi-chevron-down"></i>
+      </button>`;
+
       return `
       <div class="turno-row d-flex align-items-center justify-content-between flex-wrap gap-2 ${esPrimero ? '' : 'opacity-65'}">
         <div class="d-flex align-items-center gap-3">
@@ -251,6 +261,7 @@ function renderJuegoPane(j) {
           </div>
         </div>
         <div class="d-flex align-items-center gap-2">
+          <div class="d-flex flex-column gap-1">${btnSubir}${btnBajar}</div>
           <span class="espera-badge ${claseEspera}">
             <i class="bi bi-hourglass-split me-1"></i>
             ${t.tiempo_espera_estimado === 0 ? '¡Próximo!' : `~${t.tiempo_espera_estimado} min`}
@@ -388,6 +399,19 @@ document.getElementById('btnConfCapacidadNo').addEventListener('click', () => {
   _pendingLlamarId = null;
 });
 
+const modalConfViperOtroJuego = () => bootstrap.Modal.getOrCreateInstance(document.getElementById('modalConfViperOtroJuego'));
+
+document.getElementById('btnConfViperOtroJuegoSi').addEventListener('click', async () => {
+  modalConfViperOtroJuego().hide();
+  const idParaLlamar = _pendingLlamarId;
+  _pendingLlamarId = null;
+  if (idParaLlamar) await _ejecutarLlamar(idParaLlamar, true);
+});
+document.getElementById('btnConfViperOtroJuegoNo').addEventListener('click', () => {
+  modalConfViperOtroJuego().hide();
+  _pendingLlamarId = null;
+});
+
 async function _ejecutarLlamar(id, force = false) {
   const res  = await fetch(`/api/turnos/${id}/llamar`, {
     method: 'PUT',
@@ -397,6 +421,19 @@ async function _ejecutarLlamar(id, force = false) {
   const data = await res.json();
   if (!res.ok) {
     mostrarToast(data.error || 'No se pudo llamar al grupo', 'danger');
+    return;
+  }
+  if (data.advertencia === 'biper_en_otro_juego') {
+    _pendingLlamarId = id;
+    const restanteTexto = data.tiempo_restante > 0
+      ? `con aproximadamente <strong>${data.tiempo_restante} min restantes</strong>`
+      : 'con tiempo excedido';
+    document.getElementById('confViperOtroJuegoTexto').innerHTML =
+      `El VIPER <strong>${data.biper_numero}</strong> está actualmente jugando en
+       <strong>${data.juego_origen}</strong>
+       (${data.nombre_cliente || 'Sin nombre'}) ${restanteTexto}.<br><br>
+       ¿Querés llamarlo igualmente?`;
+    modalConfViperOtroJuego().show();
     return;
   }
   if (data.advertencia === 'capacidad_excedida') {
@@ -413,11 +450,27 @@ async function _ejecutarLlamar(id, force = false) {
   await cargarCola();
 }
 
+// ── Reordenar cola ────────────────────────────────────────────────────────────
+async function moverTurno(id, direccion) {
+  const res  = await fetch(`/api/turnos/${id}/mover`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ direccion }),
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    mostrarToast(data.error || 'No se pudo mover el turno', 'danger');
+    return;
+  }
+  await cargarCola();
+}
+
 // ── Socket (actualización en tiempo real) ─────────────────────────────────────
 socket.on('turno:nuevo',         () => cargarCola());
 socket.on('turno:llamado',       () => cargarCola());
 socket.on('turno:etapa_avanzada',() => cargarCola());
 socket.on('turno:finalizado',    () => cargarCola());
+socket.on('turno:reordenado',    () => cargarCola());
 
 // ── Notificación de turno finalizado (enviada por operador) ───────────────────
 socket.on('recepcion:notificacion', (data) => {
