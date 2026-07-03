@@ -95,6 +95,8 @@ db.exec(`
   "ALTER TABLE usuarios    ADD COLUMN feature_graficos         INTEGER DEFAULT 1",
   "ALTER TABLE usuarios    ADD COLUMN feature_cancelar_turno  INTEGER DEFAULT 1",
   "ALTER TABLE usuarios    ADD COLUMN feature_llamar_turno    INTEGER DEFAULT 1",
+  "ALTER TABLE atracciones ADD COLUMN usa_etapas              INTEGER DEFAULT 0",
+  "ALTER TABLE turnos      ADD COLUMN etapa_actual_id         INTEGER REFERENCES juego_etapas(id)",
   "ALTER TABLE vipers      ADD COLUMN estado                   TEXT DEFAULT 'PENDIENTE'",
   "ALTER TABLE vipers      ADD COLUMN codigo_raw                TEXT",
   "ALTER TABLE vipers      ADD COLUMN baudrate                  INTEGER DEFAULT 115200",
@@ -106,6 +108,35 @@ db.exec(`
   "ALTER TABLE vipers      ADD COLUMN fecha_creacion             DATETIME",
   "ALTER TABLE vipers      ADD COLUMN ultima_activacion          DATETIME",
 ].forEach(sql => { try { db.exec(sql); } catch (_) {} });
+
+// ── Tabla juego_etapas ────────────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS juego_etapas (
+    id               INTEGER PRIMARY KEY AUTOINCREMENT,
+    juego_id         INTEGER NOT NULL REFERENCES atracciones(id) ON DELETE CASCADE,
+    nombre           TEXT    NOT NULL,
+    duracion_minutos INTEGER NOT NULL DEFAULT 1,
+    orden            INTEGER NOT NULL DEFAULT 1,
+    activa           INTEGER NOT NULL DEFAULT 1,
+    created_at       DATETIME DEFAULT (datetime('now','localtime')),
+    updated_at       DATETIME DEFAULT (datetime('now','localtime'))
+  );
+`);
+
+// ── Tabla turno_etapas_historial ──────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS turno_etapas_historial (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    turno_id        INTEGER NOT NULL REFERENCES turnos(id),
+    etapa_id        INTEGER NOT NULL REFERENCES juego_etapas(id),
+    etapa_nombre    TEXT    NOT NULL,
+    etapa_orden     INTEGER NOT NULL,
+    iniciada_at     DATETIME DEFAULT NULL,
+    finalizada_at   DATETIME DEFAULT NULL,
+    iniciada_por    INTEGER REFERENCES usuarios(id),
+    finalizada_por  INTEGER REFERENCES usuarios(id)
+  );
+`);
 
 // Completar fecha_creacion de VIPERs creados antes de esta migración
 db.exec(`UPDATE vipers SET fecha_creacion = datetime('now','localtime') WHERE fecha_creacion IS NULL`);

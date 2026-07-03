@@ -113,6 +113,28 @@ function cardLlamado(t) {
          <i class="bi bi-x-circle me-1"></i>No llegó
        </button>` : '';
 
+  // Info de etapa (solo si el juego usa etapas)
+  let etapaHtml = '';
+  let btnFinalizar = '';
+  if (t.usa_etapas && t.etapa_actual_nombre) {
+    const sigTexto = t.etapa_siguiente_nombre
+      ? `<span class="etapa-sig"><i class="bi bi-arrow-right me-1"></i>Próxima: <strong>${t.etapa_siguiente_nombre}</strong></span>`
+      : `<span class="etapa-sig text-muted"><i class="bi bi-flag-fill me-1"></i>Última etapa</span>`;
+    etapaHtml = `
+      <div class="etapa-info mt-2">
+        <span class="etapa-actual"><i class="bi bi-layers me-1"></i>Etapa: <strong>${t.etapa_actual_nombre}</strong></span>
+        ${sigTexto}
+      </div>`;
+    const btnLabel = t.etapa_siguiente_nombre
+      ? `<i class="bi bi-skip-forward-fill me-1"></i>Avanzar a ${t.etapa_siguiente_nombre}`
+      : `<i class="bi bi-check-lg me-1"></i>Finalizar turno`;
+    btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id})">${btnLabel}</button>`;
+  } else {
+    btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id})">
+      <i class="bi bi-check-lg me-1"></i>Finalizar
+    </button>`;
+  }
+
   return `
     <div class="turno-card llamado" id="turno-${t.id}">
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -127,12 +149,11 @@ function cardLlamado(t) {
                 <i class="bi bi-stopwatch me-1"></i>${elapsed} min en juego
               </span>
             </div>
+            ${etapaHtml}
           </div>
         </div>
-        <div class="d-flex gap-2">
-          <button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id})">
-            <i class="bi bi-check-lg me-1"></i>Finalizar
-          </button>
+        <div class="d-flex gap-2 flex-wrap">
+          ${btnFinalizar}
           ${cancelBtn}
         </div>
       </div>
@@ -176,8 +197,9 @@ socket.on('turno:nuevo', t => {
   turnos.push(t); renderTurnos(); destacar(t.id);
   mostrarToast(`Nuevo turno – Biper ${t.biper_numero} (${t.atraccion_nombre})`, 'info');
 });
-socket.on('turno:llamado',   t => { upsert(t); renderTurnos(); });
-socket.on('turno:finalizado',t => { turnos = turnos.filter(x => x.id !== t.id); renderTurnos(); });
+socket.on('turno:llamado',        t => { upsert(t); renderTurnos(); });
+socket.on('turno:etapa_avanzada', t => { upsert(t); renderTurnos(); });
+socket.on('turno:finalizado',     t => { turnos = turnos.filter(x => x.id !== t.id); renderTurnos(); });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function upsert(t) {

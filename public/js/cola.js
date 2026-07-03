@@ -82,6 +82,13 @@ function renderJugando(juegos) {
         <span class="tag-miembros"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} personas</span>
         <span style="font-size:.8rem; color:rgba(255,255,255,.5);">${t.tiempo_transcurrido} min en juego</span>
       </div>
+      ${t.etapa_actual_nombre ? `
+      <div class="etapa-tv">
+        <span class="etapa-tv-actual"><i class="bi bi-layers me-1"></i>${t.etapa_actual_nombre}</span>
+        ${t.etapa_siguiente_nombre
+          ? `<span class="etapa-tv-sig"><i class="bi bi-arrow-right me-1"></i>${t.etapa_siguiente_nombre}</span>`
+          : `<span class="etapa-tv-sig" style="opacity:.5">Última etapa</span>`}
+      </div>` : ''}
       <div class="progreso-wrap">
         <div class="progreso-label">
           <span>Progreso del turno</span>
@@ -146,9 +153,10 @@ function flash() {
 }
 
 // ── Socket ────────────────────────────────────────────────────────────────────
-socket.on('turno:nuevo',     () => { cargarCola(); });
-socket.on('turno:llamado',   () => { cargarCola(); flash(); });
-socket.on('turno:finalizado',() => { cargarCola(); });
+socket.on('turno:nuevo',         () => { cargarCola(); });
+socket.on('turno:llamado',       () => { cargarCola(); flash(); });
+socket.on('turno:etapa_avanzada',() => { cargarCola(); flash(); });
+socket.on('turno:finalizado',    () => { cargarCola(); });
 
 // Actualizar progreso cada 60 seg sin recargar del servidor
 setInterval(() => {
