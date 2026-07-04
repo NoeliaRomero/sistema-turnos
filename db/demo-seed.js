@@ -319,7 +319,7 @@ function seedDemoData() {
     VALUES (?,?,?,?,'finalizado',?,?,?)
   `);
 
-  finalizados.forEach(([aId, biper, nombre, cant, dias, hora, durMin], idx) {
+  finalizados.forEach(([aId, biper, nombre, cant, dias, hora, durMin], idx) => {
     const creMs  = new Date(diasAtras(dias, hora).replace(' ', 'T')).getTime();
     const callMs = creMs + 2 * 60_000;
     const finMs  = callMs + durMin * 60_000;
