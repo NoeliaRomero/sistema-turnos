@@ -104,4 +104,40 @@ router.put('/:id', requirePermission('permiso_gestionar_juegos'), (req, res) => 
   res.json({ ok: true });
 });
 
+// Eliminar juego
+router.delete('/:id', requirePermission('permiso_gestionar_juegos'), (req, res) => {
+  const id = Number(req.params.id);
+
+  const juego = db.prepare('SELECT id, nombre FROM atracciones WHERE id = ?').get(id);
+  if (!juego) return res.status(404).json({ error: 'Juego no encontrado' });
+
+  const activos = db.prepare(
+    "SELECT COUNT(*) AS c FROM turnos WHERE atraccion_id = ? AND estado IN ('esperando','llamado')"
+  ).get(id).c;
+  if (activos > 0) {
+    return res.status(409).json({
+      error: `No se puede eliminar "${juego.nombre}" porque tiene ${activos} turno${activos > 1 ? 's' : ''} activo${activos > 1 ? 's' : ''} (en espera o en juego). Finalizalos primero.`,
+    });
+  }
+
+  // Eliminar historial de etapas de los turnos de este juego
+  db.prepare(
+    'DELETE FROM turno_etapas_historial WHERE turno_id IN (SELECT id FROM turnos WHERE atraccion_id = ?)'
+  ).run(id);
+
+  // Eliminar turnos finalizados/cancelados del juego
+  db.prepare('DELETE FROM turnos WHERE atraccion_id = ?').run(id);
+
+  // Desvincular operadores asignados a este juego
+  db.prepare('UPDATE usuarios SET atraccion_id = NULL WHERE atraccion_id = ?').run(id);
+
+  // Eliminar etapas del juego
+  db.prepare('DELETE FROM juego_etapas WHERE juego_id = ?').run(id);
+
+  // Eliminar el juego
+  db.prepare('DELETE FROM atracciones WHERE id = ?').run(id);
+
+  res.json({ ok: true });
+});
+
 module.exports = router;

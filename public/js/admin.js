@@ -385,8 +385,11 @@ async function cargarJuegos() {
         </span>
       </td>
       <td class="text-end pe-4">
-        <button class="btn btn-sm btn-outline-primary" onclick="editarJuego(${j.id})">
+        <button class="btn btn-sm btn-outline-primary me-1" onclick="editarJuego(${j.id})">
           <i class="bi bi-pencil me-1"></i>Editar
+        </button>
+        <button class="btn btn-sm btn-outline-danger" onclick="confirmarEliminarJuego(${j.id}, ${JSON.stringify(j.nombre)})">
+          <i class="bi bi-trash me-1"></i>Eliminar
         </button>
       </td>
     </tr>`).join('');
@@ -533,6 +536,38 @@ document.getElementById('btnGuardarJuego').addEventListener('click', async () =>
 
 // Cargar juegos al activar el tab
 document.getElementById('tabBtnJuegos')?.addEventListener('shown.bs.tab', () => {
+  cargarJuegos();
+});
+
+// ── Eliminar juego ─────────────────────────────────────────────────────────────
+let _pendingEliminarJuegoId = null;
+
+const modalEliminarJuego = () => bootstrap.Modal.getOrCreateInstance(document.getElementById('modalEliminarJuego'));
+
+function confirmarEliminarJuego(id, nombre) {
+  _pendingEliminarJuegoId = id;
+  document.getElementById('eliminarJuegoNombre').textContent = `"${nombre}"`;
+  modalEliminarJuego().show();
+}
+
+document.getElementById('btnCancelarEliminarJuego').addEventListener('click', () => {
+  modalEliminarJuego().hide();
+  _pendingEliminarJuegoId = null;
+});
+
+document.getElementById('btnConfirmarEliminarJuego').addEventListener('click', async () => {
+  const id = _pendingEliminarJuegoId;
+  _pendingEliminarJuegoId = null;
+  modalEliminarJuego().hide();
+  if (!id) return;
+
+  const res  = await fetch(`/api/atracciones/${id}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (!res.ok) {
+    mostrarToast(data.error || 'No se pudo eliminar el juego', 'danger');
+    return;
+  }
+  mostrarToast('Juego eliminado', 'success');
   cargarJuegos();
 });
 
