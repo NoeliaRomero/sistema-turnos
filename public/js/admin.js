@@ -363,9 +363,12 @@ function mostrarToast(mensaje, tipo = 'success') {
 
 // ── Gestión de Juegos (integrada en admin, reemplaza el iframe) ───────────────
 
+let _juegosCache = [];
+
 async function cargarJuegos() {
   const res    = await fetch('/api/atracciones/todas');
   const juegos = await res.json();
+  _juegosCache = juegos;
   const tbody  = document.getElementById('tablaJuegos');
   if (!juegos.length) {
     tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-5">Sin juegos registrados</td></tr>';
@@ -388,7 +391,7 @@ async function cargarJuegos() {
         <button class="btn btn-sm btn-outline-primary me-1" onclick="editarJuego(${j.id})">
           <i class="bi bi-pencil me-1"></i>Editar
         </button>
-        <button class="btn btn-sm btn-outline-danger" onclick="confirmarEliminarJuego(${j.id}, ${JSON.stringify(j.nombre)})">
+        <button class="btn btn-sm btn-outline-danger" onclick="confirmarEliminarJuego(${j.id})">
           <i class="bi bi-trash me-1"></i>Eliminar
         </button>
       </td>
@@ -544,9 +547,10 @@ let _pendingEliminarJuegoId = null;
 
 const modalEliminarJuego = () => bootstrap.Modal.getOrCreateInstance(document.getElementById('modalEliminarJuego'));
 
-function confirmarEliminarJuego(id, nombre) {
+function confirmarEliminarJuego(id) {
+  const juego = _juegosCache.find(j => j.id === id);
   _pendingEliminarJuegoId = id;
-  document.getElementById('eliminarJuegoNombre').textContent = `"${nombre}"`;
+  document.getElementById('eliminarJuegoNombre').textContent = juego ? `"${juego.nombre}"` : '';
   modalEliminarJuego().show();
 }
 
