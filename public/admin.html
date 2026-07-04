@@ -373,16 +373,19 @@
   </div>
 </div>
 
-<!-- Modal Confirmar desactivar -->
-<div class="modal fade" id="modalEliminar" tabindex="-1">
+<!-- Modal Confirmar eliminar usuario -->
+<div class="modal fade" id="modalEliminar" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
   <div class="modal-dialog modal-sm modal-dialog-centered">
     <div class="modal-content border-0 rounded-4 text-center p-4">
-      <div class="fs-1 mb-2">⚠️</div>
-      <h6 class="fw-bold">¿Desactivar usuario?</h6>
-      <p class="text-muted small mb-3">No podrá ingresar al sistema pero sus datos se conservan.</p>
+      <div class="fs-1 mb-2">🗑️</div>
+      <h6 class="fw-bold">Eliminar usuario</h6>
+      <p class="text-muted small mb-1" id="eliminarUsuarioNombre"></p>
+      <p class="small text-danger mb-3">Esta acción elimina el usuario permanentemente. <strong>Es irreversible.</strong></p>
       <div class="d-flex gap-2">
-        <button class="btn btn-secondary flex-fill" data-bs-dismiss="modal">Cancelar</button>
-        <button class="btn btn-danger flex-fill" id="btnConfirmarEliminar">Desactivar</button>
+        <button class="btn btn-secondary flex-fill" id="btnCancelarEliminarUsuario">Cancelar</button>
+        <button class="btn btn-danger flex-fill fw-bold" id="btnConfirmarEliminar">
+          <i class="bi bi-trash me-1"></i>Eliminar
+        </button>
       </div>
     </div>
   </div>

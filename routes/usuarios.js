@@ -77,14 +77,35 @@ router.put('/:id', (req, res) => {
 
 router.delete('/:id', (req, res) => {
   const { id } = req.params;
-  const user   = db.prepare("SELECT rol FROM usuarios WHERE id=?").get(id);
+
+  // No puede eliminarse a sí mismo
+  if (String(req.session.usuario?.id) === String(id)) {
+    return res.status(400).json({ error: 'No podés eliminar tu propio usuario mientras estás conectado' });
+  }
+
+  const user = db.prepare("SELECT id, username, rol FROM usuarios WHERE id=?").get(id);
   if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-  if (user.rol === 'admin') {
-    const admins = db.prepare("SELECT COUNT(*) AS c FROM usuarios WHERE rol='admin' AND activo=1").get();
-    if (admins.c <= 1) return res.status(400).json({ error: 'No se puede desactivar el único administrador' });
+  // El usuario demo nunca puede eliminarse
+  if (user.username === 'demo') {
+    return res.status(400).json({ error: 'El usuario demo no puede eliminarse' });
   }
-  db.prepare("UPDATE usuarios SET activo=0 WHERE id=?").run(id);
+
+  // Nullificar referencias en turnos (preserva el historial sin dejar FK inválidas)
+  db.prepare("UPDATE turnos SET llamado_por = NULL WHERE llamado_por = ?").run(id);
+  db.prepare("UPDATE turnos SET finalizado_por = NULL WHERE finalizado_por = ?").run(id);
+
+  // Nullificar referencias en historial de etapas
+  db.prepare("UPDATE turno_etapas_historial SET iniciada_por = NULL WHERE iniciada_por = ?").run(id);
+  db.prepare("UPDATE turno_etapas_historial SET finalizada_por = NULL WHERE finalizada_por = ?").run(id);
+
+  // Nullificar referencias en viper_eventos
+  db.prepare("UPDATE viper_eventos SET usuario_id = NULL WHERE usuario_id = ?").run(id);
+
+  // Desvincular atraccion_id en otros usuarios que apunten a este (no aplica, pero por si acaso)
+  // Eliminar el usuario
+  db.prepare("DELETE FROM usuarios WHERE id=?").run(id);
+
   res.json({ ok: true });
 });
 

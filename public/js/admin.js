@@ -160,9 +160,12 @@ function renderTablaOperadores(ops) {
 }
 
 // ── Usuarios ──────────────────────────────────────────────────────────────────
+let _usuariosCache = [];
+
 async function cargarUsuarios() {
   const res      = await fetch('/api/usuarios');
   const usuarios = await res.json();
+  _usuariosCache = usuarios;
   const tbody    = document.getElementById('tablaUsuarios');
 
   if (!usuarios.length) {
@@ -199,8 +202,8 @@ async function cargarUsuarios() {
         <button class="btn btn-sm btn-outline-primary me-1" onclick="editarUsuario(${u.id})">
           <i class="bi bi-pencil"></i>
         </button>
-        <button class="btn btn-sm btn-outline-danger" onclick="pedirEliminar(${u.id})" ${!u.activo?'disabled':''}>
-          <i class="bi bi-person-x"></i>
+        <button class="btn btn-sm btn-outline-danger" onclick="pedirEliminar(${u.id})">
+          <i class="bi bi-trash"></i>
         </button>
       </td>
     </tr>`;
@@ -325,18 +328,26 @@ async function guardarUsuario() {
 
 function pedirEliminar(id) {
   eliminandoId = id;
+  const u = _usuariosCache.find(x => x.id === id);
+  document.getElementById('eliminarUsuarioNombre').textContent = u ? `"${u.nombre}" (@${u.username})` : '';
   modalEliminar.show();
 }
 
-document.getElementById('btnConfirmarEliminar').addEventListener('click', async () => {
-  if (!eliminandoId) return;
-  const res  = await fetch(`/api/usuarios/${eliminandoId}`, { method: 'DELETE' });
-  const data = await res.json();
+document.getElementById('btnCancelarEliminarUsuario').addEventListener('click', () => {
   modalEliminar.hide();
-  if (!res.ok) { mostrarToast(data.error||'Error', 'danger'); return; }
-  mostrarToast('Usuario desactivado', 'warning');
-  cargarUsuarios();
   eliminandoId = null;
+});
+
+document.getElementById('btnConfirmarEliminar').addEventListener('click', async () => {
+  const id = eliminandoId;
+  eliminandoId = null;
+  modalEliminar.hide();
+  if (!id) return;
+  const res  = await fetch(`/api/usuarios/${id}`, { method: 'DELETE' });
+  const data = await res.json();
+  if (!res.ok) { mostrarToast(data.error || 'Error al eliminar', 'danger'); return; }
+  mostrarToast('Usuario eliminado', 'success');
+  cargarUsuarios();
 });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
