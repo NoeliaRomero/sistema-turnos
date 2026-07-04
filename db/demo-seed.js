@@ -28,14 +28,14 @@ function addMin(ms, min) {
   return fmt(ms + min * 60_000);
 }
 
-// ── Limpiar datos demo (preserva superadmin + demo) ───────────────────────────
+// ── Limpiar datos demo (preserva solo el usuario demo) ───────────────────────
 
 function clearDemoData() {
   db.exec('DELETE FROM turno_etapas_historial');
   db.exec('DELETE FROM turnos');
   db.exec('DELETE FROM juego_etapas');
   db.exec('DELETE FROM atracciones');
-  db.exec("DELETE FROM usuarios WHERE username NOT IN ('superadmin', 'demo')");
+  db.exec("DELETE FROM usuarios WHERE username != 'demo'");
   db.exec('DELETE FROM viper_eventos');
   db.exec('DELETE FROM vipers');
   db.exec("UPDATE configuracion_serial SET puerto = NULL WHERE id = 1");
