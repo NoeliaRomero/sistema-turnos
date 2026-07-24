@@ -17,6 +17,36 @@ function etapasDeJuego(juegoId) {
   ).all(juegoId);
 }
 
+function subcategoriasDeJuego(juegoId) {
+  return db.prepare(
+    'SELECT id, nombre, orden FROM juego_subcategorias WHERE juego_id = ? ORDER BY orden'
+  ).all(juegoId);
+}
+
+function guardarSubcategorias(juegoId, subcategoriasArr) {
+  const existentes = subcategoriasDeJuego(juegoId);
+  const idsEnviados = subcategoriasArr.filter(s => s.id).map(s => Number(s.id));
+
+  // Eliminar subcategorias removidas (y nullificar turnos que la referencian)
+  existentes.forEach(s => {
+    if (!idsEnviados.includes(s.id)) {
+      db.prepare("UPDATE turnos SET subcategoria_id = NULL WHERE subcategoria_id = ?").run(s.id);
+      db.prepare("DELETE FROM juego_subcategorias WHERE id = ?").run(s.id);
+    }
+  });
+
+  // Actualizar existentes o insertar nuevas
+  subcategoriasArr.forEach((s, i) => {
+    if (s.id) {
+      db.prepare("UPDATE juego_subcategorias SET nombre = ?, orden = ? WHERE id = ? AND juego_id = ?")
+        .run(s.nombre.trim(), i + 1, Number(s.id), juegoId);
+    } else {
+      db.prepare("INSERT INTO juego_subcategorias (juego_id, nombre, orden) VALUES (?,?,?)")
+        .run(juegoId, s.nombre.trim(), i + 1);
+    }
+  });
+}
+
 // Listar activas (todos los roles autenticados)
 router.get('/', requireAuth('admin', 'operador', 'recepcion'), (req, res) => {
   res.json(db.prepare('SELECT * FROM atracciones WHERE activa = 1 ORDER BY nombre').all());
@@ -27,14 +57,20 @@ router.get('/todas', requirePermission('permiso_gestionar_juegos'), (req, res) =
   const juegos = db.prepare('SELECT * FROM atracciones ORDER BY nombre').all();
   const result = juegos.map(j => ({
     ...j,
-    etapas: j.usa_etapas ? etapasDeJuego(j.id) : [],
+    etapas:        j.usa_etapas        ? etapasDeJuego(j.id)        : [],
+    subcategorias: j.usa_subcategorias ? subcategoriasDeJuego(j.id) : [],
   }));
   res.json(result);
 });
 
+// Listar subcategorias de un juego
+router.get('/:id/subcategorias', requireAuth('admin', 'operador', 'recepcion'), (req, res) => {
+  res.json(subcategoriasDeJuego(Number(req.params.id)));
+});
+
 // Crear juego
 router.post('/', requirePermission('permiso_gestionar_juegos'), (req, res) => {
-  const { nombre, duracion_minutos, min_miembros, max_miembros, usa_etapas, etapas } = req.body;
+  const { nombre, duracion_minutos, min_miembros, max_miembros, usa_etapas, etapas, usa_subcategorias, subcategorias } = req.body;
   if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre es requerido' });
 
   const dup = db.prepare("SELECT id FROM atracciones WHERE nombre = ? COLLATE NOCASE").get(nombre.trim());
@@ -42,9 +78,14 @@ router.post('/', requirePermission('permiso_gestionar_juegos'), (req, res) => {
 
   const usaEtapas = usa_etapas ? 1 : 0;
   const etapasArr = Array.isArray(etapas) ? etapas : [];
+  const usaSubs   = usa_subcategorias ? 1 : 0;
+  const subsArr   = Array.isArray(subcategorias) ? subcategorias : [];
 
   if (usaEtapas && etapasArr.length === 0) {
     return res.status(400).json({ error: 'Debe agregar al menos una etapa' });
+  }
+  if (usaSubs && subsArr.length === 0) {
+    return res.status(400).json({ error: 'Debe agregar al menos una subcategoría' });
   }
 
   const minM = parseInt(min_miembros) || 1;
@@ -52,8 +93,8 @@ router.post('/', requirePermission('permiso_gestionar_juegos'), (req, res) => {
   const duracion = usaEtapas ? 0 : (parseInt(duracion_minutos) || 30);
 
   const result = db.prepare(
-    'INSERT INTO atracciones (nombre, duracion_minutos, min_miembros, max_miembros, usa_etapas) VALUES (?,?,?,?,?)'
-  ).run(nombre.trim(), duracion, minM, maxM, usaEtapas);
+    'INSERT INTO atracciones (nombre, duracion_minutos, min_miembros, max_miembros, usa_etapas, usa_subcategorias) VALUES (?,?,?,?,?,?)'
+  ).run(nombre.trim(), duracion, minM, maxM, usaEtapas, usaSubs);
 
   const juegoId = Number(result.lastInsertRowid);
 
@@ -65,13 +106,22 @@ router.post('/', requirePermission('permiso_gestionar_juegos'), (req, res) => {
     recalcularDuracion(juegoId);
   }
 
+  if (usaSubs) {
+    const insertSub = db.prepare('INSERT INTO juego_subcategorias (juego_id, nombre, orden) VALUES (?,?,?)');
+    subsArr.forEach((s, i) => insertSub.run(juegoId, s.nombre.trim(), i + 1));
+  }
+
   const juego = db.prepare('SELECT * FROM atracciones WHERE id = ?').get(juegoId);
-  res.status(201).json({ ...juego, etapas: usaEtapas ? etapasDeJuego(juegoId) : [] });
+  res.status(201).json({
+    ...juego,
+    etapas:        usaEtapas ? etapasDeJuego(juegoId)        : [],
+    subcategorias: usaSubs   ? subcategoriasDeJuego(juegoId) : [],
+  });
 });
 
 // Editar juego
 router.put('/:id', requirePermission('permiso_gestionar_juegos'), (req, res) => {
-  const { nombre, duracion_minutos, activa, min_miembros, max_miembros, usa_etapas, etapas } = req.body;
+  const { nombre, duracion_minutos, activa, min_miembros, max_miembros, usa_etapas, etapas, usa_subcategorias, subcategorias } = req.body;
   if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre es requerido' });
 
   const dup = db.prepare("SELECT id FROM atracciones WHERE nombre = ? COLLATE NOCASE AND id != ?")
@@ -80,17 +130,22 @@ router.put('/:id', requirePermission('permiso_gestionar_juegos'), (req, res) => 
 
   const usaEtapas = usa_etapas ? 1 : 0;
   const etapasArr = Array.isArray(etapas) ? etapas : [];
+  const usaSubs   = usa_subcategorias ? 1 : 0;
+  const subsArr   = Array.isArray(subcategorias) ? subcategorias : [];
 
   if (usaEtapas && etapasArr.length === 0) {
     return res.status(400).json({ error: 'Debe agregar al menos una etapa' });
+  }
+  if (usaSubs && subsArr.length === 0) {
+    return res.status(400).json({ error: 'Debe agregar al menos una subcategoría' });
   }
 
   const minM = parseInt(min_miembros) || 1;
   const maxM = parseInt(max_miembros) || 20;
   const duracion = usaEtapas ? 0 : (parseInt(duracion_minutos) || 30);
 
-  db.prepare("UPDATE atracciones SET nombre=?, duracion_minutos=?, activa=?, min_miembros=?, max_miembros=?, usa_etapas=? WHERE id=?")
-    .run(nombre.trim(), duracion, activa ?? 1, minM, maxM, usaEtapas, req.params.id);
+  db.prepare("UPDATE atracciones SET nombre=?, duracion_minutos=?, activa=?, min_miembros=?, max_miembros=?, usa_etapas=?, usa_subcategorias=? WHERE id=?")
+    .run(nombre.trim(), duracion, activa ?? 1, minM, maxM, usaEtapas, usaSubs, req.params.id);
 
   db.prepare('DELETE FROM juego_etapas WHERE juego_id = ?').run(req.params.id);
   if (usaEtapas) {
@@ -99,6 +154,14 @@ router.put('/:id', requirePermission('permiso_gestionar_juegos'), (req, res) => 
     );
     etapasArr.forEach((e, i) => insertEtapa.run(req.params.id, e.nombre.trim(), parseInt(e.duracion_minutos) || 1, i + 1, e.activa ?? 1));
     recalcularDuracion(req.params.id);
+  }
+
+  if (usaSubs) {
+    guardarSubcategorias(Number(req.params.id), subsArr);
+  } else {
+    // Si se desactivaron las subcategorias, nullificar en turnos activos y eliminar
+    db.prepare("UPDATE turnos SET subcategoria_id = NULL WHERE atraccion_id = ? AND subcategoria_id IS NOT NULL").run(req.params.id);
+    db.prepare("DELETE FROM juego_subcategorias WHERE juego_id = ?").run(req.params.id);
   }
 
   res.json({ ok: true });
@@ -125,7 +188,7 @@ router.delete('/:id', requirePermission('permiso_gestionar_juegos'), (req, res) 
     'DELETE FROM turno_etapas_historial WHERE turno_id IN (SELECT id FROM turnos WHERE atraccion_id = ?)'
   ).run(id);
 
-  // Eliminar turnos finalizados/cancelados del juego
+  // Eliminar turnos del juego
   db.prepare('DELETE FROM turnos WHERE atraccion_id = ?').run(id);
 
   // Desvincular operadores asignados a este juego

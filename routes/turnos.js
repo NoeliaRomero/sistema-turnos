@@ -3,20 +3,22 @@ const db = require('../db/database');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const serialService = require('../server/services/serialService');
 
-// Incluye etapa_actual en el turno
+// Incluye etapa_actual y subcategoria en el turno
 const SELECT_TURNO = `
   SELECT t.*,
-         a.nombre AS atraccion_nombre, a.duracion_minutos, a.usa_etapas,
+         a.nombre AS atraccion_nombre, a.duracion_minutos, a.usa_etapas, a.usa_subcategorias,
          ul.nombre AS llamado_por_nombre,
          uf.nombre AS finalizado_por_nombre,
          ea.nombre  AS etapa_actual_nombre,
          ea.orden   AS etapa_actual_orden,
-         ea.duracion_minutos AS etapa_actual_duracion
+         ea.duracion_minutos AS etapa_actual_duracion,
+         sc.nombre  AS subcategoria_nombre
   FROM turnos t
   JOIN atracciones a ON t.atraccion_id = a.id
   LEFT JOIN usuarios ul    ON t.llamado_por    = ul.id
   LEFT JOIN usuarios uf    ON t.finalizado_por = uf.id
   LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id
+  LEFT JOIN juego_subcategorias sc ON t.subcategoria_id = sc.id
   WHERE t.id = ?
 `;
 
@@ -48,10 +50,12 @@ module.exports = (io) => {
       const jugando = db.prepare(`
         SELECT t.*, ul.nombre AS llamado_por_nombre,
                ea.nombre  AS etapa_actual_nombre,
-               ea.orden   AS etapa_actual_orden
+               ea.orden   AS etapa_actual_orden,
+               sc.nombre  AS subcategoria_nombre
         FROM turnos t
         LEFT JOIN usuarios ul      ON t.llamado_por    = ul.id
         LEFT JOIN juego_etapas ea  ON t.etapa_actual_id = ea.id
+        LEFT JOIN juego_subcategorias sc ON t.subcategoria_id = sc.id
         WHERE t.atraccion_id = ? AND t.estado = 'llamado'
         ORDER BY t.called_at ASC
       `).all(a.id).map(t => {
@@ -67,9 +71,11 @@ module.exports = (io) => {
       });
 
       const esperando = db.prepare(`
-        SELECT t.*, ea.nombre AS etapa_actual_nombre
+        SELECT t.*, ea.nombre AS etapa_actual_nombre,
+               sc.nombre AS subcategoria_nombre
         FROM turnos t
         LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id
+        LEFT JOIN juego_subcategorias sc ON t.subcategoria_id = sc.id
         WHERE t.atraccion_id = ? AND t.estado = 'esperando'
         ORDER BY t.orden_cola ASC, t.id ASC
       `).all(a.id);
@@ -140,7 +146,7 @@ module.exports = (io) => {
 
   // ── Registrar turno (recepcion) ─────────────────────────────────────────────
   router.post('/', requireAuth('admin','recepcion'), (req, res) => {
-    const { atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id } = req.body;
+    const { atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id, subcategoria_id } = req.body;
     if (!atraccion_id || !biper_numero) {
       return res.status(400).json({ error: 'atraccion_id y biper_numero son requeridos' });
     }
@@ -157,6 +163,15 @@ module.exports = (io) => {
 
     const juego = db.prepare('SELECT * FROM atracciones WHERE id = ?').get(atraccion_id);
 
+    // Validar subcategoria si el juego la usa
+    if (juego && juego.usa_subcategorias) {
+      if (!subcategoria_id) {
+        return res.status(400).json({ error: 'Debe seleccionar una subcategoría para este juego' });
+      }
+      const sub = db.prepare('SELECT id FROM juego_subcategorias WHERE id = ? AND juego_id = ?').get(subcategoria_id, atraccion_id);
+      if (!sub) return res.status(400).json({ error: 'La subcategoría seleccionada no pertenece a este juego' });
+    }
+
     let primeraEtapa = null;
     if (juego && juego.usa_etapas) {
       primeraEtapa = db.prepare(`
@@ -172,8 +187,8 @@ module.exports = (io) => {
     const nuevoOrden = maxOrden + 1;
 
     const result = db.prepare(
-      'INSERT INTO turnos (atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id, etapa_actual_id, orden_cola) VALUES (?,?,?,?,?,?,?)'
-    ).run(atraccion_id, String(biper_numero), nombre_cliente || null, cantidad_miembros || 1, viper_id || null, primeraEtapa?.id ?? null, nuevoOrden);
+      'INSERT INTO turnos (atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id, etapa_actual_id, orden_cola, subcategoria_id) VALUES (?,?,?,?,?,?,?,?)'
+    ).run(atraccion_id, String(biper_numero), nombre_cliente || null, cantidad_miembros || 1, viper_id || null, primeraEtapa?.id ?? null, nuevoOrden, (juego?.usa_subcategorias && subcategoria_id) ? subcategoria_id : null);
 
     const turnoId = Number(result.lastInsertRowid);
 
@@ -201,11 +216,21 @@ module.exports = (io) => {
       return res.status(400).json({ error: 'El turno no existe o ya fue llamado' });
     }
 
-    const primero = db.prepare(`
-      SELECT id FROM turnos
-      WHERE atraccion_id = ? AND estado = 'esperando'
-      ORDER BY orden_cola ASC, id ASC LIMIT 1
-    `).get(turnoActual.atraccion_id);
+    // Verificar que sea el primero en la cola (por subcategoría si aplica)
+    let primero;
+    if (turnoActual.subcategoria_id) {
+      primero = db.prepare(`
+        SELECT id FROM turnos
+        WHERE atraccion_id = ? AND subcategoria_id = ? AND estado = 'esperando'
+        ORDER BY orden_cola ASC, id ASC LIMIT 1
+      `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id);
+    } else {
+      primero = db.prepare(`
+        SELECT id FROM turnos
+        WHERE atraccion_id = ? AND subcategoria_id IS NULL AND estado = 'esperando'
+        ORDER BY orden_cola ASC, id ASC LIMIT 1
+      `).get(turnoActual.atraccion_id);
+    }
 
     if (primero && primero.id !== turnoActual.id) {
       return res.status(400).json({
@@ -366,20 +391,31 @@ module.exports = (io) => {
     }
 
     const turnoA = db.prepare(
-      "SELECT id, atraccion_id, orden_cola FROM turnos WHERE id = ? AND estado = 'esperando'"
+      "SELECT id, atraccion_id, orden_cola, subcategoria_id FROM turnos WHERE id = ? AND estado = 'esperando'"
     ).get(Number(id));
 
     if (!turnoA) {
       return res.status(400).json({ error: 'El turno no existe o ya no está en espera' });
     }
 
-    const op     = direccion === 'subir' ? '<' : '>';
-    const order  = direccion === 'subir' ? 'DESC' : 'ASC';
-    const turnoB = db.prepare(`
-      SELECT id, orden_cola FROM turnos
-      WHERE atraccion_id = ? AND estado = 'esperando' AND orden_cola ${op} ?
-      ORDER BY orden_cola ${order} LIMIT 1
-    `).get(turnoA.atraccion_id, turnoA.orden_cola);
+    const op    = direccion === 'subir' ? '<' : '>';
+    const order = direccion === 'subir' ? 'DESC' : 'ASC';
+
+    // Reordenar solo dentro de la misma subcategoria (o sin subcategoria)
+    let turnoB;
+    if (turnoA.subcategoria_id) {
+      turnoB = db.prepare(`
+        SELECT id, orden_cola FROM turnos
+        WHERE atraccion_id = ? AND estado = 'esperando' AND subcategoria_id = ? AND orden_cola ${op} ?
+        ORDER BY orden_cola ${order} LIMIT 1
+      `).get(turnoA.atraccion_id, turnoA.subcategoria_id, turnoA.orden_cola);
+    } else {
+      turnoB = db.prepare(`
+        SELECT id, orden_cola FROM turnos
+        WHERE atraccion_id = ? AND estado = 'esperando' AND subcategoria_id IS NULL AND orden_cola ${op} ?
+        ORDER BY orden_cola ${order} LIMIT 1
+      `).get(turnoA.atraccion_id, turnoA.orden_cola);
+    }
 
     if (!turnoB) {
       return res.status(400).json({ error: 'No se puede mover en esa dirección' });

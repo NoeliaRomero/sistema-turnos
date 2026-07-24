@@ -34,7 +34,7 @@ async function cargarAtracciones() {
   atracciones.forEach(a => {
     const minM = a.min_miembros || 1;
     const maxM = a.max_miembros || 30;
-    sel.innerHTML += `<option value="${a.id}" data-duracion="${a.duracion_minutos}" data-min-miembros="${minM}" data-max-miembros="${maxM}">${a.nombre} (${a.duracion_minutos} min)</option>`;
+    sel.innerHTML += `<option value="${a.id}" data-duracion="${a.duracion_minutos}" data-min-miembros="${minM}" data-max-miembros="${maxM}" data-usa-subcategorias="${a.usa_subcategorias || 0}">${a.nombre} (${a.duracion_minutos} min)</option>`;
   });
 }
 
@@ -52,7 +52,7 @@ async function cargarVipersActivos() {
   } catch (_) { /* el módulo VIPER es opcional, no debe romper el registro */ }
 }
 
-document.getElementById('selectJuego').addEventListener('change', () => {
+document.getElementById('selectJuego').addEventListener('change', async () => {
   const opt = document.getElementById('selectJuego').selectedOptions[0];
   const duracion = opt?.dataset.duracion;
   const minM     = parseInt(opt?.dataset.minMiembros) || 1;
@@ -62,7 +62,6 @@ document.getElementById('selectJuego').addEventListener('change', () => {
 
   if (duracion) {
     duEl.innerHTML = `<i class="bi bi-clock me-1"></i>Duración: <strong>${duracion} min</strong>&nbsp;&nbsp;<i class="bi bi-people ms-2 me-1"></i>Personas: <strong>${minM}–${maxM}</strong>`;
-    // Ajustar límites y valor del input de miembros
     inputM.min = minM;
     inputM.max = maxM;
     const current = parseInt(inputM.value) || 1;
@@ -73,6 +72,28 @@ document.getElementById('selectJuego').addEventListener('change', () => {
     inputM.min = 1;
     inputM.max = 30;
   }
+
+  // Manejar subcategorias
+  const wrapSub = document.getElementById('wrapSubcategoria');
+  const selSub  = document.getElementById('selectSubcategoria');
+  selSub.innerHTML = '<option value="">Seleccionar subcategoría…</option>';
+
+  const juegoId       = opt?.value;
+  const usaSubs       = opt?.dataset.usaSubcategorias === '1';
+
+  if (juegoId && usaSubs) {
+    try {
+      const r    = await fetch(`/api/atracciones/${juegoId}/subcategorias`);
+      const subs = r.ok ? await r.json() : [];
+      subs.forEach(s => {
+        selSub.innerHTML += `<option value="${s.id}">${s.nombre}</option>`;
+      });
+    } catch (_) {}
+    wrapSub.classList.remove('d-none');
+  } else {
+    wrapSub.classList.add('d-none');
+  }
+
   actualizarEsperaEstimada();
 });
 
@@ -190,15 +211,19 @@ function renderJuegoPane(j) {
             ${sigTexto}
           </div>`;
       }
+      const subcatHtml = t.subcategoria_nombre
+        ? `<span class="badge bg-success bg-opacity-75 ms-1"><i class="bi bi-diagram-3 me-1"></i>${t.subcategoria_nombre}</span>`
+        : '';
       return `
       <div class="turno-row jugando d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div class="d-flex align-items-center gap-3">
           <span class="biper-num">${t.biper_numero}</span>
           <div>
             <div class="fw-bold">${t.nombre_cliente || 'Sin nombre'}</div>
-            <div class="d-flex gap-2 mt-1">
+            <div class="d-flex gap-2 mt-1 flex-wrap">
               <span class="miembros-badge"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
               <span class="badge bg-primary"><i class="bi bi-play-fill me-1"></i>JUGANDO</span>
+              ${subcatHtml}
             </div>
             ${etapaHtml}
           </div>
@@ -248,6 +273,9 @@ function renderJuegoPane(j) {
         <i class="bi bi-chevron-down"></i>
       </button>`;
 
+      const subcatEsperaHtml = t.subcategoria_nombre
+        ? `<span class="badge bg-success bg-opacity-75"><i class="bi bi-diagram-3 me-1"></i>${t.subcategoria_nombre}</span>`
+        : '';
       return `
       <div class="turno-row d-flex align-items-center justify-content-between flex-wrap gap-2 ${esPrimero ? '' : 'opacity-65'}">
         <div class="d-flex align-items-center gap-3">
@@ -255,8 +283,9 @@ function renderJuegoPane(j) {
           <span class="biper-num">${t.biper_numero}</span>
           <div>
             <div class="fw-bold">${t.nombre_cliente || 'Sin nombre'}</div>
-            <div class="d-flex gap-2 mt-1">
+            <div class="d-flex gap-2 mt-1 flex-wrap">
               <span class="miembros-badge"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
+              ${subcatEsperaHtml}
             </div>
           </div>
         </div>
@@ -299,16 +328,22 @@ document.getElementById('btnMas').addEventListener('click', () => {
 
 document.getElementById('formRegistro').addEventListener('submit', async e => {
   e.preventDefault();
-  const atraccion_id     = document.getElementById('selectJuego').value;
-  const biper_numero     = document.getElementById('inputBiper').value;
-  const nombre_cliente   = document.getElementById('inputNombre').value.trim();
+  const atraccion_id      = document.getElementById('selectJuego').value;
+  const biper_numero      = document.getElementById('inputBiper').value;
+  const nombre_cliente    = document.getElementById('inputNombre').value.trim();
   const cantidad_miembros = parseInt(document.getElementById('inputMiembros').value) || 1;
   const viper_id          = document.getElementById('selectViper')?.value || null;
+
+  const opt           = document.getElementById('selectJuego').selectedOptions[0];
+  const usaSubs       = opt?.dataset.usaSubcategorias === '1';
+  const subcategoria_id = usaSubs ? (document.getElementById('selectSubcategoria').value || null) : null;
 
   if (!atraccion_id || !biper_numero || !nombre_cliente) {
     mostrarToast('Completá juego, biper y nombre del grupo', 'warning'); return;
   }
-  const opt  = document.getElementById('selectJuego').selectedOptions[0];
+  if (usaSubs && !subcategoria_id) {
+    mostrarToast('Seleccioná una subcategoría para este juego', 'warning'); return;
+  }
   const minM = parseInt(opt?.dataset.minMiembros) || 1;
   const maxM = parseInt(opt?.dataset.maxMiembros) || 30;
   if (cantidad_miembros < minM || cantidad_miembros > maxM) {
@@ -317,7 +352,7 @@ document.getElementById('formRegistro').addEventListener('submit', async e => {
 
   const res  = await fetch('/api/turnos', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id })
+    body: JSON.stringify({ atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id, subcategoria_id })
   });
   const data = await res.json();
 
@@ -328,6 +363,8 @@ document.getElementById('formRegistro').addEventListener('submit', async e => {
   document.getElementById('inputMiembros').value = '1';
   document.getElementById('duracionJuego').textContent = '';
   document.getElementById('tiempoEsperaWrap').classList.add('d-none');
+  document.getElementById('wrapSubcategoria').classList.add('d-none');
+  document.getElementById('selectSubcategoria').innerHTML = '<option value="">Seleccionar subcategoría…</option>';
   await cargarCola();
 });
 

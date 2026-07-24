@@ -108,6 +108,8 @@ db.exec(`
   "ALTER TABLE vipers      ADD COLUMN fecha_creacion             DATETIME",
   "ALTER TABLE vipers      ADD COLUMN ultima_activacion          DATETIME",
   "ALTER TABLE turnos      ADD COLUMN orden_cola                INTEGER",
+  "ALTER TABLE atracciones ADD COLUMN usa_subcategorias         INTEGER DEFAULT 0",
+  "ALTER TABLE turnos      ADD COLUMN subcategoria_id           INTEGER REFERENCES juego_subcategorias(id)",
 ].forEach(sql => { try { db.exec(sql); } catch (_) {} });
 
 // Inicializar orden_cola para turnos existentes sin valor
@@ -142,6 +144,16 @@ db.exec(`
     finalizada_at   DATETIME DEFAULT NULL,
     iniciada_por    INTEGER REFERENCES usuarios(id),
     finalizada_por  INTEGER REFERENCES usuarios(id)
+  );
+`);
+
+// ── Tabla juego_subcategorias ─────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS juego_subcategorias (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    juego_id INTEGER NOT NULL REFERENCES atracciones(id) ON DELETE CASCADE,
+    nombre   TEXT    NOT NULL,
+    orden    INTEGER NOT NULL DEFAULT 1
   );
 `);
 

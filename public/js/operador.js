@@ -89,6 +89,7 @@ function cardEsperando(t) {
             <div class="fw-semibold">${t.nombre_cliente || '<span class="text-muted">Sin nombre</span>'}</div>
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
               <span class="atraccion-tag">${t.atraccion_nombre}</span>
+              ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${t.subcategoria_nombre}</span>` : ''}
               ${t.duracion_minutos ? `<span class="duracion-tag"><i class="bi bi-clock me-1"></i>${t.duracion_minutos} min</span>` : ''}
               <span class="hora-tag">${formatHora(t.created_at)}</span>
             </div>
@@ -144,6 +145,7 @@ function cardLlamado(t) {
             <div class="fw-semibold">${t.nombre_cliente || '<span class="text-muted">Sin nombre</span>'}</div>
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
               <span class="atraccion-tag">${t.atraccion_nombre}</span>
+              ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${t.subcategoria_nombre}</span>` : ''}
               ${duracion ? `<span class="duracion-tag"><i class="bi bi-clock me-1"></i>${duracion} min est.</span>` : ''}
               <span class="timer-badge ${vencido ? 'timer-vencido' : ''}" data-called="${t.called_at}" data-duracion="${duracion}" id="timer-${t.id}">
                 <i class="bi bi-stopwatch me-1"></i>${elapsed} min en juego
