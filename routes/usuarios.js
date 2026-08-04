@@ -6,7 +6,7 @@ const { requireAuth } = require('../middleware/auth');
 
 router.use(requireAuth('admin'));
 
-// Bug 1: excluir superadmin de la lista que ve el admin
+// Admin no ve al superadmin en su lista
 router.get('/', (req, res) => {
   const usuarios = db.prepare(`
     SELECT u.id, u.nombre, u.username, u.rol, u.atraccion_id, u.activo,
@@ -60,7 +60,6 @@ router.put('/:id', (req, res) => {
     return res.status(400).json({ error: 'Nombre, usuario y rol son requeridos' });
   }
 
-  // Bug 1: admin no puede editar al superadmin
   const target = db.prepare("SELECT rol FROM usuarios WHERE id=?").get(id);
   if (!target) return res.status(404).json({ error: 'Usuario no encontrado' });
   if (target.rol === 'superadmin') return res.status(403).json({ error: 'No autorizado' });
@@ -83,34 +82,34 @@ router.put('/:id', (req, res) => {
   res.json({ ok: true });
 });
 
-// Bug 11: eliminación real si no hay historial, desactivación si tiene historial
 router.delete('/:id', (req, res) => {
   const { id } = req.params;
-  const user = db.prepare("SELECT rol, activo FROM usuarios WHERE id=?").get(id);
+
+  if (String(req.session.usuario?.id) === String(id)) {
+    return res.status(400).json({ error: 'No podés eliminar tu propio usuario mientras estás conectado' });
+  }
+
+  const user = db.prepare("SELECT id, username, rol FROM usuarios WHERE id=?").get(id);
   if (!user) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-  // Bug 1: admin no puede eliminar al superadmin
+  // Admin no puede eliminar al superadmin
   if (user.rol === 'superadmin') return res.status(403).json({ error: 'No autorizado' });
 
-  if (user.rol === 'admin') {
-    const admins = db.prepare("SELECT COUNT(*) AS c FROM usuarios WHERE rol='admin' AND activo=1").get();
-    if (admins.c <= 1) return res.status(400).json({ error: 'No se puede eliminar el único administrador' });
+  // El usuario demo nunca puede eliminarse
+  if (user.username === 'demo') {
+    return res.status(400).json({ error: 'El usuario demo no puede eliminarse' });
   }
 
-  // Verificar si el usuario tiene historial en turnos
-  const historial = db.prepare(
-    "SELECT COUNT(*) AS c FROM turnos WHERE llamado_por=? OR finalizado_por=?"
-  ).get(id, id);
+  // Nullificar referencias para preservar historial (no eliminar turnos)
+  db.prepare("UPDATE turnos SET llamado_por = NULL WHERE llamado_por = ?").run(id);
+  db.prepare("UPDATE turnos SET finalizado_por = NULL WHERE finalizado_por = ?").run(id);
+  db.prepare("UPDATE turnos SET creado_por = NULL WHERE creado_por = ?").run(id);
+  db.prepare("UPDATE turno_etapas_historial SET iniciada_por = NULL WHERE iniciada_por = ?").run(id);
+  db.prepare("UPDATE turno_etapas_historial SET finalizada_por = NULL WHERE finalizada_por = ?").run(id);
+  db.prepare("UPDATE viper_eventos SET usuario_id = NULL WHERE usuario_id = ?").run(id);
 
-  if (historial.c > 0) {
-    // Tiene historial: solo desactivar para preservar integridad referencial
-    db.prepare("UPDATE usuarios SET activo=0 WHERE id=?").run(id);
-    return res.json({ ok: true, accion: 'desactivado', razon: 'tiene_historial' });
-  }
-
-  // Sin historial: eliminar permanentemente
   db.prepare("DELETE FROM usuarios WHERE id=?").run(id);
-  res.json({ ok: true, accion: 'eliminado' });
+  res.json({ ok: true });
 });
 
 module.exports = router;

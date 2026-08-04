@@ -13,22 +13,23 @@ const io     = new Server(server);
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(express.json());
 app.use(session({
-  secret:            'turno-biper-secret-2024',
+  secret:            process.env.SESSION_SECRET || 'turno-biper-secret-2024',
   resave:            false,
   saveUninitialized: false,
   cookie:            { secure: false, maxAge: 10 * 60 * 60 * 1000 } // 10 h
 }));
 
-// Pantalla pública sin auth
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Rutas API ─────────────────────────────────────────────────────────────────
-app.use('/api/auth',       require('./routes/auth'));
-app.use('/api/atracciones',require('./routes/atracciones'));
-app.use('/api/turnos',     require('./routes/turnos')(io));
-app.use('/api/usuarios',   require('./routes/usuarios'));
-app.use('/api/stats',      require('./routes/stats'));
-app.use('/api/superadmin', require('./routes/superadmin'));
+app.use('/api/auth',        require('./routes/auth'));
+app.use('/api/atracciones', require('./routes/atracciones'));
+app.use('/api/turnos',      require('./routes/turnos')(io));
+app.use('/api/usuarios',    require('./routes/usuarios'));
+app.use('/api/stats',       require('./routes/stats'));
+app.use('/api/superadmin',  require('./routes/superadmin'));
+app.use('/api/vipers',      require('./routes/vipers')(io));
+app.use('/api/serial',      require('./routes/serial'));
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 io.on('connection', socket => {

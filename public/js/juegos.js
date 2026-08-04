@@ -44,6 +44,7 @@ async function cargarJuegos() {
       <td class="ps-4 fw-semibold">
         ${j.nombre}
         ${j.usa_etapas ? `<span class="etapas-badge ms-2"><i class="bi bi-layers me-1"></i>${j.etapas.length} etapas</span>` : ''}
+        ${j.usa_subcategorias ? `<span class="subcategorias-badge ms-2"><i class="bi bi-diagram-3 me-1"></i>${j.subcategorias.length} subcategorías</span>` : ''}
       </td>
       <td><span class="duracion-badge"><i class="bi bi-clock me-1"></i>${j.duracion_minutos} min</span></td>
       <td><span class="text-muted small"><i class="bi bi-people me-1"></i>${j.min_miembros || 1}–${j.max_miembros || 20}</span></td>
@@ -106,9 +107,41 @@ function crearFilaEtapa(nombre = '', minutos = 15, activa = 1) {
   return div;
 }
 
+function crearFilaSubcategoria(id = '', nombre = '') {
+  const div = document.createElement('div');
+  div.className = 'sub-row';
+  div.dataset.id = id;
+  div.innerHTML = `
+    <input type="text" class="form-control sub-nombre" placeholder="Nombre de la subcategoría" value="${String(nombre).replace(/"/g,'&quot;')}" maxlength="60">
+    <button type="button" class="btn btn-outline-secondary btn-move" title="Subir"><i class="bi bi-arrow-up"></i></button>
+    <button type="button" class="btn btn-outline-secondary btn-move" title="Bajar"><i class="bi bi-arrow-down"></i></button>
+    <button type="button" class="btn btn-outline-danger btn-eliminar-sub" title="Eliminar"><i class="bi bi-trash"></i></button>`;
+  div.querySelector('[title="Subir"]').addEventListener('click', () => {
+    const prev = div.previousElementSibling;
+    if (prev) div.parentNode.insertBefore(div, prev);
+  });
+  div.querySelector('[title="Bajar"]').addEventListener('click', () => {
+    const next = div.nextElementSibling;
+    if (next) div.parentNode.insertBefore(next, div);
+  });
+  div.querySelector('.btn-eliminar-sub').addEventListener('click', () => div.remove());
+  return div;
+}
+
 document.getElementById('btnAgregarEtapa').addEventListener('click', () => {
   document.getElementById('listaEtapas').appendChild(crearFilaEtapa());
   calcularTotalEtapas();
+});
+
+document.getElementById('btnAgregarSubcategoria').addEventListener('click', () => {
+  document.getElementById('listaSubcategorias').appendChild(crearFilaSubcategoria());
+});
+
+document.getElementById('jUsaSubcategorias').addEventListener('change', function () {
+  document.getElementById('seccionSubcategorias').classList.toggle('d-none', !this.checked);
+  if (this.checked && document.getElementById('listaSubcategorias').children.length === 0) {
+    document.getElementById('listaSubcategorias').appendChild(crearFilaSubcategoria());
+  }
 });
 
 document.getElementById('jUsaEtapas').addEventListener('change', function () {
@@ -129,10 +162,13 @@ function limpiarModal() {
   document.getElementById('jMaxMiembros').value = '20';
   document.getElementById('jActivo').checked    = true;
   document.getElementById('jUsaEtapas').checked = false;
+  document.getElementById('jUsaSubcategorias').checked = false;
   document.getElementById('listaEtapas').innerHTML = '';
+  document.getElementById('listaSubcategorias').innerHTML = '';
   document.getElementById('totalDuracion').textContent = '0 minutos';
   document.getElementById('wrapDuracionManual').classList.remove('d-none');
   document.getElementById('seccionEtapas').classList.add('d-none');
+  document.getElementById('seccionSubcategorias').classList.add('d-none');
   document.getElementById('activoWrap').style.display = 'none';
   document.getElementById('juegoError').classList.add('d-none');
 }
@@ -170,6 +206,13 @@ async function editarJuego(id) {
     document.getElementById('jDuracion').value = j.duracion_minutos;
   }
 
+  if (j.usa_subcategorias) {
+    document.getElementById('jUsaSubcategorias').checked = true;
+    document.getElementById('seccionSubcategorias').classList.remove('d-none');
+    const listaSubs = document.getElementById('listaSubcategorias');
+    (j.subcategorias || []).forEach(s => listaSubs.appendChild(crearFilaSubcategoria(s.id, s.nombre)));
+  }
+
   modalJuego().show();
 }
 
@@ -187,7 +230,8 @@ document.getElementById('btnGuardarJuego').addEventListener('click', async () =>
   if (!nombre) { errEl.textContent = 'El nombre es requerido'; errEl.classList.remove('d-none'); return; }
   if (minM < 1 || maxM < minM) { errEl.textContent = 'El rango de personas no es válido'; errEl.classList.remove('d-none'); return; }
 
-  let payload = { nombre, activa, min_miembros: minM, max_miembros: maxM, usa_etapas: usaEtapas };
+  const usaSubcategorias = document.getElementById('jUsaSubcategorias').checked;
+  let payload = { nombre, activa, min_miembros: minM, max_miembros: maxM, usa_etapas: usaEtapas, usa_subcategorias: usaSubcategorias };
 
   if (usaEtapas) {
     const filas = document.querySelectorAll('#listaEtapas .etapa-row');
@@ -216,6 +260,17 @@ document.getElementById('btnGuardarJuego').addEventListener('click', async () =>
       return;
     }
     payload.duracion_minutos = duracion;
+  }
+
+  if (usaSubcategorias) {
+    const filasS = document.querySelectorAll('#listaSubcategorias .sub-row');
+    if (!filasS.length) { errEl.textContent = 'Debe agregar al menos una subcategoría'; errEl.classList.remove('d-none'); return; }
+    const subcategorias = Array.from(filasS).map(fila => ({
+      id:     fila.dataset.id || undefined,
+      nombre: fila.querySelector('.sub-nombre').value.trim(),
+    }));
+    if (subcategorias.some(s => !s.nombre)) { errEl.textContent = 'Todas las subcategorías deben tener nombre'; errEl.classList.remove('d-none'); return; }
+    payload.subcategorias = subcategorias;
   }
 
   const url    = id ? `/api/atracciones/${id}` : '/api/atracciones';

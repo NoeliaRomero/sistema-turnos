@@ -1,20 +1,24 @@
 const express = require('express');
 const db = require('../db/database');
 const { requireAuth, requirePermission } = require('../middleware/auth');
+const serialService = require('../server/services/serialService');
 
+// Incluye etapa_actual, subcategoria y campos de estado jugando
 const SELECT_TURNO = `
   SELECT t.*,
-         a.nombre AS atraccion_nombre, a.duracion_minutos, a.usa_etapas,
+         a.nombre AS atraccion_nombre, a.duracion_minutos, a.usa_etapas, a.usa_subcategorias,
          ul.nombre AS llamado_por_nombre,
          uf.nombre AS finalizado_por_nombre,
          ea.nombre  AS etapa_actual_nombre,
          ea.orden   AS etapa_actual_orden,
-         ea.duracion_minutos AS etapa_actual_duracion
+         ea.duracion_minutos AS etapa_actual_duracion,
+         sc.nombre  AS subcategoria_nombre
   FROM turnos t
   JOIN atracciones a ON t.atraccion_id = a.id
   LEFT JOIN usuarios ul    ON t.llamado_por    = ul.id
   LEFT JOIN usuarios uf    ON t.finalizado_por = uf.id
   LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id
+  LEFT JOIN juego_subcategorias sc ON t.subcategoria_id = sc.id
   WHERE t.id = ?
 `;
 
@@ -41,54 +45,17 @@ function conEtapaSig(turno) {
 module.exports = (io) => {
   const router = express.Router();
 
-  // Timers de transición llamado → jugando (Bug 4)
+  // Timers de transición llamado → jugando
   const timerLlamado = new Map();
 
-  // ── Auto-llamado interno (Bugs 3, 6, 13) ──────────────────────────────────────
-  function autoLlamarSiguiente(atraccionId) {
-    const activo = db.prepare(
-      "SELECT id FROM turnos WHERE atraccion_id=? AND estado IN ('llamado','jugando')"
-    ).get(atraccionId);
-    if (activo) return;
-
-    const primero = db.prepare(
-      "SELECT * FROM turnos WHERE atraccion_id=? AND estado='esperando' ORDER BY created_at ASC, id ASC LIMIT 1"
-    ).get(atraccionId);
-    if (!primero) return;
-
-    _ejecutarLlamado(primero);
-  }
-
-  function _ejecutarLlamado(turnoRow) {
-    db.prepare(
-      "UPDATE turnos SET estado='llamado', called_at=datetime('now','localtime') WHERE id=?"
-    ).run(turnoRow.id);
-
-    if (turnoRow.etapa_actual_id) {
-      db.prepare(`
-        UPDATE turno_etapas_historial
-        SET iniciada_at=datetime('now','localtime')
-        WHERE turno_id=? AND etapa_id=? AND iniciada_at IS NULL
-      `).run(turnoRow.id, turnoRow.etapa_actual_id);
-    }
-
-    const turno = conEtapaSig(db.prepare(SELECT_TURNO).get(turnoRow.id));
-    io.emit('turno:llamado', turno);
-    io.emit('biper:activar', { numero: turno.biper_numero, turno });
-
-    _iniciarTimerJugando(turno.id);
-  }
-
-  // Timer 5 min: llamado → jugando (Bug 4)
+  // Timer 5 min: llamado → jugando
   function _iniciarTimerJugando(turnoId) {
     if (timerLlamado.has(turnoId)) clearTimeout(timerLlamado.get(turnoId));
 
     const handle = setTimeout(() => {
       timerLlamado.delete(turnoId);
-      const rows = db.prepare(
-        "SELECT id FROM turnos WHERE id=? AND estado='llamado'"
-      ).get(turnoId);
-      if (!rows) return;
+      const row = db.prepare("SELECT id FROM turnos WHERE id=? AND estado='llamado'").get(turnoId);
+      if (!row) return;
 
       db.prepare(
         "UPDATE turnos SET estado='jugando', jugando_desde=datetime('now','localtime') WHERE id=? AND estado='llamado'"
@@ -101,14 +68,12 @@ module.exports = (io) => {
     timerLlamado.set(turnoId, handle);
   }
 
-  // Restaurar timers al reiniciar el servidor
+  // Restaurar timers al reiniciar el servidor para turnos que ya estaban en 'llamado'
   {
-    const llamados = db.prepare(
-      "SELECT id, called_at FROM turnos WHERE estado='llamado'"
-    ).all();
+    const llamados = db.prepare("SELECT id, called_at FROM turnos WHERE estado='llamado'").all();
     llamados.forEach(t => {
-      const elapsed    = t.called_at ? (Date.now() - new Date(t.called_at).getTime()) : 0;
-      const remaining  = Math.max(1000, 5 * 60 * 1000 - elapsed);
+      const elapsed   = t.called_at ? (Date.now() - new Date(t.called_at).getTime()) : 0;
+      const remaining = Math.max(1000, 5 * 60 * 1000 - elapsed);
       const handle = setTimeout(() => {
         timerLlamado.delete(t.id);
         db.prepare(
@@ -126,7 +91,7 @@ module.exports = (io) => {
     const usuario = req.session.usuario;
     const ahora   = Date.now();
 
-    // Bug 5: Operadores solo ven su propio juego
+    // Operadores solo ven su propio juego
     const whereAtraccion = usuario.rol === 'operador' && usuario.atraccion_id
       ? 'WHERE activa = 1 AND id = ?' : 'WHERE activa = 1 ORDER BY nombre';
     const atraccionParams = usuario.rol === 'operador' && usuario.atraccion_id
@@ -136,20 +101,23 @@ module.exports = (io) => {
     ).all(...atraccionParams);
 
     const juegos = atracciones.map(a => {
+      // Activos = llamado + jugando
       const activos = db.prepare(`
         SELECT t.*, ul.nombre AS llamado_por_nombre,
                ea.nombre  AS etapa_actual_nombre,
-               ea.orden   AS etapa_actual_orden
+               ea.orden   AS etapa_actual_orden,
+               sc.nombre  AS subcategoria_nombre
         FROM turnos t
-        LEFT JOIN usuarios ul     ON t.llamado_por    = ul.id
-        LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id
+        LEFT JOIN usuarios ul      ON t.llamado_por    = ul.id
+        LEFT JOIN juego_etapas ea  ON t.etapa_actual_id = ea.id
+        LEFT JOIN juego_subcategorias sc ON t.subcategoria_id = sc.id
         WHERE t.atraccion_id = ? AND t.estado IN ('llamado','jugando')
         ORDER BY t.called_at ASC
       `).all(a.id).map(t => {
         const baseTime  = t.jugando_desde || t.called_at;
         const elapsed   = baseTime ? Math.floor((ahora - new Date(baseTime).getTime()) / 60000) : 0;
         const restante  = Math.max(0, a.duracion_minutos - elapsed);
-        const sig       = t.etapa_actual_orden != null ? etapaSiguiente(a.id, t.etapa_actual_orden) : null;
+        const sig = t.etapa_actual_orden != null ? etapaSiguiente(a.id, t.etapa_actual_orden) : null;
         return {
           ...t,
           tiempo_transcurrido: elapsed,
@@ -159,11 +127,13 @@ module.exports = (io) => {
       });
 
       const esperando = db.prepare(`
-        SELECT t.*, ea.nombre AS etapa_actual_nombre
+        SELECT t.*, ea.nombre AS etapa_actual_nombre,
+               sc.nombre AS subcategoria_nombre
         FROM turnos t
         LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id
+        LEFT JOIN juego_subcategorias sc ON t.subcategoria_id = sc.id
         WHERE t.atraccion_id = ? AND t.estado = 'esperando'
-        ORDER BY t.created_at ASC
+        ORDER BY t.orden_cola ASC, t.id ASC
       `).all(a.id);
 
       let acumulado = activos.reduce((s, t) => s + t.tiempo_restante, 0);
@@ -179,7 +149,7 @@ module.exports = (io) => {
     res.json({ juegos });
   });
 
-  // ── Cola pública (sin auth) — para pantalla TV ───────────────────────────────
+  // ── Cola pública (sin auth) — para pantalla TV ────────────────────────────────
   router.get('/cola-publica', (req, res) => {
     const ahora      = Date.now();
     const atracciones = db.prepare('SELECT * FROM atracciones WHERE activa = 1 ORDER BY nombre').all();
@@ -204,7 +174,7 @@ module.exports = (io) => {
         SELECT t.biper_numero, t.nombre_cliente, t.cantidad_miembros, t.created_at
         FROM turnos t
         WHERE t.atraccion_id = ? AND t.estado = 'esperando'
-        ORDER BY t.created_at ASC
+        ORDER BY t.orden_cola ASC, t.id ASC
       `).all(a.id);
 
       let acumulado = activos.reduce((s, t) => s + t.tiempo_restante, 0);
@@ -250,7 +220,7 @@ module.exports = (io) => {
     `;
     const params = [];
 
-    // Bug 5: operadores solo ven su propio juego
+    // Operadores solo ven su propio juego
     if (usuario.rol === 'operador' && usuario.atraccion_id) {
       q += ' AND t.atraccion_id = ?';
       params.push(usuario.atraccion_id);
@@ -285,16 +255,31 @@ module.exports = (io) => {
 
   // ── Registrar turno (recepcion) ───────────────────────────────────────────────
   router.post('/', requireAuth('admin','recepcion'), (req, res) => {
-    const { atraccion_id, biper_numero, nombre_cliente, cantidad_miembros } = req.body;
+    const { atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id, subcategoria_id } = req.body;
     if (!atraccion_id || !biper_numero) {
       return res.status(400).json({ error: 'atraccion_id y biper_numero son requeridos' });
     }
+
+    if (viper_id) {
+      const viper = db.prepare("SELECT id FROM vipers WHERE id = ? AND estado = 'ACTIVO'").get(viper_id);
+      if (!viper) return res.status(400).json({ error: 'El VIPER seleccionado no está activo' });
+    }
+
     const enUso = db
-      .prepare("SELECT id FROM turnos WHERE biper_numero=? AND estado IN ('esperando','llamado','jugando')")
-      .get(String(biper_numero));
-    if (enUso) return res.status(409).json({ error: `El biper ${biper_numero} ya está en uso` });
+      .prepare("SELECT id FROM turnos WHERE biper_numero=? AND atraccion_id=? AND estado IN ('esperando','llamado','jugando')")
+      .get(String(biper_numero), atraccion_id);
+    if (enUso) return res.status(409).json({ error: `El biper ${biper_numero} ya está en uso en este juego` });
 
     const juego = db.prepare('SELECT * FROM atracciones WHERE id = ?').get(atraccion_id);
+
+    // Validar subcategoria si el juego la usa
+    if (juego && juego.usa_subcategorias) {
+      if (!subcategoria_id) {
+        return res.status(400).json({ error: 'Debe seleccionar una subcategoría para este juego' });
+      }
+      const sub = db.prepare('SELECT id FROM juego_subcategorias WHERE id = ? AND juego_id = ?').get(subcategoria_id, atraccion_id);
+      if (!sub) return res.status(400).json({ error: 'La subcategoría seleccionada no pertenece a este juego' });
+    }
 
     let primeraEtapa = null;
     if (juego && juego.usa_etapas) {
@@ -305,9 +290,19 @@ module.exports = (io) => {
       `).get(atraccion_id);
     }
 
+    const { maxOrden } = db.prepare(
+      "SELECT COALESCE(MAX(orden_cola), 0) AS maxOrden FROM turnos WHERE atraccion_id = ? AND estado = 'esperando'"
+    ).get(atraccion_id);
+    const nuevoOrden = maxOrden + 1;
+
     const result = db.prepare(
-      'INSERT INTO turnos (atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, etapa_actual_id, creado_por) VALUES (?,?,?,?,?,?)'
-    ).run(atraccion_id, String(biper_numero), nombre_cliente || null, cantidad_miembros || 1, primeraEtapa?.id ?? null, req.session.usuario.id);
+      'INSERT INTO turnos (atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id, etapa_actual_id, orden_cola, subcategoria_id, creado_por) VALUES (?,?,?,?,?,?,?,?,?)'
+    ).run(
+      atraccion_id, String(biper_numero), nombre_cliente || null,
+      cantidad_miembros || 1, viper_id || null, primeraEtapa?.id ?? null,
+      nuevoOrden, (juego?.usa_subcategorias && subcategoria_id) ? subcategoria_id : null,
+      req.session.usuario.id
+    );
 
     const turnoId = Number(result.lastInsertRowid);
 
@@ -321,37 +316,233 @@ module.exports = (io) => {
     const turno = conEtapaSig(db.prepare(SELECT_TURNO).get(turnoId));
     io.emit('turno:nuevo', turno);
     res.status(201).json(turno);
-
-    // Bug 13: Llamado automático si no hay turno activo en ese juego
-    setImmediate(() => autoLlamarSiguiente(atraccion_id));
   });
 
-  // ── Llamar turno: solo el sistema (Bug 12) ────────────────────────────────────
-  router.put('/:id/llamar', requireAuth('admin','operador','recepcion'), (req, res) => {
-    return res.status(403).json({
-      error: 'El sistema llama los turnos automáticamente en orden de llegada. No se permite llamado manual.'
-    });
+  // ── Llamar turno (manual, con subcategorías, Combinar y VIPER) ───────────────
+  router.put('/:id/llamar', requirePermission('permiso_llamar_turno'), (req, res) => {
+    const { id } = req.params;
+    const force = req.body?.force === true;
+
+    const turnoActual = db.prepare(
+      "SELECT * FROM turnos WHERE id=? AND estado='esperando'"
+    ).get(Number(id));
+    if (!turnoActual) {
+      return res.status(400).json({ error: 'El turno no existe o ya fue llamado' });
+    }
+
+    // Detectar modo "combinar": ya hay grupos del mismo juego+subcategoría en llamado/jugando
+    const modoCombinable = (() => {
+      if (turnoActual.subcategoria_id) {
+        return db.prepare(
+          "SELECT COUNT(*) AS c FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id = ?"
+        ).get(turnoActual.atraccion_id, turnoActual.subcategoria_id).c > 0;
+      }
+      return db.prepare(
+        "SELECT COUNT(*) AS c FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando')"
+      ).get(turnoActual.atraccion_id).c > 0;
+    })();
+
+    console.log(`[LLAMAR] turno=${turnoActual.id} atraccion=${turnoActual.atraccion_id} subcat=${turnoActual.subcategoria_id ?? 'ninguna'} modoCombinable=${modoCombinable}`);
+
+    // Verificar que sea el primero en la cola solo cuando no hay nadie activo aún
+    if (!modoCombinable) {
+      let primero;
+      if (turnoActual.subcategoria_id) {
+        primero = db.prepare(`
+          SELECT id FROM turnos
+          WHERE atraccion_id = ? AND subcategoria_id = ? AND estado = 'esperando'
+          ORDER BY orden_cola ASC, id ASC LIMIT 1
+        `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id);
+      } else {
+        primero = db.prepare(`
+          SELECT id FROM turnos
+          WHERE atraccion_id = ? AND subcategoria_id IS NULL AND estado = 'esperando'
+          ORDER BY orden_cola ASC, id ASC LIMIT 1
+        `).get(turnoActual.atraccion_id);
+      }
+
+      if (primero && primero.id !== turnoActual.id) {
+        console.log(`[LLAMAR] RECHAZADO: no es primero en cola (primero=${primero.id})`);
+        return res.status(400).json({
+          error: 'Debe llamarse primero al grupo que llegó antes en la cola'
+        });
+      }
+    }
+
+    // Validación de biper en otro juego (omitible con force=true)
+    if (!force) {
+      const conflictoViper = db.prepare(`
+        SELECT t.id, t.nombre_cliente, t.biper_numero, t.called_at,
+               a.nombre AS atraccion_nombre, a.duracion_minutos
+        FROM turnos t
+        JOIN atracciones a ON t.atraccion_id = a.id
+        WHERE t.biper_numero = ?
+          AND t.atraccion_id != ?
+          AND t.estado IN ('llamado','jugando')
+      `).get(turnoActual.biper_numero, turnoActual.atraccion_id);
+
+      if (conflictoViper) {
+        const elapsed   = conflictoViper.called_at
+          ? Math.floor((Date.now() - new Date(conflictoViper.called_at).getTime()) / 60000) : 0;
+        const restante  = Math.max(0, conflictoViper.duracion_minutos - elapsed);
+        return res.status(200).json({
+          advertencia:    'biper_en_otro_juego',
+          biper_numero:   turnoActual.biper_numero,
+          juego_origen:   conflictoViper.atraccion_nombre,
+          nombre_cliente: conflictoViper.nombre_cliente,
+          tiempo_restante: restante,
+        });
+      }
+    }
+
+    const atraccionInfo = db.prepare(
+      'SELECT max_miembros, usa_subcategorias, usa_etapas FROM atracciones WHERE id = ?'
+    ).get(turnoActual.atraccion_id);
+
+    // Validación de subcategoría: bloquear si hay grupos de distinta subcategoría activos
+    if (atraccionInfo?.usa_subcategorias) {
+      let conflictoSubcat;
+      if (turnoActual.subcategoria_id) {
+        conflictoSubcat = db.prepare(`
+          SELECT COUNT(*) AS c FROM turnos
+          WHERE atraccion_id = ? AND estado IN ('llamado','jugando')
+            AND (subcategoria_id IS NULL OR subcategoria_id != ?)
+        `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id).c;
+      } else {
+        conflictoSubcat = db.prepare(`
+          SELECT COUNT(*) AS c FROM turnos
+          WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id IS NOT NULL
+        `).get(turnoActual.atraccion_id).c;
+      }
+      console.log(`[LLAMAR] conflictoSubcat=${conflictoSubcat} → ${conflictoSubcat > 0 ? 'RECHAZADO: subcategoría distinta activa' : 'OK'}`);
+      if (conflictoSubcat > 0) {
+        return res.status(400).json({
+          error: 'No se pueden mezclar subcategorías: solo grupos de la misma subcategoría pueden jugar juntos'
+        });
+      }
+    }
+
+    // Validación de etapa: no llamar si los grupos activos ya avanzaron de etapa
+    if (atraccionInfo?.usa_etapas) {
+      let avanzados;
+      if (atraccionInfo?.usa_subcategorias && turnoActual.subcategoria_id) {
+        avanzados = db.prepare(`
+          SELECT COUNT(*) AS c
+          FROM turnos t
+          LEFT JOIN juego_etapas e ON t.etapa_actual_id = e.id
+          WHERE t.atraccion_id = ? AND t.estado IN ('llamado','jugando')
+            AND t.subcategoria_id = ? AND COALESCE(e.orden, 1) > 1
+        `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id).c;
+      } else if (!atraccionInfo?.usa_subcategorias) {
+        avanzados = db.prepare(`
+          SELECT COUNT(*) AS c
+          FROM turnos t
+          LEFT JOIN juego_etapas e ON t.etapa_actual_id = e.id
+          WHERE t.atraccion_id = ? AND t.estado IN ('llamado','jugando')
+            AND COALESCE(e.orden, 1) > 1
+        `).get(turnoActual.atraccion_id).c;
+      } else {
+        avanzados = 0;
+      }
+      console.log(`[LLAMAR] avanzadosEtapa=${avanzados} → ${avanzados > 0 ? 'RECHAZADO: grupos en etapa > 1' : 'OK'}`);
+      if (avanzados > 0) {
+        return res.status(400).json({
+          error: 'No se puede llamar: los grupos que están jugando ya avanzaron de etapa'
+        });
+      }
+    }
+
+    // Validación de capacidad (omitible con force=true)
+    if (!force) {
+      let personasJugando;
+      if (atraccionInfo?.usa_subcategorias && turnoActual.subcategoria_id) {
+        ({ personasJugando } = db.prepare(`
+          SELECT COALESCE(SUM(cantidad_miembros), 0) AS personasJugando
+          FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id = ?
+        `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id));
+      } else if (atraccionInfo?.usa_subcategorias) {
+        ({ personasJugando } = db.prepare(`
+          SELECT COALESCE(SUM(cantidad_miembros), 0) AS personasJugando
+          FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id IS NULL
+        `).get(turnoActual.atraccion_id));
+      } else {
+        ({ personasJugando } = db.prepare(`
+          SELECT COALESCE(SUM(cantidad_miembros), 0) AS personasJugando
+          FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando')
+        `).get(turnoActual.atraccion_id));
+      }
+      const personasGrupo   = turnoActual.cantidad_miembros || 1;
+      const totalPersonas   = personasJugando + personasGrupo;
+      const maximoPermitido = atraccionInfo?.max_miembros || 20;
+
+      if (totalPersonas > maximoPermitido) {
+        return res.status(200).json({
+          advertencia: 'capacidad_excedida',
+          personasJugando,
+          personasGrupo,
+          totalPersonas,
+          maximoPermitido,
+        });
+      }
+    }
+
+    db.prepare(`
+      UPDATE turnos
+      SET estado='llamado', called_at=datetime('now','localtime'), llamado_por=?
+      WHERE id=?
+    `).run(req.session.usuario.id, id);
+
+    if (turnoActual.etapa_actual_id) {
+      db.prepare(`
+        UPDATE turno_etapas_historial
+        SET iniciada_at = datetime('now','localtime'), iniciada_por = ?
+        WHERE turno_id = ? AND etapa_id = ? AND iniciada_at IS NULL
+      `).run(req.session.usuario.id, id, turnoActual.etapa_actual_id);
+    }
+
+    const turno = conEtapaSig(db.prepare(SELECT_TURNO).get(Number(id)));
+    io.emit('turno:llamado', turno);
+    io.emit('biper:activar', { numero: turno.biper_numero, turno });
+
+    // Activar VIPER si corresponde
+    if (turno.viper_id) {
+      const viper = db.prepare("SELECT codigo_raw FROM vipers WHERE id = ? AND estado = 'ACTIVO'").get(turno.viper_id);
+      if (viper?.codigo_raw) {
+        serialService.enviarRaw(viper.codigo_raw, io).catch(err => {
+          console.error('[SERIAL] Error al transmitir RAW del turno', id, err.message);
+        });
+      }
+    }
+
+    // Iniciar timer de transición llamado → jugando
+    _iniciarTimerJugando(turno.id);
+
+    res.json(turno);
   });
 
-  // ── Avanzar / finalizar etapa (solo sobre estado jugando) ─────────────────────
+  // ── Avanzar / finalizar etapa (operador) ──────────────────────────────────────
   router.put('/:id/finalizar', requirePermission('permiso_llamar_turno'), (req, res) => {
     const { id } = req.params;
-
-    // Bug 5: Operador solo puede finalizar turnos de su juego
     const usuario = req.session.usuario;
 
     const turnoActual = db.prepare(`
       SELECT t.*, ea.orden AS etapa_actual_orden
       FROM turnos t
       LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id
-      WHERE t.id = ? AND t.estado = 'jugando'
+      WHERE t.id = ? AND t.estado IN ('llamado','jugando')
     `).get(Number(id));
 
-    if (!turnoActual) return res.status(400).json({ error: 'El turno no existe o no está en estado Jugando' });
+    if (!turnoActual) return res.status(400).json({ error: 'El turno no existe o no está activo (llamado o jugando)' });
 
     if (usuario.rol === 'operador' && usuario.atraccion_id &&
         usuario.atraccion_id !== turnoActual.atraccion_id) {
       return res.status(403).json({ error: 'Solo podés finalizar turnos de tu juego asignado' });
+    }
+
+    // Cancelar el timer de llamado→jugando al finalizar
+    if (timerLlamado.has(Number(id))) {
+      clearTimeout(timerLlamado.get(Number(id)));
+      timerLlamado.delete(Number(id));
     }
 
     if (!turnoActual.etapa_actual_id) {
@@ -364,9 +555,6 @@ module.exports = (io) => {
       const turno = db.prepare(SELECT_TURNO).get(Number(id));
       io.emit('turno:finalizado', turno);
       _notificarRecepcion(io, usuario, turno);
-
-      // Bug 13: auto-llamar siguiente
-      setImmediate(() => autoLlamarSiguiente(turnoActual.atraccion_id));
       return res.json(turno);
     }
 
@@ -401,25 +589,67 @@ module.exports = (io) => {
     const turno = db.prepare(SELECT_TURNO).get(Number(id));
     io.emit('turno:finalizado', turno);
     _notificarRecepcion(io, usuario, turno);
-
-    // Bug 13: auto-llamar siguiente
-    setImmediate(() => autoLlamarSiguiente(turnoActual.atraccion_id));
     res.json(turno);
   });
 
-  // ── No Llegó ──────────────────────────────────────────────────────────────────
-  // Solo válido en estado 'llamado' (ventana de 5 min), solo el operador asignado
+  // ── Mover turno en la cola (subir / bajar) ────────────────────────────────────
+  router.put('/:id/mover', requireAuth('admin', 'recepcion'), (req, res) => {
+    const { id } = req.params;
+    const { direccion } = req.body;
+
+    if (!['subir', 'bajar'].includes(direccion)) {
+      return res.status(400).json({ error: 'direccion debe ser "subir" o "bajar"' });
+    }
+
+    const turnoA = db.prepare(
+      "SELECT id, atraccion_id, orden_cola, subcategoria_id FROM turnos WHERE id = ? AND estado = 'esperando'"
+    ).get(Number(id));
+
+    if (!turnoA) {
+      return res.status(400).json({ error: 'El turno no existe o ya no está en espera' });
+    }
+
+    const op    = direccion === 'subir' ? '<' : '>';
+    const order = direccion === 'subir' ? 'DESC' : 'ASC';
+
+    let turnoB;
+    if (turnoA.subcategoria_id) {
+      turnoB = db.prepare(`
+        SELECT id, orden_cola FROM turnos
+        WHERE atraccion_id = ? AND estado = 'esperando' AND subcategoria_id = ? AND orden_cola ${op} ?
+        ORDER BY orden_cola ${order} LIMIT 1
+      `).get(turnoA.atraccion_id, turnoA.subcategoria_id, turnoA.orden_cola);
+    } else {
+      turnoB = db.prepare(`
+        SELECT id, orden_cola FROM turnos
+        WHERE atraccion_id = ? AND estado = 'esperando' AND subcategoria_id IS NULL AND orden_cola ${op} ?
+        ORDER BY orden_cola ${order} LIMIT 1
+      `).get(turnoA.atraccion_id, turnoA.orden_cola);
+    }
+
+    if (!turnoB) {
+      return res.status(400).json({ error: 'No se puede mover en esa dirección' });
+    }
+
+    db.prepare('UPDATE turnos SET orden_cola = ? WHERE id = ?').run(turnoB.orden_cola, turnoA.id);
+    db.prepare('UPDATE turnos SET orden_cola = ? WHERE id = ?').run(turnoA.orden_cola, turnoB.id);
+
+    io.emit('turno:reordenado', { atraccion_id: turnoA.atraccion_id });
+    res.json({ ok: true });
+  });
+
+  // ── No Llegó (estado diferenciado de cancelado) ───────────────────────────────
   router.put('/:id/cancelar', requirePermission('permiso_cancelar_turno'), (req, res) => {
     const { id } = req.params;
     const usuario = req.session.usuario;
 
     const turnoActual = db.prepare(
-      "SELECT * FROM turnos WHERE id=? AND estado='llamado'"
+      "SELECT * FROM turnos WHERE id=? AND estado IN ('llamado','jugando')"
     ).get(Number(id));
 
     if (!turnoActual) {
       return res.status(400).json({
-        error: 'Solo se puede marcar "No llegó" durante los primeros 5 minutos del llamado'
+        error: 'Solo se puede marcar "No llegó" a grupos en estado llamado o jugando'
       });
     }
 
@@ -428,13 +658,12 @@ module.exports = (io) => {
       return res.status(403).json({ error: 'Solo el operador asignado puede marcar "No llegó"' });
     }
 
-    // Cancelar el timer de llamado→jugando
+    // Cancelar timer de transición si existe
     if (timerLlamado.has(Number(id))) {
       clearTimeout(timerLlamado.get(Number(id)));
       timerLlamado.delete(Number(id));
     }
 
-    // Cerrar etapa activa y todas las pendientes si el juego usa etapas
     if (turnoActual.etapa_actual_id) {
       db.prepare(`
         UPDATE turno_etapas_historial
@@ -443,7 +672,6 @@ module.exports = (io) => {
       `).run(usuario.id, id);
     }
 
-    // Estado específico 'no_llego' diferente de 'cancelado'
     db.prepare(`
       UPDATE turnos
       SET estado='no_llego', finished_at=datetime('now','localtime'),
@@ -453,9 +681,6 @@ module.exports = (io) => {
 
     const turno = db.prepare(SELECT_TURNO).get(Number(id));
     io.emit('turno:finalizado', turno);
-
-    // Liberar el juego y llamar al siguiente automáticamente (Bug 13)
-    setImmediate(() => autoLlamarSiguiente(turnoActual.atraccion_id));
     res.json(turno);
   });
 
@@ -470,7 +695,7 @@ function _notificarRecepcion(io, usuario, turno) {
     FROM turnos t
     JOIN atracciones a ON t.atraccion_id = a.id
     WHERE t.atraccion_id = ? AND t.estado = 'esperando'
-    ORDER BY t.created_at ASC LIMIT 1
+    ORDER BY t.orden_cola ASC, t.id ASC LIMIT 1
   `).get(turno.atraccion_id);
 
   io.emit('recepcion:notificacion', {
