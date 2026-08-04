@@ -42,6 +42,25 @@ function conEtapaSig(turno) {
   return { ...turno, etapa_siguiente_nombre: sig ? sig.nombre : null };
 }
 
+// ── Sincronización de grupos combinados ───────────────────────────────────────
+function getSincronizar() {
+  try {
+    const cfg = db.prepare('SELECT sincronizar_grupos_combinados FROM configuracion_general WHERE id=1').get();
+    return cfg?.sincronizar_grupos_combinados === 1;
+  } catch { return false; }
+}
+
+function _hermanosCombinados(turno) {
+  if (turno.subcategoria_id) {
+    return db.prepare(
+      "SELECT t.*, ea.orden AS etapa_actual_orden FROM turnos t LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id WHERE t.atraccion_id=? AND t.subcategoria_id=? AND t.estado IN ('llamado','jugando') AND t.id!=?"
+    ).all(turno.atraccion_id, turno.subcategoria_id, turno.id);
+  }
+  return db.prepare(
+    "SELECT t.*, ea.orden AS etapa_actual_orden FROM turnos t LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id WHERE t.atraccion_id=? AND t.subcategoria_id IS NULL AND t.estado IN ('llamado','jugando') AND t.id!=?"
+  ).all(turno.atraccion_id, turno.id);
+}
+
 module.exports = (io) => {
   const router = express.Router();
 
@@ -62,7 +81,18 @@ module.exports = (io) => {
       ).run(turnoId);
 
       const turno = conEtapaSig(db.prepare(SELECT_TURNO).get(turnoId));
-      if (turno) io.emit('turno:jugando', turno);
+      if (turno) {
+        io.emit('turno:jugando', turno);
+
+        if (getSincronizar()) {
+          _hermanosCombinados(turno).filter(h => h.estado === 'llamado').forEach(h => {
+            if (timerLlamado.has(h.id)) { clearTimeout(timerLlamado.get(h.id)); timerLlamado.delete(h.id); }
+            db.prepare("UPDATE turnos SET estado='jugando', jugando_desde=datetime('now','localtime') WHERE id=? AND estado='llamado'").run(h.id);
+            const tH = conEtapaSig(db.prepare(SELECT_TURNO).get(h.id));
+            if (tH) io.emit('turno:jugando', tH);
+          });
+        }
+      }
     }, 5 * 60 * 1000);
 
     timerLlamado.set(turnoId, handle);
@@ -555,6 +585,20 @@ module.exports = (io) => {
       const turno = db.prepare(SELECT_TURNO).get(Number(id));
       io.emit('turno:finalizado', turno);
       _notificarRecepcion(io, usuario, turno);
+
+      if (getSincronizar()) {
+        _hermanosCombinados(turnoActual).forEach(h => {
+          if (timerLlamado.has(h.id)) { clearTimeout(timerLlamado.get(h.id)); timerLlamado.delete(h.id); }
+          if (h.etapa_actual_id) {
+            db.prepare("UPDATE turno_etapas_historial SET finalizada_at=datetime('now','localtime'), finalizada_por=? WHERE turno_id=? AND finalizada_at IS NULL").run(usuario.id, h.id);
+          }
+          db.prepare("UPDATE turnos SET estado='finalizado', finished_at=datetime('now','localtime'), finalizado_por=?, etapa_actual_id=NULL WHERE id=?").run(usuario.id, h.id);
+          const tH = db.prepare(SELECT_TURNO).get(h.id);
+          io.emit('turno:finalizado', tH);
+          _notificarRecepcion(io, usuario, tH);
+        });
+      }
+
       return res.json(turno);
     }
 
@@ -576,6 +620,27 @@ module.exports = (io) => {
 
       const turno = conEtapaSig(db.prepare(SELECT_TURNO).get(Number(id)));
       io.emit('turno:etapa_avanzada', turno);
+
+      if (getSincronizar()) {
+        _hermanosCombinados(turnoActual).forEach(h => {
+          if (h.etapa_actual_id) {
+            db.prepare("UPDATE turno_etapas_historial SET finalizada_at=datetime('now','localtime'), finalizada_por=? WHERE turno_id=? AND etapa_id=? AND finalizada_at IS NULL").run(usuario.id, h.id, h.etapa_actual_id);
+          }
+          const sigH = etapaSiguiente(h.atraccion_id, h.etapa_actual_orden ?? 0);
+          if (sigH) {
+            db.prepare("UPDATE turnos SET etapa_actual_id=? WHERE id=?").run(sigH.id, h.id);
+            db.prepare("INSERT INTO turno_etapas_historial (turno_id, etapa_id, etapa_nombre, etapa_orden, iniciada_at, iniciada_por) VALUES (?,?,?,?,datetime('now','localtime'),?)").run(h.id, sigH.id, sigH.nombre, sigH.orden, usuario.id);
+            const tH = conEtapaSig(db.prepare(SELECT_TURNO).get(h.id));
+            io.emit('turno:etapa_avanzada', tH);
+          } else {
+            db.prepare("UPDATE turnos SET estado='finalizado', finished_at=datetime('now','localtime'), finalizado_por=?, etapa_actual_id=NULL WHERE id=?").run(usuario.id, h.id);
+            const tH = db.prepare(SELECT_TURNO).get(h.id);
+            io.emit('turno:finalizado', tH);
+            _notificarRecepcion(io, usuario, tH);
+          }
+        });
+      }
+
       return res.json(turno);
     }
 
@@ -589,6 +654,20 @@ module.exports = (io) => {
     const turno = db.prepare(SELECT_TURNO).get(Number(id));
     io.emit('turno:finalizado', turno);
     _notificarRecepcion(io, usuario, turno);
+
+    if (getSincronizar()) {
+      _hermanosCombinados(turnoActual).forEach(h => {
+        if (timerLlamado.has(h.id)) { clearTimeout(timerLlamado.get(h.id)); timerLlamado.delete(h.id); }
+        if (h.etapa_actual_id) {
+          db.prepare("UPDATE turno_etapas_historial SET finalizada_at=datetime('now','localtime'), finalizada_por=? WHERE turno_id=? AND finalizada_at IS NULL").run(usuario.id, h.id);
+        }
+        db.prepare("UPDATE turnos SET estado='finalizado', finished_at=datetime('now','localtime'), finalizado_por=?, etapa_actual_id=NULL WHERE id=?").run(usuario.id, h.id);
+        const tH = db.prepare(SELECT_TURNO).get(h.id);
+        io.emit('turno:finalizado', tH);
+        _notificarRecepcion(io, usuario, tH);
+      });
+    }
+
     res.json(turno);
   });
 

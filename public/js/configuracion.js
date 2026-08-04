@@ -8,6 +8,7 @@ const socket = io();
   me = await res.json();
   if (me.rol !== 'admin') { window.location.href = '/login.html'; return; }
   document.getElementById('usuarioNombre').textContent = me.nombre;
+  cargarConfigGeneral();
   cargarVipers();
   cargarSerialConfig();
   cargarEstadoArduino();
@@ -569,3 +570,27 @@ function mostrarToast(mensaje, tipo = 'success') {
   new bootstrap.Toast(el, { delay: 3500 }).show();
   el.addEventListener('hidden.bs.toast', () => el.remove());
 }
+
+// ── Configuración General ─────────────────────────────────────────────────────
+async function cargarConfigGeneral() {
+  const res = await fetch('/api/config-general');
+  if (!res.ok) return;
+  const cfg = await res.json();
+  document.getElementById('switchSincronizarGrupos').checked = !!cfg.sincronizar_grupos_combinados;
+}
+
+document.getElementById('switchSincronizarGrupos').addEventListener('change', async function () {
+  const res = await fetch('/api/config-general', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sincronizar_grupos_combinados: this.checked ? 1 : 0 }),
+  });
+  const msg = document.getElementById('sincronizarGuardadoMsg');
+  if (res.ok) {
+    msg.classList.remove('d-none');
+    setTimeout(() => msg.classList.add('d-none'), 3000);
+  } else {
+    mostrarToast('Error al guardar la configuración', 'danger');
+    this.checked = !this.checked;
+  }
+});

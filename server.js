@@ -29,7 +29,8 @@ app.use('/api/usuarios',    require('./routes/usuarios'));
 app.use('/api/stats',       require('./routes/stats'));
 app.use('/api/superadmin',  require('./routes/superadmin'));
 app.use('/api/vipers',      require('./routes/vipers')(io));
-app.use('/api/serial',      require('./routes/serial'));
+app.use('/api/serial',         require('./routes/serial'));
+app.use('/api/config-general', require('./routes/config-general'));
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 io.on('connection', socket => {

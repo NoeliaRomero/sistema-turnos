@@ -154,6 +154,14 @@ db.exec(`
   );
 `);
 
+// ── Tabla configuracion_general ───────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS configuracion_general (
+    id                            INTEGER PRIMARY KEY,
+    sincronizar_grupos_combinados INTEGER NOT NULL DEFAULT 0
+  );
+`);
+
 // ── Tabla juego_subcategorias ─────────────────────────────────────────────────
 db.exec(`
   CREATE TABLE IF NOT EXISTS juego_subcategorias (
@@ -165,6 +173,10 @@ db.exec(`
 `);
 
 // Inicialización de tablas de configuración
+if (db.prepare('SELECT COUNT(*) AS c FROM configuracion_general').get().c === 0) {
+  db.prepare('INSERT INTO configuracion_general (id, sincronizar_grupos_combinados) VALUES (1, 0)').run();
+}
+
 if (db.prepare('SELECT COUNT(*) AS c FROM configuracion_rf').get().c === 0) {
   db.prepare('INSERT INTO configuracion_rf (id, frecuencia, canal, retransmisiones, intervalo_ms) VALUES (1, ?, ?, ?, ?)')
     .run('433.92 MHz', 1, 3, 100);
