@@ -72,12 +72,12 @@ router.put('/:id', (req, res) => {
     db.prepare(`UPDATE usuarios SET nombre=?,username=?,password_hash=?,rol=?,atraccion_id=?,
                 activo=?,permiso_gestionar_juegos=?,permiso_cancelar_turno=?,permiso_llamar_turno=? WHERE id=?`)
       .run(nombre.trim(), username.trim(), hash, rol, atraccion_id||null,
-           activo??1, permiso_gestionar_juegos?1:0, permiso_cancelar_turno?1:0, permiso_llamar_turno?1:0, id);
+           activo == null ? 1 : (Number(activo) ? 1 : 0), permiso_gestionar_juegos?1:0, permiso_cancelar_turno?1:0, permiso_llamar_turno?1:0, id);
   } else {
     db.prepare(`UPDATE usuarios SET nombre=?,username=?,rol=?,atraccion_id=?,
                 activo=?,permiso_gestionar_juegos=?,permiso_cancelar_turno=?,permiso_llamar_turno=? WHERE id=?`)
       .run(nombre.trim(), username.trim(), rol, atraccion_id||null,
-           activo??1, permiso_gestionar_juegos?1:0, permiso_cancelar_turno?1:0, permiso_llamar_turno?1:0, id);
+           activo == null ? 1 : (Number(activo) ? 1 : 0), permiso_gestionar_juegos?1:0, permiso_cancelar_turno?1:0, permiso_llamar_turno?1:0, id);
   }
   res.json({ ok: true });
 });
