@@ -286,51 +286,77 @@ module.exports = (io) => {
   // ── Registrar turno (recepcion) ───────────────────────────────────────────────
   router.post('/', requireAuth('admin','recepcion'), (req, res) => {
     const { atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id, subcategoria_id } = req.body;
-    if (!atraccion_id || !biper_numero) {
+
+    // ── Validar atraccion_id: debe ser un entero positivo ─────────────────────
+    const atraccionId = Number(atraccion_id);
+    if (!Number.isInteger(atraccionId) || atraccionId <= 0) {
+      return res.status(400).json({ error: 'El identificador de atracción es inválido.' });
+    }
+
+    if (!biper_numero) {
       return res.status(400).json({ error: 'atraccion_id y biper_numero son requeridos' });
     }
 
-    if (viper_id) {
-      const viper = db.prepare("SELECT id FROM vipers WHERE id = ? AND estado = 'ACTIVO'").get(viper_id);
+    // ── Validar cantidad_miembros: entero >= 1 ────────────────────────────────
+    const miembros = parseInt(cantidad_miembros, 10);
+    if (!Number.isInteger(miembros) || miembros < 1) {
+      return res.status(400).json({ error: 'La cantidad de miembros debe ser un número entero mayor a cero.' });
+    }
+
+    // ── Verificar que la atracción existe en la base de datos ─────────────────
+    const juego = db.prepare('SELECT * FROM atracciones WHERE id = ?').get(atraccionId);
+    if (!juego) return res.status(400).json({ error: 'La atracción indicada no existe.' });
+
+    // ── Validar viper_id si fue enviado ───────────────────────────────────────
+    let viperId = null;
+    if (viper_id != null && viper_id !== '') {
+      viperId = Number(viper_id);
+      if (!Number.isInteger(viperId) || viperId <= 0) {
+        return res.status(400).json({ error: 'El identificador de VIPER es inválido.' });
+      }
+      const viper = db.prepare("SELECT id FROM vipers WHERE id = ? AND estado = 'ACTIVO'").get(viperId);
       if (!viper) return res.status(400).json({ error: 'El VIPER seleccionado no está activo' });
     }
 
     const enUso = db
       .prepare("SELECT id FROM turnos WHERE biper_numero=? AND atraccion_id=? AND estado IN ('esperando','llamado','jugando')")
-      .get(String(biper_numero), atraccion_id);
+      .get(String(biper_numero), atraccionId);
     if (enUso) return res.status(409).json({ error: `El biper ${biper_numero} ya está en uso en este juego` });
 
-    const juego = db.prepare('SELECT * FROM atracciones WHERE id = ?').get(atraccion_id);
-
-    // Validar subcategoria si el juego la usa
-    if (juego && juego.usa_subcategorias) {
+    // ── Validar subcategoria_id si el juego la usa ────────────────────────────
+    let subcategoriaId = null;
+    if (juego.usa_subcategorias) {
       if (!subcategoria_id) {
         return res.status(400).json({ error: 'Debe seleccionar una subcategoría para este juego' });
       }
-      const sub = db.prepare('SELECT id FROM juego_subcategorias WHERE id = ? AND juego_id = ?').get(subcategoria_id, atraccion_id);
+      subcategoriaId = Number(subcategoria_id);
+      if (!Number.isInteger(subcategoriaId) || subcategoriaId <= 0) {
+        return res.status(400).json({ error: 'El identificador de subcategoría es inválido.' });
+      }
+      const sub = db.prepare('SELECT id FROM juego_subcategorias WHERE id = ? AND juego_id = ?').get(subcategoriaId, atraccionId);
       if (!sub) return res.status(400).json({ error: 'La subcategoría seleccionada no pertenece a este juego' });
     }
 
     let primeraEtapa = null;
-    if (juego && juego.usa_etapas) {
+    if (juego.usa_etapas) {
       primeraEtapa = db.prepare(`
         SELECT * FROM juego_etapas
         WHERE juego_id = ? AND activa = 1
         ORDER BY orden ASC LIMIT 1
-      `).get(atraccion_id);
+      `).get(atraccionId);
     }
 
     const { maxOrden } = db.prepare(
       "SELECT COALESCE(MAX(orden_cola), 0) AS maxOrden FROM turnos WHERE atraccion_id = ? AND estado = 'esperando'"
-    ).get(atraccion_id);
+    ).get(atraccionId);
     const nuevoOrden = maxOrden + 1;
 
     const result = db.prepare(
       'INSERT INTO turnos (atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id, etapa_actual_id, orden_cola, subcategoria_id, creado_por) VALUES (?,?,?,?,?,?,?,?,?)'
     ).run(
-      atraccion_id, String(biper_numero), nombre_cliente || null,
-      cantidad_miembros || 1, viper_id || null, primeraEtapa?.id ?? null,
-      nuevoOrden, (juego?.usa_subcategorias && subcategoria_id) ? subcategoria_id : null,
+      atraccionId, String(biper_numero), nombre_cliente || null,
+      miembros, viperId, primeraEtapa?.id ?? null,
+      nuevoOrden, subcategoriaId,
       req.session.usuario.id
     );
 
