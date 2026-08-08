@@ -608,6 +608,16 @@ module.exports = (io) => {
       timerLlamado.delete(Number(id));
     }
 
+    // Si el turno sigue en 'llamado' (el operador actuó antes del temporizador),
+    // transicionar a 'jugando' primero para registrar el inicio real de la actividad.
+    if (turnoActual.estado === 'llamado') {
+      db.prepare(
+        "UPDATE turnos SET estado='jugando', jugando_desde=datetime('now','localtime') WHERE id=? AND estado='llamado'"
+      ).run(Number(id));
+      const turnoJugando = conEtapaSig(db.prepare(SELECT_TURNO).get(Number(id)));
+      if (turnoJugando) io.emit('turno:jugando', turnoJugando);
+    }
+
     if (!turnoActual.etapa_actual_id) {
       db.prepare(`
         UPDATE turnos
