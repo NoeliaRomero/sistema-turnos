@@ -167,10 +167,21 @@ socket.on('turno:llamado',       () => { cargarCola(); flash(); });
 socket.on('turno:etapa_avanzada',() => { cargarCola(); flash(); });
 socket.on('turno:finalizado',    () => { cargarCola(); });
 
-// Actualizar progreso cada 60 seg sin recargar del servidor
+// Recalcular tiempos localmente cada 30s (igual que pantalla.js)
 setInterval(() => {
-  if (colaData.length) renderTodo();
-}, 60000);
+  if (!colaData.length) return;
+  const ahora = Date.now();
+  colaData.forEach(j => {
+    j.jugando.forEach(t => {
+      const baseTime = t.jugando_desde || t.called_at;
+      if (baseTime) {
+        t.tiempo_transcurrido = Math.floor((ahora - new Date(baseTime).getTime()) / 60000);
+        t.tiempo_restante     = Math.max(0, (j.duracion_minutos || 0) - t.tiempo_transcurrido);
+      }
+    });
+  });
+  renderTodo();
+}, 30000);
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 cargarCola();

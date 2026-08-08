@@ -187,18 +187,18 @@ function cardJugando(t) {
 
     if (me.permiso_llamar_turno && esAsignado) {
       if (esMasEtapas) {
-        btnFinalizar = `<button class="btn btn-primary btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id})">
+        btnFinalizar = `<button class="btn btn-primary btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
           <i class="bi bi-skip-forward-fill me-1"></i>Avanzar Etapa
         </button>`;
       } else {
-        btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id})">
+        btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
           <i class="bi bi-trophy me-1"></i>Finalizar Juego
         </button>`;
       }
     }
   } else if (me.permiso_llamar_turno && esAsignado) {
     // Sin etapas → Finalizar Juego
-    btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id})">
+    btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
       <i class="bi bi-trophy me-1"></i>Finalizar Juego
     </button>`;
   }
@@ -261,9 +261,14 @@ function actualizarTimers() {
 // ── Acciones ──────────────────────────────────────────────────────────────────
 // Bug 12: no existe función llamarTurno — el sistema lo hace automáticamente
 
-async function finalizarTurno(id) {
-  const res = await fetch(`/api/turnos/${id}/finalizar`, { method: 'PUT' });
-  if (!res.ok) { const d = await res.json(); mostrarToast(d.error || 'Error', 'danger'); }
+async function finalizarTurno(id, btn) {
+  if (btn) { btn.disabled = true; }
+  try {
+    const res = await fetch(`/api/turnos/${id}/finalizar`, { method: 'PUT' });
+    if (!res.ok) { const d = await res.json(); mostrarToast(d.error || 'Error', 'danger'); }
+  } finally {
+    if (btn) { btn.disabled = false; }
+  }
 }
 
 async function cancelarTurno(id) {

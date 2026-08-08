@@ -420,15 +420,20 @@ function pedirFinalizarGrupo(id, nombreFamilia) {
   modalConfFinalizar().show();
 }
 
-document.getElementById('btnConfFinalizarSi').addEventListener('click', async () => {
+document.getElementById('btnConfFinalizarSi').addEventListener('click', async (e) => {
   modalConfFinalizar().hide();
   if (!_pendingFinalizarId) return;
-  const res  = await fetch(`/api/turnos/${_pendingFinalizarId}/finalizar`, { method: 'PUT' });
-  const data = await res.json();
-  if (!res.ok) { mostrarToast(data.error || 'Error al finalizar', 'danger'); }
-  else         { mostrarToast(`✅ Turno de ${_pendingFinalizarNombre} finalizado`, 'success'); }
-  _pendingFinalizarId = _pendingFinalizarNombre = null;
-  await cargarCola();
+  e.target.disabled = true;
+  try {
+    const res  = await fetch(`/api/turnos/${_pendingFinalizarId}/finalizar`, { method: 'PUT' });
+    const data = await res.json();
+    if (!res.ok) { mostrarToast(data.error || 'Error al finalizar', 'danger'); }
+    else         { mostrarToast(`✅ Turno de ${_pendingFinalizarNombre} finalizado`, 'success'); }
+    _pendingFinalizarId = _pendingFinalizarNombre = null;
+    await cargarCola();
+  } finally {
+    e.target.disabled = false;
+  }
 });
 document.getElementById('btnConfFinalizarNo').addEventListener('click', () => {
   modalConfFinalizar().hide();
@@ -489,7 +494,11 @@ document.getElementById('btnConfViperOtroJuegoNo').addEventListener('click', () 
   _pendingLlamarId = null;
 });
 
+let _llamarEnCurso = false;
 async function _ejecutarLlamar(id, force = false) {
+  if (_llamarEnCurso) return;
+  _llamarEnCurso = true;
+  try {
   const res  = await fetch(`/api/turnos/${id}/llamar`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -525,6 +534,9 @@ async function _ejecutarLlamar(id, force = false) {
   }
   mostrarToast(`📣 Biper ${data.biper_numero} – ${data.nombre_cliente || 'Grupo'} llamado a jugar`, 'success');
   await cargarCola();
+  } finally {
+    _llamarEnCurso = false;
+  }
 }
 
 // ── Reordenar cola ────────────────────────────────────────────────────────────

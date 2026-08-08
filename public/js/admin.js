@@ -292,7 +292,10 @@ async function editarUsuario(id) {
   modalUsuario.show();
 }
 
-document.getElementById('btnGuardarUsuario').addEventListener('click', guardarUsuario);
+document.getElementById('btnGuardarUsuario').addEventListener('click', async (e) => {
+  e.target.disabled = true;
+  try { await guardarUsuario(); } finally { e.target.disabled = false; }
+});
 
 async function guardarUsuario() {
   const id      = document.getElementById('userId').value;
@@ -554,7 +557,13 @@ async function editarJuego(id) {
   modalJuego().show();
 }
 
-document.getElementById('btnGuardarJuego').addEventListener('click', async () => {
+document.getElementById('btnGuardarJuego').addEventListener('click', async (e) => {
+  if (e.target.disabled) return;
+  e.target.disabled = true;
+  try { await _guardarJuego(); } finally { e.target.disabled = false; }
+});
+
+async function _guardarJuego() { {
   const id              = document.getElementById('juegoId').value;
   const nombre          = document.getElementById('jNombre').value.trim();
   const usaEtapas       = document.getElementById('jUsaEtapas').checked;
@@ -605,7 +614,7 @@ document.getElementById('btnGuardarJuego').addEventListener('click', async () =>
   modalJuego().hide();
   mostrarToast(id ? 'Juego actualizado' : 'Juego creado', 'success');
   cargarJuegos();
-});
+} }
 
 // Cargar juegos al activar el tab
 document.getElementById('tabBtnJuegos')?.addEventListener('shown.bs.tab', () => {

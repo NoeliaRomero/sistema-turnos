@@ -307,6 +307,13 @@ module.exports = (io) => {
     const juego = db.prepare('SELECT * FROM atracciones WHERE id = ?').get(atraccionId);
     if (!juego) return res.status(400).json({ error: 'La atracción indicada no existe.' });
 
+    // ── Validar min_miembros del juego ────────────────────────────────────────
+    if (juego.min_miembros && miembros < juego.min_miembros) {
+      return res.status(400).json({
+        error: `Este juego requiere al menos ${juego.min_miembros} persona${juego.min_miembros !== 1 ? 's' : ''} por grupo.`,
+      });
+    }
+
     // ── Validar viper_id si fue enviado ───────────────────────────────────────
     let viperId = null;
     if (viper_id != null && viper_id !== '') {
