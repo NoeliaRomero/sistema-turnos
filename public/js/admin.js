@@ -1,3 +1,8 @@
+function escapeHtml(str) {
+  return String(str == null ? '' : str).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 (async () => {
   const res = await fetch('/api/auth/me');
@@ -53,7 +58,7 @@ async function cargarAtracciones() {
   const sel = document.getElementById('uAtraccion');
   sel.innerHTML = '<option value="">Sin asignar</option>';
   atracciones.forEach(a => {
-    sel.innerHTML += `<option value="${a.id}">${a.nombre}</option>`;
+    sel.innerHTML += `<option value="${a.id}">${escapeHtml(a.nombre)}</option>`;
   });
 }
 
@@ -151,8 +156,8 @@ function renderTablaOperadores(ops) {
   }
   tbody.innerHTML = ops.map(op => `
     <tr>
-      <td class="fw-semibold">${op.nombre}</td>
-      <td>${op.atraccion || '<span class="text-muted">—</span>'}</td>
+      <td class="fw-semibold">${escapeHtml(op.nombre)}</td>
+      <td>${op.atraccion ? escapeHtml(op.atraccion) : '<span class="text-muted">—</span>'}</td>
       <td class="text-center"><span class="badge bg-primary rounded-pill">${op.llamados}</span></td>
       <td class="text-center"><span class="badge bg-success rounded-pill">${op.finalizados}</span></td>
       <td class="text-center">${op.tiempo_promedio ? `${op.tiempo_promedio} min` : '—'}</td>
@@ -188,10 +193,10 @@ async function cargarUsuarios() {
     }
     return `
     <tr>
-      <td class="ps-4 fw-semibold">${u.nombre}</td>
-      <td class="text-muted">@${u.username}</td>
+      <td class="ps-4 fw-semibold">${escapeHtml(u.nombre)}</td>
+      <td class="text-muted">@${escapeHtml(u.username)}</td>
       <td><span class="rol-badge ${rolClass(u.rol)}">${rolLabel(u.rol)}</span></td>
-      <td>${u.atraccion_nombre || '<span class="text-muted">—</span>'}</td>
+      <td>${u.atraccion_nombre ? escapeHtml(u.atraccion_nombre) : '<span class="text-muted">—</span>'}</td>
       <td>${perms.join('') || '<span class="text-muted small">Sin permisos extra</span>'}</td>
       <td class="text-center">
         <span class="badge rounded-pill px-3 ${u.activo ? 'badge-activo' : 'badge-inactivo'}">
@@ -210,8 +215,8 @@ async function cargarUsuarios() {
   }).join('');
 }
 
-function rolClass(rol) { return { admin:'rol-admin', operador:'rol-operador', recepcion:'rol-recepcion' }[rol]||''; }
-function rolLabel(rol) { return { admin:'Administrador', operador:'Operador', recepcion:'Recepción' }[rol]||rol; }
+function rolClass(rol) { return { admin:'rol-admin', operador:'rol-operador', recepcion:'rol-recepcion', caja:'rol-recepcion' }[rol]||''; }
+function rolLabel(rol) { return { admin:'Administrador', operador:'Operador', recepcion:'Recepción', caja:'Caja' }[rol]||rol; }
 
 // ── Modal usuario ─────────────────────────────────────────────────────────────
 const modalUsuario  = new bootstrap.Modal(document.getElementById('modalUsuario'));
@@ -388,7 +393,7 @@ async function cargarJuegos() {
   tbody.innerHTML = juegos.map(j => `
     <tr>
       <td class="ps-4 fw-semibold">
-        ${j.nombre}
+        ${escapeHtml(j.nombre)}
         ${j.usa_etapas ? `<span class="etapas-badge ms-2"><i class="bi bi-layers me-1"></i>${j.etapas.length} etapas</span>` : ''}
         ${j.usa_subcategorias ? `<span class="subcategorias-badge ms-2"><i class="bi bi-diagram-3 me-1"></i>${j.subcategorias.length} subcategorías</span>` : ''}
       </td>

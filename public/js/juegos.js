@@ -1,6 +1,11 @@
 let me = null;
 const modalJuego = () => bootstrap.Modal.getOrCreateInstance(document.getElementById('modalJuego'));
 
+function escapeHtml(str) {
+  return String(str == null ? '' : str).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 (async () => {
   const res = await fetch('/api/auth/me');
@@ -42,7 +47,7 @@ async function cargarJuegos() {
   tbody.innerHTML = juegos.map(j => `
     <tr>
       <td class="ps-4 fw-semibold">
-        ${j.nombre}
+        ${escapeHtml(j.nombre)}
         ${j.usa_etapas ? `<span class="etapas-badge ms-2"><i class="bi bi-layers me-1"></i>${j.etapas.length} etapas</span>` : ''}
         ${j.usa_subcategorias ? `<span class="subcategorias-badge ms-2"><i class="bi bi-diagram-3 me-1"></i>${j.subcategorias.length} subcategorías</span>` : ''}
       </td>

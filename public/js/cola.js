@@ -4,6 +4,11 @@ let colaData   = [];
 let filtroId   = '';  // '' = todos
 let timerTick  = null;
 
+function escapeHtml(str) {
+  return String(str == null ? '' : str).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
+}
+
 // ── Reloj ─────────────────────────────────────────────────────────────────────
 function tickReloj() {
   document.getElementById('clock').textContent =
@@ -76,18 +81,18 @@ function renderJugando(juegos) {
 
     const etapaHtml = t.etapa_actual_nombre
       ? `<div class="etapa-tv">
-           <span class="etapa-tv-actual"><i class="bi bi-layers me-1"></i>${t.etapa_actual_nombre}</span>
+           <span class="etapa-tv-actual"><i class="bi bi-layers me-1"></i>${escapeHtml(t.etapa_actual_nombre)}</span>
            ${t.etapa_siguiente_nombre
-             ? `<span class="etapa-tv-sig"><i class="bi bi-arrow-right me-1"></i>${t.etapa_siguiente_nombre}</span>`
+             ? `<span class="etapa-tv-sig"><i class="bi bi-arrow-right me-1"></i>${escapeHtml(t.etapa_siguiente_nombre)}</span>`
              : `<span class="etapa-tv-sig" style="opacity:.5">Última etapa</span>`}
          </div>`
       : '';
 
     return `
     <div class="card-jugando" id="jugando-${t.id}">
-      <div class="juego-label"><i class="bi bi-controller me-1"></i>${t.juego.nombre}</div>
-      <div class="biper-grande">${t.biper_numero}</div>
-      <div class="familia-nombre">${t.nombre_cliente || 'Sin nombre'}</div>
+      <div class="juego-label"><i class="bi bi-controller me-1"></i>${escapeHtml(t.juego.nombre)}</div>
+      <div class="biper-grande">${escapeHtml(t.biper_numero)}</div>
+      <div class="familia-nombre">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>
       ${etapaHtml}
       <div class="info-row">
         <span class="tag-miembros"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} personas</span>
@@ -116,7 +121,7 @@ function renderCola(juegos) {
     hayCola = true;
 
     if (!filtroId) {
-      html += `<div class="juego-sep"><i class="bi bi-controller me-2"></i>${j.nombre}</div>`;
+      html += `<div class="juego-sep"><i class="bi bi-controller me-2"></i>${escapeHtml(j.nombre)}</div>`;
     }
 
     html += j.cola.map(t => {
@@ -124,9 +129,9 @@ function renderCola(juegos) {
       return `
       <div class="card-cola ${esProximo ? 'proximo' : ''}" id="cola-${t.id}">
         <div class="posicion">${t.posicion}</div>
-        <div class="biper-col">${t.biper_numero}</div>
+        <div class="biper-col">${escapeHtml(t.biper_numero)}</div>
         <div class="familia-col">
-          <div class="nombre">${t.nombre_cliente || 'Sin nombre'}</div>
+          <div class="nombre">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>
           <div class="sub">
             <i class="bi bi-people me-1"></i>${t.cantidad_miembros} personas
             ${!filtroId ? '' : ''}

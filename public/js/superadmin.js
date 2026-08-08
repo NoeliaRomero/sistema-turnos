@@ -1,3 +1,8 @@
+function escapeHtml(str) {
+  return String(str == null ? '' : str).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 (async () => {
   const res = await fetch('/api/auth/me');
@@ -92,8 +97,8 @@ async function cargarAdmins() {
     <div class="admin-card mb-4" id="card-${a.id}">
       <div class="admin-card-header">
         <div>
-          <div class="admin-name">${a.nombre} ${planPill(a)}</div>
-          <div class="admin-username mt-1">@${a.username}</div>
+          <div class="admin-name">${escapeHtml(a.nombre)} ${planPill(a)}</div>
+          <div class="admin-username mt-1">@${escapeHtml(a.username)}</div>
         </div>
         ${estadoBadge}
       </div>

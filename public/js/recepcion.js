@@ -3,6 +3,21 @@ let me = null;
 let atracciones = [];
 let colaData    = [];
 
+function escapeHtml(str) {
+  return String(str == null ? '' : str).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
+}
+
+// Escapa para uso en atributos onclick (HTML + JS string con comillas simples)
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, "\\'");
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 async function init() {
   const res = await fetch('/api/auth/me');
@@ -34,7 +49,7 @@ async function cargarAtracciones() {
   atracciones.forEach(a => {
     const minM = a.min_miembros || 1;
     const maxM = a.max_miembros || 30;
-    sel.innerHTML += `<option value="${a.id}" data-duracion="${a.duracion_minutos}" data-min-miembros="${minM}" data-max-miembros="${maxM}" data-usa-subcategorias="${a.usa_subcategorias || 0}">${a.nombre} (${a.duracion_minutos} min)</option>`;
+    sel.innerHTML += `<option value="${a.id}" data-duracion="${a.duracion_minutos}" data-min-miembros="${minM}" data-max-miembros="${maxM}" data-usa-subcategorias="${a.usa_subcategorias || 0}">${escapeHtml(a.nombre)} (${a.duracion_minutos} min)</option>`;
   });
 }
 
@@ -86,7 +101,7 @@ document.getElementById('selectJuego').addEventListener('change', async () => {
       const r    = await fetch(`/api/atracciones/${juegoId}/subcategorias`);
       const subs = r.ok ? await r.json() : [];
       subs.forEach(s => {
-        selSub.innerHTML += `<option value="${s.id}">${s.nombre}</option>`;
+        selSub.innerHTML += `<option value="${s.id}">${escapeHtml(s.nombre)}</option>`;
       });
     } catch (_) {}
     wrapSub.classList.remove('d-none');
@@ -203,23 +218,23 @@ function renderJuegoPane(j) {
       let etapaHtml = '';
       if (t.etapa_actual_nombre) {
         const sigTexto = t.etapa_siguiente_nombre
-          ? `<span class="text-muted small"><i class="bi bi-arrow-right me-1"></i>Próxima: <strong>${t.etapa_siguiente_nombre}</strong></span>`
+          ? `<span class="text-muted small"><i class="bi bi-arrow-right me-1"></i>Próxima: <strong>${escapeHtml(t.etapa_siguiente_nombre)}</strong></span>`
           : `<span class="text-muted small"><i class="bi bi-flag-fill me-1"></i>Última etapa</span>`;
         etapaHtml = `
           <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
-            <span class="etapa-recep-badge"><i class="bi bi-layers me-1"></i>${t.etapa_actual_nombre}</span>
+            <span class="etapa-recep-badge"><i class="bi bi-layers me-1"></i>${escapeHtml(t.etapa_actual_nombre)}</span>
             ${sigTexto}
           </div>`;
       }
       const subcatHtml = t.subcategoria_nombre
-        ? `<span class="badge bg-success bg-opacity-75 ms-1"><i class="bi bi-diagram-3 me-1"></i>${t.subcategoria_nombre}</span>`
+        ? `<span class="badge bg-success bg-opacity-75 ms-1"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>`
         : '';
       return `
       <div class="turno-row jugando d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div class="d-flex align-items-center gap-3">
-          <span class="biper-num">${t.biper_numero}</span>
+          <span class="biper-num">${escapeHtml(t.biper_numero)}</span>
           <div>
-            <div class="fw-bold">${t.nombre_cliente || 'Sin nombre'}</div>
+            <div class="fw-bold">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>
             <div class="d-flex gap-2 mt-1 flex-wrap">
               <span class="miembros-badge"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
               <span class="badge bg-primary"><i class="bi bi-play-fill me-1"></i>JUGANDO</span>
@@ -300,15 +315,15 @@ function renderJuegoPane(j) {
       </button>`;
 
       const subcatEsperaHtml = t.subcategoria_nombre
-        ? `<span class="badge bg-success bg-opacity-75"><i class="bi bi-diagram-3 me-1"></i>${t.subcategoria_nombre}</span>`
+        ? `<span class="badge bg-success bg-opacity-75"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>`
         : '';
       return `
       <div class="turno-row d-flex align-items-center justify-content-between flex-wrap gap-2 ${esPrimeroSubcat ? '' : 'opacity-65'}">
         <div class="d-flex align-items-center gap-3">
           <div class="pos-num">${t.posicion}</div>
-          <span class="biper-num">${t.biper_numero}</span>
+          <span class="biper-num">${escapeHtml(t.biper_numero)}</span>
           <div>
-            <div class="fw-bold">${t.nombre_cliente || 'Sin nombre'}</div>
+            <div class="fw-bold">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>
             <div class="d-flex gap-2 mt-1 flex-wrap">
               <span class="miembros-badge"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
               ${subcatEsperaHtml}
@@ -330,8 +345,7 @@ function renderJuegoPane(j) {
   return html;
 }
 
-// Escapa comillas simples para uso en atributos onclick
-function esc(s) { return String(s).replace(/'/g, "\\'"); }
+// (esc() definido al inicio del archivo)
 
 // ── Formulario ────────────────────────────────────────────────────────────────
 document.getElementById('btnAutoBiper').addEventListener('click', async () => {
@@ -430,8 +444,8 @@ async function llamarGrupo(id, hayJugando, nombreJuego, nombreFamilia) {
     // Pedir confirmación antes de llamar
     _pendingLlamarId = id;
     document.getElementById('confLlamarTexto').innerHTML =
-      `<strong>${nombreJuego}</strong> ya tiene un grupo jugando.<br>
-       ¿Querés llamar igualmente a <strong>${nombreFamilia}</strong>?`;
+      `<strong>${escapeHtml(nombreJuego)}</strong> ya tiene un grupo jugando.<br>
+       ¿Querés llamar igualmente a <strong>${escapeHtml(nombreFamilia)}</strong>?`;
     modalConfLlamar().show();
     return;
   }
@@ -492,9 +506,9 @@ async function _ejecutarLlamar(id, force = false) {
       ? `con aproximadamente <strong>${data.tiempo_restante} min restantes</strong>`
       : 'con tiempo excedido';
     document.getElementById('confViperOtroJuegoTexto').innerHTML =
-      `El VIPER <strong>${data.biper_numero}</strong> está actualmente jugando en
-       <strong>${data.juego_origen}</strong>
-       (${data.nombre_cliente || 'Sin nombre'}) ${restanteTexto}.<br><br>
+      `El VIPER <strong>${escapeHtml(data.biper_numero)}</strong> está actualmente jugando en
+       <strong>${escapeHtml(data.juego_origen)}</strong>
+       (${escapeHtml(data.nombre_cliente || 'Sin nombre')}) ${restanteTexto}.<br><br>
        ¿Querés llamarlo igualmente?`;
     modalConfViperOtroJuego().show();
     return;

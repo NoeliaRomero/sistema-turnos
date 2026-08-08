@@ -42,6 +42,7 @@ router.post('/login', (req, res) => {
     admin:      '/admin.html',
     operador:   '/operador.html',
     recepcion:  '/recepcion.html',
+    caja:       '/caja.html',
   };
   res.json({ ok: true, usuario: req.session.usuario, redirect: redirects[user.rol] || '/' });
 });

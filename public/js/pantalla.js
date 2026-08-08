@@ -1,5 +1,10 @@
 const socket = io();
 
+function escapeHtml(str) {
+  return String(str == null ? '' : str).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
+}
+
 // ── Reloj ─────────────────────────────────────────────────────────────────────
 function tickReloj() {
   document.getElementById('clock').textContent =
@@ -79,12 +84,12 @@ function renderJuegoCard(j) {
           : '<span class="meta-chip chip-jugando">&#9654; Jugando</span>';
         const chipTiempo = `<span class="meta-chip chip-tiempo">&#8987; ${t.tiempo_transcurrido ?? 0} min</span>`;
         const chipEtapa  = t.etapa_actual_nombre
-          ? `<span class="meta-chip chip-etapa">&#8635; ${t.etapa_actual_nombre}</span>` : '';
+          ? `<span class="meta-chip chip-etapa">&#8635; ${escapeHtml(t.etapa_actual_nombre)}</span>` : '';
         return `
           <div class="turno-activo ${esLlamado ? 'estado-llamado' : ''} nuevo">
-            <div class="biper-tv">${t.biper_numero}</div>
+            <div class="biper-tv">${escapeHtml(t.biper_numero)}</div>
             <div class="turno-info">
-              <div class="turno-cliente">${t.nombre_cliente || 'Sin nombre'}</div>
+              <div class="turno-cliente">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>
               <div class="turno-meta">
                 ${chipEstado}${chipTiempo}${chipEtapa}
                 ${t.cantidad_miembros > 1 ? `<span class="meta-chip chip-tiempo">&#128101; ${t.cantidad_miembros} pers.</span>` : ''}
@@ -98,8 +103,8 @@ function renderJuegoCard(j) {
     ? `<div class="cola-lista">${j.cola.slice(0, 5).map(t => `
         <div class="cola-item">
           <span class="posicion">#${t.posicion}</span>
-          <span class="biper-cola">${t.biper_numero}</span>
-          <span class="cola-cliente">${t.nombre_cliente || 'Sin nombre'}</span>
+          <span class="biper-cola">${escapeHtml(t.biper_numero)}</span>
+          <span class="cola-cliente">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</span>
           <span class="espera-chip">~${t.tiempo_espera_estimado ?? 0} min</span>
         </div>`).join('')}
         ${totalCola > 5 ? `<div class="sin-cola">+${totalCola - 5} más en cola</div>` : ''}
@@ -109,7 +114,7 @@ function renderJuegoCard(j) {
   return `
     <div class="juego-card" id="juego-${j.id}">
       <div class="juego-header">
-        <span class="juego-nombre">${j.nombre}</span>
+        <span class="juego-nombre">${escapeHtml(j.nombre)}</span>
         <div class="juego-contadores">
           <span class="contador-badge badge-activo">&#9654; ${totalActivos} activo${totalActivos !== 1 ? 's' : ''}</span>
           <span class="contador-badge badge-espera">&#8987; ${totalCola} en cola</span>

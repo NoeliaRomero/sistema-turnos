@@ -5,6 +5,11 @@ let me            = null;
 let filtroId      = '';
 let timerInterval = null;
 
+function escapeHtml(str) {
+  return String(str == null ? '' : str).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 async function init() {
   const res = await fetch('/api/auth/me');
@@ -136,10 +141,10 @@ function cardLlamado(t) {
         <div class="d-flex align-items-center gap-3">
           <div class="biper-num">${t.biper_numero}</div>
           <div>
-            <div class="fw-semibold">${t.nombre_cliente || '<span class="text-muted">Sin nombre</span>'}</div>
+            <div class="fw-semibold">${t.nombre_cliente ? escapeHtml(t.nombre_cliente) : '<span class="text-muted">Sin nombre</span>'}</div>
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
-              <span class="atraccion-tag">${t.atraccion_nombre}</span>
-              ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${t.subcategoria_nombre}</span>` : ''}
+              <span class="atraccion-tag">${escapeHtml(t.atraccion_nombre)}</span>
+              ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>` : ''}
               <span class="badge bg-warning text-dark px-2">
                 <i class="bi bi-bell-fill me-1"></i>Llamado
               </span>
@@ -160,10 +165,11 @@ function cardLlamado(t) {
 // Estado 'jugando': cliente llegó, actividad en curso
 // Botones de finalizar — SIN "No Llegó"
 function cardJugando(t) {
-  const baseTime  = t.jugando_desde || t.called_at;
-  const elapsed   = tiempoTranscurrido(baseTime);
-  const duracion  = t.duracion_minutos || 0;
-  const vencido   = duracion > 0 && elapsed > duracion;
+  const baseTime   = t.jugando_desde || t.called_at;
+  const elapsed    = tiempoTranscurrido(baseTime);
+  const duracion   = t.duracion_minutos || 0;
+  const vencido    = duracion > 0 && elapsed > duracion;
+  const esAsignado = me.atraccion_id === t.atraccion_id || me.rol === 'admin';
 
   let etapaHtml    = '';
   let btnFinalizar = '';
@@ -171,26 +177,26 @@ function cardJugando(t) {
   if (t.usa_etapas && t.etapa_actual_nombre) {
     const esMasEtapas = !!t.etapa_siguiente_nombre;
     const sigTexto = esMasEtapas
-      ? `<span class="etapa-sig"><i class="bi bi-arrow-right me-1"></i>Próxima: <strong>${t.etapa_siguiente_nombre}</strong></span>`
+      ? `<span class="etapa-sig"><i class="bi bi-arrow-right me-1"></i>Próxima: <strong>${escapeHtml(t.etapa_siguiente_nombre)}</strong></span>`
       : `<span class="etapa-sig text-muted"><i class="bi bi-flag-fill me-1"></i>Última etapa</span>`;
     etapaHtml = `
       <div class="etapa-info mt-2">
-        <span class="etapa-actual"><i class="bi bi-layers me-1"></i>Etapa: <strong>${t.etapa_actual_nombre}</strong></span>
+        <span class="etapa-actual"><i class="bi bi-layers me-1"></i>Etapa: <strong>${escapeHtml(t.etapa_actual_nombre)}</strong></span>
         ${sigTexto}
       </div>`;
 
-    if (esMasEtapas) {
-      // Etapa intermedia → Avanzar Etapa
-      btnFinalizar = `<button class="btn btn-primary btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id})">
-        <i class="bi bi-skip-forward-fill me-1"></i>Avanzar Etapa
-      </button>`;
-    } else {
-      // Última etapa → Finalizar Juego
-      btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id})">
-        <i class="bi bi-trophy me-1"></i>Finalizar Juego
-      </button>`;
+    if (me.permiso_llamar_turno && esAsignado) {
+      if (esMasEtapas) {
+        btnFinalizar = `<button class="btn btn-primary btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id})">
+          <i class="bi bi-skip-forward-fill me-1"></i>Avanzar Etapa
+        </button>`;
+      } else {
+        btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id})">
+          <i class="bi bi-trophy me-1"></i>Finalizar Juego
+        </button>`;
+      }
     }
-  } else {
+  } else if (me.permiso_llamar_turno && esAsignado) {
     // Sin etapas → Finalizar Juego
     btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id})">
       <i class="bi bi-trophy me-1"></i>Finalizar Juego
@@ -201,12 +207,12 @@ function cardJugando(t) {
     <div class="turno-card jugando" id="turno-${t.id}">
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div class="d-flex align-items-center gap-3">
-          <div class="biper-num">${t.biper_numero}</div>
+          <div class="biper-num">${escapeHtml(t.biper_numero)}</div>
           <div>
-            <div class="fw-semibold">${t.nombre_cliente || '<span class="text-muted">Sin nombre</span>'}</div>
+            <div class="fw-semibold">${t.nombre_cliente ? escapeHtml(t.nombre_cliente) : '<span class="text-muted">Sin nombre</span>'}</div>
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
-              <span class="atraccion-tag">${t.atraccion_nombre}</span>
-              ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${t.subcategoria_nombre}</span>` : ''}
+              <span class="atraccion-tag">${escapeHtml(t.atraccion_nombre)}</span>
+              ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>` : ''}
               ${duracion ? `<span class="duracion-tag"><i class="bi bi-clock me-1"></i>${duracion} min est.</span>` : ''}
               <span class="badge bg-primary text-white px-2">
                 <i class="bi bi-play-circle me-1"></i>Jugando
@@ -263,7 +269,10 @@ async function finalizarTurno(id) {
 async function cancelarTurno(id) {
   if (!confirm('¿Marcar como "No llegó"? El turno quedará cancelado.')) return;
   const res = await fetch(`/api/turnos/${id}/cancelar`, { method: 'PUT' });
-  if (!res.ok) { const d = await res.json(); mostrarToast(d.error || 'Sin permiso para cancelar', 'danger'); }
+  if (!res.ok) { const d = await res.json(); mostrarToast(d.error || 'Sin permiso para cancelar', 'danger'); return; }
+  mostrarToast('Turno cancelado — No llegó', 'warning');
+  turnos = turnos.filter(x => x.id !== id);
+  renderTurnos();
 }
 
 // ── Socket ────────────────────────────────────────────────────────────────────

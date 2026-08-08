@@ -3,6 +3,11 @@ const socket = io();
 let turnos = [];
 let me     = null;
 
+function escapeHtml(str) {
+  return String(str == null ? '' : str).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 async function init() {
   const res = await fetch('/api/auth/me');
@@ -32,7 +37,7 @@ async function cargarAtracciones() {
   const sel = document.getElementById('selectAtraccion');
   sel.innerHTML = '<option value="">Seleccionar…</option>';
   atracciones.forEach(a => {
-    sel.innerHTML += `<option value="${a.id}">${a.nombre}${a.duracion_minutos ? ` (${a.duracion_minutos} min)` : ''}</option>`;
+    sel.innerHTML += `<option value="${a.id}">${escapeHtml(a.nombre)}${a.duracion_minutos ? ` (${a.duracion_minutos} min)` : ''}</option>`;
   });
 }
 
@@ -66,10 +71,10 @@ function renderTurnos() {
     return `
     <div class="turno-row ${t.estado} rounded p-3 mb-2 bg-white d-flex align-items-center justify-content-between" id="turno-${t.id}">
       <div class="d-flex align-items-center gap-3">
-        <span class="biper-num">${t.biper_numero}</span>
+        <span class="biper-num">${escapeHtml(t.biper_numero)}</span>
         <div>
-          <div class="fw-semibold">${t.nombre_cliente || '<span class="text-muted">Sin nombre</span>'}</div>
-          <div class="small text-muted">${t.atraccion_nombre}${t.duracion_minutos ? ` · ${t.duracion_minutos} min` : ''}</div>
+          <div class="fw-semibold">${t.nombre_cliente ? escapeHtml(t.nombre_cliente) : '<span class="text-muted">Sin nombre</span>'}</div>
+          <div class="small text-muted">${escapeHtml(t.atraccion_nombre)}${t.duracion_minutos ? ` · ${t.duracion_minutos} min` : ''}</div>
         </div>
       </div>
       <div class="d-flex align-items-center gap-1">
@@ -111,7 +116,10 @@ document.getElementById('btnAutoBiper').addEventListener('click', async () => {
 async function cancelarTurno(id) {
   if (!confirm('¿Cancelar el biper? El turno quedará anulado.')) return;
   const res = await fetch(`/api/turnos/${id}/cancelar`, { method: 'PUT' });
-  if (!res.ok) { const d = await res.json(); mostrarToast(d.error||'Sin permiso', 'danger'); }
+  if (!res.ok) { const d = await res.json(); mostrarToast(d.error||'Sin permiso', 'danger'); return; }
+  mostrarToast('Turno cancelado', 'warning');
+  turnos = turnos.filter(x => x.id !== id);
+  renderTurnos();
 }
 
 // ── Socket ────────────────────────────────────────────────────────────────────
