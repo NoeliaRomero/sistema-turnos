@@ -3,6 +3,7 @@ node_modules/
 *.db-shm
 *.db-wal
 .env
+db/session.key
 npm-debug.log*
 .claude/
 whatsapp-time-tracker/
