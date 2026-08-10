@@ -11,3 +11,4 @@ whatsapp-time-tracker/
 backups/
 db/.restore_pending
 db/pending_restore.db
+db/session.key
