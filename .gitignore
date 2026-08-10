@@ -7,3 +7,9 @@ db/session.key
 npm-debug.log*
 .claude/
 whatsapp-time-tracker/
+
+# Backup files (runtime data)
+backups/
+db/.restore_pending
+db/pending_restore.db
+db/session.key
