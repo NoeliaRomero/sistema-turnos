@@ -1,0 +1,509 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Configuraciones del Sistema – Sistema de Turnos</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    body { background: #f0f4f8; }
+    .navbar-custom { background: #1e1b4b; }
+    .card { border: none; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); }
+    .badge-activo   { background:#d1fae5; color:#065f46; }
+    .badge-inactivo { background:#fee2e2; color:#991b1b; }
+    .table th { font-weight:600; color:#495057; font-size:.82rem; text-transform:uppercase; letter-spacing:.5px; }
+
+    .config-menu { border:none; border-radius:14px; box-shadow:0 2px 12px rgba(0,0,0,0.08); overflow:hidden; }
+    .config-menu .list-group-item {
+      border:none; border-radius:0; padding:14px 18px; font-weight:600; color:#495057;
+      cursor:pointer; display:flex; align-items:center; gap:10px;
+    }
+    .config-menu .list-group-item.active { background:#1e1b4b; color:#fff; }
+    .config-menu .list-group-item:hover:not(.active) { background:#f0f4f8; }
+
+    .estado-badge { font-size:.72rem; padding:3px 10px; border-radius:20px; font-weight:600; }
+    .estado-PENDIENTE { background:#fef3c7; color:#92400e; }
+    .estado-VALIDANDO { background:#dbeafe; color:#1e40af; }
+    .estado-ACTIVO    { background:#d1fae5; color:#065f46; }
+    .estado-ERROR     { background:#fee2e2; color:#991b1b; }
+    #serialLog {
+      background:#0f172a; color:#a7f3d0; font-family:monospace; font-size:.8rem;
+      border-radius:10px; padding:12px; height:160px; overflow-y:auto; white-space:pre-wrap;
+    }
+  </style>
+</head>
+<body>
+
+<nav class="navbar navbar-dark navbar-custom px-4 py-3">
+  <span class="navbar-brand fw-bold fs-5"><i class="bi bi-gear me-2"></i>Configuraciones del Sistema</span>
+  <div class="d-flex align-items-center gap-2">
+    <span class="text-white-50 small" id="usuarioNombre"></span>
+    <button class="btn btn-outline-light btn-sm" id="btnVolver">
+      <i class="bi bi-arrow-left me-1"></i>Volver
+    </button>
+    <button class="btn btn-outline-light btn-sm" id="btnLogout">
+      <i class="bi bi-box-arrow-right me-1"></i>Salir
+    </button>
+  </div>
+</nav>
+
+<div class="container-fluid px-4 mt-4">
+  <div class="row g-4">
+
+    <!-- Columna izquierda: menú -->
+    <div class="col-12 col-md-3">
+      <div class="list-group config-menu" id="configMenu">
+        <button type="button" class="list-group-item active" data-panel="general">
+          <i class="bi bi-sliders"></i>Configuración del Sistema
+        </button>
+        <button type="button" class="list-group-item" data-panel="viper">
+          <i class="bi bi-cpu"></i>Configuración VIPER
+        </button>
+        <button type="button" class="list-group-item" data-panel="backups">
+          <i class="bi bi-cloud-arrow-up"></i>Configuración de Backups
+        </button>
+      </div>
+    </div>
+
+    <!-- Columna derecha: contenido dinámico -->
+    <div class="col-12 col-md-9">
+
+      <!-- Panel Configuración del Sistema (informativo) -->
+      <div class="config-panel" id="panelGeneral">
+        <h5 class="fw-bold mb-1"><i class="bi bi-sliders me-2 text-primary"></i>Configuración del Sistema</h5>
+        <p class="text-muted mb-4">Administrá las configuraciones generales del sistema desde este panel.</p>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div class="card p-4 h-100">
+              <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="rounded-3 p-2" style="background:#ede9fe">
+                  <i class="bi bi-cpu fs-4" style="color:#6f42c1"></i>
+                </div>
+                <h6 class="fw-bold mb-0">VIPER</h6>
+              </div>
+              <p class="text-muted small mb-0">Gestioná los dispositivos VIPER: registro, estado y señales de activación.</p>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card p-4 h-100">
+              <div class="d-flex align-items-center gap-3 mb-3">
+                <div class="rounded-3 p-2" style="background:#d1fae5">
+                  <i class="bi bi-cloud-arrow-up fs-4" style="color:#065f46"></i>
+                </div>
+                <h6 class="fw-bold mb-0">Backups</h6>
+              </div>
+              <p class="text-muted small mb-0">Próximamente: administrá copias de seguridad automáticas y manuales del sistema.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="card p-4 mt-4">
+          <h6 class="fw-bold mb-3"><i class="bi bi-diagram-3 me-2 text-primary"></i>Comportamiento del sistema</h6>
+          <div class="d-flex align-items-start justify-content-between gap-3 py-2">
+            <div>
+              <div class="fw-semibold">Sincronizar grupos combinados</div>
+              <div class="text-muted small mt-1">
+                Cuando varias familias son combinadas para un mismo juego, todas compartirán
+                automáticamente los cambios de estado, avance de etapas y finalización.
+                <br>
+                <span class="text-warning fw-semibold"><i class="bi bi-info-circle me-1"></i>Valor por defecto: desactivado.</span>
+              </div>
+            </div>
+            <div class="form-check form-switch mt-1 flex-shrink-0">
+              <input class="form-check-input" type="checkbox" role="switch" id="switchSincronizarGrupos" style="width:2.5em; height:1.4em; cursor:pointer">
+            </div>
+          </div>
+          <div id="sincronizarGuardadoMsg" class="alert alert-success d-none small py-2 mt-2 mb-0">
+            <i class="bi bi-check-circle me-1"></i>Configuración guardada.
+          </div>
+        </div>
+
+        <div class="card p-4 mt-4">
+          <h6 class="fw-bold mb-3"><i class="bi bi-usb-symbol me-2 text-primary"></i>Configuración Serial (Arduino)</h6>
+          <form id="formSerialConfig" class="row g-3 align-items-end">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold small">Puerto COM</label>
+              <select class="form-select" id="selectPuertoCom"></select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Baudios</label>
+              <select class="form-select" id="selectBaudios">
+                <option value="9600">9600</option>
+                <option value="115200" selected>115200</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small d-block">Estado de conexión</label>
+              <span class="estado-badge" id="badgeConexionSerial">Desconocido</span>
+            </div>
+            <div class="col-md-2">
+              <button type="submit" class="btn btn-primary w-100">Guardar</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      <!-- Panel VIPER -->
+      <div class="config-panel d-none" id="panelViper">
+        <div class="d-flex justify-content-between align-items-center mb-3">
+          <h5 class="fw-bold mb-0"><i class="bi bi-cpu me-2 text-primary"></i>Configuración VIPER</h5>
+          <button class="btn btn-primary px-4" id="btnNuevoViper">
+            <i class="bi bi-plus-lg me-2"></i>Agregar VIPER
+          </button>
+        </div>
+        <div class="card mb-3">
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th class="ps-4">ID</th>
+                  <th>Código VIPER</th>
+                  <th class="text-center">Estado</th>
+                  <th class="text-center">Código</th>
+                  <th class="text-end pe-4">Acción</th>
+                </tr>
+              </thead>
+              <tbody id="tablaVipers"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="card p-3 mb-3">
+          <h6 class="fw-bold small text-muted text-uppercase mb-2">Log Serial</h6>
+          <div id="serialLog"></div>
+        </div>
+
+        <!-- Métricas del sistema -->
+        <div class="card p-4 mb-3">
+          <h6 class="fw-bold mb-3"><i class="bi bi-bar-chart-line me-2 text-primary"></i>Métricas del Sistema</h6>
+          <div class="row g-3 text-center" id="metricasViper">
+            <div class="col-6 col-md-2">
+              <div class="fs-4 fw-bold" id="metRegistrados">–</div>
+              <div class="small text-muted">Registrados</div>
+            </div>
+            <div class="col-6 col-md-2">
+              <div class="fs-4 fw-bold" id="metActivos">–</div>
+              <div class="small text-muted">Activos</div>
+            </div>
+            <div class="col-6 col-md-2">
+              <div class="fs-4 fw-bold" id="metLlamadasHoy">–</div>
+              <div class="small text-muted">Llamadas hoy</div>
+            </div>
+            <div class="col-6 col-md-2">
+              <div class="fs-4 fw-bold" id="metLlamadasMes">–</div>
+              <div class="small text-muted">Llamadas este mes</div>
+            </div>
+            <div class="col-6 col-md-2">
+              <div class="fs-6 fw-bold" id="metUltimoActivado">–</div>
+              <div class="small text-muted">Último activado</div>
+            </div>
+            <div class="col-6 col-md-2">
+              <div class="fs-4 fw-bold" id="metTasaExito">–</div>
+              <div class="small text-muted">Tasa de éxito</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Configuración Serial (Arduino) -->
+        <div class="card p-4 mb-3">
+          <h6 class="fw-bold mb-3"><i class="bi bi-usb-symbol me-2 text-primary"></i>Configuración Serial (Arduino)</h6>
+          <form id="formSerialConfigViper" class="row g-3 align-items-end">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold small">Puerto COM</label>
+              <input type="text" class="form-control" id="vSerialPuerto" value="COM1">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Baudios</label>
+              <input type="number" class="form-control" id="vSerialBaudios" value="115200">
+            </div>
+            <div class="col-md-3">
+              <button type="submit" class="btn btn-primary w-100">Guardar Configuración</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Estado del Arduino -->
+        <div class="card p-4 mb-3">
+          <h6 class="fw-bold mb-3"><i class="bi bi-cpu-fill me-2 text-primary"></i>Estado del Arduino</h6>
+          <div class="row g-2 small">
+            <div class="col-md-4"><strong>Estado:</strong> <span class="estado-badge" id="arduinoEstado">Desconocido</span></div>
+            <div class="col-md-4"><strong>Firmware:</strong> <span id="arduinoFirmware">–</span></div>
+            <div class="col-md-4"><strong>Puerto:</strong> <span id="arduinoPuerto">–</span></div>
+            <div class="col-md-4"><strong>Última conexión:</strong> <span id="arduinoUltimaConexion">–</span></div>
+            <div class="col-md-4"><strong>Tiempo activo:</strong> <span id="arduinoTiempoActivo">–</span></div>
+          </div>
+          <hr>
+          <h6 class="fw-bold small text-muted text-uppercase mb-2">Diagnóstico del puerto serial</h6>
+          <div class="row g-2 small">
+            <div class="col-md-3"><strong>Puerto configurado:</strong> <span id="diagPuertoConfigurado">–</span></div>
+            <div class="col-md-3"><strong>Puerto conectado:</strong> <span id="diagPuertoConectado">–</span></div>
+            <div class="col-md-3"><strong>Última prueba:</strong> <span id="diagUltimaPrueba">–</span></div>
+            <div class="col-md-3"><strong>Última comunicación exitosa:</strong> <span id="diagUltimaComunicacion">–</span></div>
+          </div>
+        </div>
+
+        <!-- Configuración RF -->
+        <div class="card p-4 mb-3">
+          <h6 class="fw-bold mb-3"><i class="bi bi-broadcast-pin me-2 text-primary"></i>Configuración RF</h6>
+          <form id="formRfConfig" class="row g-3 align-items-end">
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Frecuencia RF</label>
+              <select class="form-select" id="rfFrecuencia">
+                <option value="315 MHz">315 MHz</option>
+                <option value="433.92 MHz" selected>433.92 MHz</option>
+                <option value="868 MHz">868 MHz</option>
+                <option value="915 MHz">915 MHz</option>
+              </select>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label fw-semibold small">Canal</label>
+              <select class="form-select" id="rfCanal">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Retransmisiones</label>
+              <input type="number" class="form-control" id="rfRetransmisiones" value="3" min="0">
+            </div>
+            <div class="col-md-2">
+              <label class="form-label fw-semibold small">Intervalo (ms)</label>
+              <input type="number" class="form-control" id="rfIntervalo" value="100" min="0">
+            </div>
+            <div class="col-md-2">
+              <button type="submit" class="btn btn-primary w-100">Guardar Config. RF</button>
+            </div>
+          </form>
+        </div>
+
+        <!-- Herramientas de Diagnóstico -->
+        <div class="card p-4 mb-3">
+          <h6 class="fw-bold mb-3"><i class="bi bi-tools me-2 text-primary"></i>Herramientas</h6>
+          <div class="d-flex flex-wrap gap-2 mb-3">
+            <button class="btn btn-outline-primary" id="btnProbarConexion"><i class="bi bi-wifi me-1"></i>Probar Conexión</button>
+            <button class="btn btn-outline-warning" id="btnReiniciarArduino"><i class="bi bi-arrow-repeat me-1"></i>Reiniciar Arduino</button>
+            <button class="btn btn-outline-secondary" id="btnLeerConfig"><i class="bi bi-search me-1"></i>Leer Configuración Actual</button>
+            <button class="btn btn-outline-success" id="btnAprenderViper"><i class="bi bi-magic me-1"></i>Aprender Nuevo VIPER</button>
+          </div>
+          <div id="diagnosticoResultado" class="alert alert-info d-none small mb-0" style="font-family:monospace; white-space:pre-wrap;"></div>
+        </div>
+
+        <!-- Historial de Eventos -->
+        <div class="card p-4 mb-3">
+          <h6 class="fw-bold mb-3"><i class="bi bi-clock-history me-2 text-primary"></i>Historial de Eventos</h6>
+          <div class="row g-2 mb-3">
+            <div class="col-md-3">
+              <input type="date" class="form-control form-control-sm" id="filtroEventoFecha">
+            </div>
+            <div class="col-md-3">
+              <input type="text" class="form-control form-control-sm" id="filtroEventoUsuario" placeholder="Usuario">
+            </div>
+            <div class="col-md-3">
+              <select class="form-select form-select-sm" id="filtroEventoEstado">
+                <option value="">Todos los estados</option>
+                <option value="OK">OK</option>
+                <option value="ENTREGADO">Entregado</option>
+                <option value="ERROR">Error</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <button class="btn btn-sm btn-primary w-100" id="btnFiltrarEventos">Filtrar</button>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-sm table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Fecha</th>
+                  <th>Usuario</th>
+                  <th>Acción</th>
+                  <th>VIPER</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody id="tablaEventosViper"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Panel Backups -->
+      <div class="config-panel d-none" id="panelBackups">
+        <h5 class="fw-bold mb-1"><i class="bi bi-cloud-arrow-up me-2 text-primary"></i>Configuración de Backups</h5>
+        <p class="text-muted mb-4">Esta sección permitirá administrar copias de seguridad automáticas y manuales del sistema.</p>
+        <div class="card p-5 text-center">
+          <i class="bi bi-cloud-arrow-up fs-1 text-muted opacity-50 d-block mb-3"></i>
+          <h6 class="fw-bold text-muted">Próximamente disponible</h6>
+          <p class="text-muted small mb-0">Aquí podrás programar backups automáticos, descargar copias manuales y restaurar datos del sistema.</p>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Modal VIPER -->
+<div class="modal fade" id="modalViper" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold">Agregar VIPER</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Código VIPER <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="vCodigoViper" placeholder="Ingrese el código del VIPER">
+        </div>
+        <div id="viperError" class="alert alert-danger d-none"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-primary px-4 fw-bold" id="btnGuardarViper">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Enviar Señal -->
+<div class="modal fade" id="modalEnviarSenal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold">Enviar señal al Arduino</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small">Se enviará el siguiente mensaje por el puerto serial configurado. El VIPER quedará en estado <strong>VALIDANDO</strong> a la espera de la captura del código RAW.</p>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Mensaje a enviar</label>
+          <textarea class="form-control" id="senalMensaje" rows="2">READY_PARA_TEST_DE_CABLE</textarea>
+        </div>
+        <div id="senalError" class="alert alert-danger d-none"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-primary px-4 fw-bold" id="btnConfirmarEnviarSenal">
+          <i class="bi bi-broadcast me-1"></i>Enviar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Ver Código -->
+<div class="modal fade" id="modalVerCodigo" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content border-0 rounded-4">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold">Código RAW capturado</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <textarea class="form-control" id="codigoRawTexto" rows="6" readonly style="font-family:monospace; font-size:.85rem;"></textarea>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cerrar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Asociar Código RF Aprendido -->
+<div class="modal fade" id="modalAsociarRf" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold">Código RF detectado</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-2">Código detectado:</p>
+        <div class="mb-3">
+          <input type="text" class="form-control" id="rfCodigoDetectado" readonly style="font-family:monospace;">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Asociar a VIPER existente</label>
+          <select class="form-select" id="rfAsociarViperId"></select>
+        </div>
+        <div id="rfAsociarError" class="alert alert-danger d-none"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-primary px-4 fw-bold" id="btnConfirmarAsociarRf">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Editar VIPER -->
+<div class="modal fade" id="modalEditarViper" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold">Editar VIPER</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Código VIPER <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="eCodigoViper">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Código RF</label>
+          <input type="text" class="form-control" id="eCodigoRf" style="font-family:monospace;">
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Canal</label>
+            <input type="number" class="form-control" id="eCanal" min="1" value="1">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label fw-semibold">Estado</label>
+            <select class="form-select" id="eEstado">
+              <option value="PENDIENTE">Pendiente</option>
+              <option value="VALIDANDO">Validando</option>
+              <option value="ACTIVO">Activo</option>
+              <option value="ERROR">Error</option>
+            </select>
+          </div>
+        </div>
+        <div id="editarViperError" class="alert alert-danger d-none mt-3"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-primary px-4 fw-bold" id="btnGuardarEdicionViper">Guardar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Confirmar Eliminación VIPER -->
+<div class="modal fade" id="modalEliminarViper" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold">¿Desea eliminar este VIPER?</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted mb-0">Esta acción no podrá deshacerse.</p>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-danger px-4 fw-bold" id="btnConfirmarEliminarViper">Confirmar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer"></div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/js/configuracion.js"></script>
+</body>
+</html>

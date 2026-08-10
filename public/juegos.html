@@ -17,7 +17,27 @@
       font-size: .8rem; font-weight: 600;
       padding: 3px 10px; border-radius: 20px;
     }
+    .etapas-badge {
+      background: #e0f2fe; color: #0369a1;
+      font-size: .75rem; font-weight: 600;
+      padding: 2px 8px; border-radius: 20px;
+    }
     .table th { font-weight: 600; color: #6c757d; font-size: .82rem; text-transform: uppercase; letter-spacing: .5px; }
+    #seccionEtapas { background: #f8fafc; border-radius: 10px; padding: 16px; border: 1px solid #e2e8f0; }
+    .etapa-row { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+    .etapa-row input[type="text"]   { flex: 1; }
+    .etapa-row input[type="number"] { width: 90px; }
+    .etapa-row .btn-move            { padding: 4px 8px; font-size: .8rem; }
+    #totalDuracion {
+      background: #ede9fe; color: #5b21b6;
+      font-weight: 700; border-radius: 8px;
+      padding: 8px 14px; font-size: .95rem;
+    }
+    .subcategorias-badge { background:#d1fae5; color:#065f46; font-size:.75rem; font-weight:600; padding:2px 8px; border-radius:20px; }
+    #seccionSubcategorias { background:#f0fdf4; border-radius:10px; padding:16px; border:1px solid #bbf7d0; }
+    .sub-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+    .sub-row input[type="text"] { flex:1; }
+    .sub-row .btn-move           { padding:4px 8px; font-size:.8rem; }
   </style>
 </head>
 <body>
@@ -71,7 +91,7 @@
 
 <!-- Modal Juego -->
 <div class="modal fade" id="modalJuego" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
     <div class="modal-content border-0 rounded-4">
       <div class="modal-header border-0 pb-0">
         <h5 class="modal-title fw-bold" id="modalJuegoTitle">Nuevo Juego</h5>
@@ -79,11 +99,43 @@
       </div>
       <div class="modal-body">
         <input type="hidden" id="juegoId">
+
         <div class="mb-3">
           <label class="form-label fw-semibold">Nombre del juego <span class="text-danger">*</span></label>
           <input type="text" class="form-control form-control-lg" id="jNombre" placeholder="Ej: Laser Tag" maxlength="60">
         </div>
+
+        <!-- Checkbox usar etapas -->
         <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="jUsaEtapas">
+            <label class="form-check-label fw-semibold" for="jUsaEtapas">Utilizar etapas</label>
+          </div>
+          <div class="form-text">Si está activado, la duración se calcula automáticamente sumando las etapas definidas</div>
+        </div>
+
+        <!-- Checkbox usar subcategorías -->
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="jUsaSubcategorias">
+            <label class="form-check-label fw-semibold" for="jUsaSubcategorias">¿Este juego tiene subcategorías?</label>
+          </div>
+          <div class="form-text">Si está activado, al registrar un grupo se deberá seleccionar una subcategoría (ej: nivel de dificultad, modalidad, horario, etc.)</div>
+        </div>
+
+        <!-- Sección subcategorías (visible cuando USA subcategorías) -->
+        <div class="mb-3 d-none" id="seccionSubcategorias">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-semibold">Subcategorías del juego</span>
+            <button type="button" class="btn btn-outline-success btn-sm" id="btnAgregarSubcategoria">
+              <i class="bi bi-plus-lg me-1"></i>Agregar subcategoría
+            </button>
+          </div>
+          <div id="listaSubcategorias"></div>
+        </div>
+
+        <!-- Duración manual (visible cuando NO usa etapas) -->
+        <div class="mb-3" id="wrapDuracionManual">
           <label class="form-label fw-semibold">Duración estimada (minutos) <span class="text-danger">*</span></label>
           <div class="input-group input-group-lg">
             <input type="number" class="form-control" id="jDuracion" min="1" max="300" value="30">
@@ -91,6 +143,23 @@
           </div>
           <div class="form-text">Tiempo aproximado que dura una sesión del juego</div>
         </div>
+
+        <!-- Sección etapas (visible cuando USA etapas) -->
+        <div class="mb-3 d-none" id="seccionEtapas">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-semibold">Etapas del juego</span>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="btnAgregarEtapa">
+              <i class="bi bi-plus-lg me-1"></i>Agregar etapa
+            </button>
+          </div>
+          <div id="listaEtapas"></div>
+          <div class="d-flex align-items-center gap-2 mt-3">
+            <i class="bi bi-clock-fill text-primary"></i>
+            <span class="text-muted small">Tiempo total del juego:</span>
+            <span id="totalDuracion">0 minutos</span>
+          </div>
+        </div>
+
         <div class="row g-3 mb-3">
           <div class="col-6">
             <label class="form-label fw-semibold">Mínimo de personas</label>
@@ -110,6 +179,7 @@
             <div class="form-text mt-0"><i class="bi bi-info-circle me-1"></i>La recepción solo podrá ingresar grupos dentro de este rango</div>
           </div>
         </div>
+
         <div class="mb-3" id="activoWrap" style="display:none">
           <div class="form-check form-switch">
             <input class="form-check-input" type="checkbox" id="jActivo" checked>
@@ -117,6 +187,7 @@
           </div>
           <div class="form-text">Los juegos inactivos no aparecen en la caja ni en los operadores</div>
         </div>
+
         <div id="juegoError" class="alert alert-danger d-none"></div>
       </div>
       <div class="modal-footer border-0 pt-0">

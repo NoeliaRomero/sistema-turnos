@@ -1,19 +1,26 @@
 const socket = io();
 
-let turnos   = [];
-let me       = null;
-let filtroId = '';
+let turnos        = [];
+let me            = null;
+let filtroId      = '';
 let timerInterval = null;
+
+function escapeHtml(str) {
+  return String(str == null ? '' : str).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
+}
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 async function init() {
   const res = await fetch('/api/auth/me');
   if (!res.ok) { window.location.href = '/login.html'; return; }
   me = await res.json();
-  if (!['admin','operador'].includes(me.rol)) { window.location.href = '/login.html'; return; }
+
+  // Bug 8: Admin no puede acceder al panel operador
+  if (!['operador'].includes(me.rol)) { window.location.href = '/login.html'; return; }
+
   document.getElementById('usuarioNombre').textContent = me.nombre;
 
-  // Mostrar botón "Juegos" solo si tiene el permiso
   if (me.permiso_gestionar_juegos) {
     document.getElementById('btnJuegos').style.display = 'inline-flex';
   }
@@ -21,8 +28,7 @@ async function init() {
   await cargarAtracciones();
   await cargarTurnos();
 
-  // Actualizar tiempos en juego cada 60 segundos
-  timerInterval = setInterval(actualizarTimers, 60000);
+  timerInterval = setInterval(actualizarTimers, 1000);
 }
 
 document.getElementById('btnLogout').addEventListener('click', async () => {
@@ -40,21 +46,27 @@ async function cargarAtracciones() {
     sel.innerHTML += `<option value="${a.id}">${a.nombre}</option>`;
   });
 
-  // Pre-seleccionar atracción del operador si está asignado
+  // Bug 5: operador ve solo su juego, selector bloqueado
   if (me.rol === 'operador' && me.atraccion_id) {
-    sel.value = String(me.atraccion_id);
-    filtroId  = String(me.atraccion_id);
+    sel.value    = String(me.atraccion_id);
+    filtroId     = String(me.atraccion_id);
+    sel.disabled = true;
   }
 
   sel.addEventListener('change', () => { filtroId = sel.value; renderTurnos(); });
 }
 
 async function cargarTurnos() {
-  const [r1, r2] = await Promise.all([
+  const [r1, r2, r3] = await Promise.all([
     fetch('/api/turnos?estado=esperando'),
-    fetch('/api/turnos?estado=llamado')
+    fetch('/api/turnos?estado=llamado'),
+    fetch('/api/turnos?estado=jugando'),
   ]);
-  turnos = [...(await r1.json()), ...(await r2.json())];
+  turnos = [
+    ...(await r1.json()),
+    ...(await r2.json()),
+    ...(await r3.json()),
+  ];
   renderTurnos();
 }
 
@@ -63,23 +75,20 @@ function renderTurnos() {
   const filtrados = filtroId ? turnos.filter(t => String(t.atraccion_id) === filtroId) : turnos;
   const esperando = filtrados.filter(t => t.estado === 'esperando')
     .sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
-  const llamados  = filtrados.filter(t => t.estado === 'llamado')
+  const activos   = filtrados.filter(t => t.estado === 'llamado' || t.estado === 'jugando')
     .sort((a,b) => new Date(a.called_at) - new Date(b.called_at));
 
   document.getElementById('cntEsperando').textContent = esperando.length;
-  document.getElementById('cntLlamado').textContent   = llamados.length;
+  document.getElementById('cntLlamado').textContent   = activos.length;
 
   document.getElementById('listaEsperando').innerHTML = esperando.length
     ? esperando.map(cardEsperando).join('') : vacio();
-  document.getElementById('listaLlamados').innerHTML  = llamados.length
-    ? llamados.map(cardLlamado).join('')    : vacio('Ningún turno llamado');
+  document.getElementById('listaLlamados').innerHTML  = activos.length
+    ? activos.map(cardActivo).join('') : vacio('Ningún turno activo');
 }
 
+// Bug 12: En cola no hay botón "Llamar" — el sistema llama automáticamente
 function cardEsperando(t) {
-  const cancelBtn = me.permiso_cancelar_turno
-    ? `<button class="btn btn-outline-danger btn-sm" onclick="cancelarTurno(${t.id})" title="Cliente no llegó">
-         <i class="bi bi-x-circle me-1"></i>No llegó
-       </button>` : '';
   return `
     <div class="turno-card esperando" id="turno-${t.id}">
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -89,28 +98,41 @@ function cardEsperando(t) {
             <div class="fw-semibold">${t.nombre_cliente || '<span class="text-muted">Sin nombre</span>'}</div>
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
               <span class="atraccion-tag">${t.atraccion_nombre}</span>
+              ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${t.subcategoria_nombre}</span>` : ''}
               ${t.duracion_minutos ? `<span class="duracion-tag"><i class="bi bi-clock me-1"></i>${t.duracion_minutos} min</span>` : ''}
               <span class="hora-tag">${formatHora(t.created_at)}</span>
             </div>
           </div>
         </div>
         <div class="d-flex gap-2">
-          <button class="btn btn-primary btn-sm px-3 fw-bold" onclick="llamarTurno(${t.id})">
-            <i class="bi bi-bell me-1"></i>Llamar
-          </button>
-          ${cancelBtn}
+          <span class="badge bg-warning text-dark px-3 py-2">
+            <i class="bi bi-hourglass-split me-1"></i>En espera
+          </span>
         </div>
       </div>
     </div>`;
 }
 
+// Bug 4: turnos 'llamado' (ventana 5 min) vs 'jugando' (en actividad)
+function cardActivo(t) {
+  if (t.estado === 'llamado') {
+    return cardLlamado(t);
+  }
+  return cardJugando(t);
+}
+
+// Estado 'llamado': biper sonó, cliente tiene 5 min para llegar
+// Solo se muestra el botón "No Llegó" — ningún botón de finalizar
 function cardLlamado(t) {
-  const elapsed   = tiempoTranscurrido(t.called_at);
-  const duracion  = t.duracion_minutos || 0;
-  const vencido   = duracion > 0 && elapsed > duracion;
-  const cancelBtn = me.permiso_cancelar_turno
-    ? `<button class="btn btn-outline-danger btn-sm" onclick="cancelarTurno(${t.id})" title="Cliente no llegó">
-         <i class="bi bi-x-circle me-1"></i>No llegó
+  const msPasados     = t.called_at ? (Date.now() - new Date(t.called_at).getTime()) : 0;
+  const restoMs       = Math.max(0, 5 * 60 * 1000 - msPasados);
+  const restoMin      = Math.floor(restoMs / 60000);
+  const restoSeg      = Math.floor((restoMs % 60000) / 1000);
+
+  const esAsignado = me.atraccion_id === t.atraccion_id || me.rol === 'admin';
+  const cancelBtn  = (me.permiso_cancelar_turno && esAsignado)
+    ? `<button class="btn btn-danger btn-sm px-3 fw-bold" onclick="cancelarTurno(${t.id})">
+         <i class="bi bi-person-x me-1"></i>No Llegó
        </button>` : '';
 
   return `
@@ -119,21 +141,93 @@ function cardLlamado(t) {
         <div class="d-flex align-items-center gap-3">
           <div class="biper-num">${t.biper_numero}</div>
           <div>
-            <div class="fw-semibold">${t.nombre_cliente || '<span class="text-muted">Sin nombre</span>'}</div>
+            <div class="fw-semibold">${t.nombre_cliente ? escapeHtml(t.nombre_cliente) : '<span class="text-muted">Sin nombre</span>'}</div>
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
-              <span class="atraccion-tag">${t.atraccion_nombre}</span>
-              ${duracion ? `<span class="duracion-tag"><i class="bi bi-clock me-1"></i>${duracion} min est.</span>` : ''}
-              <span class="timer-badge ${vencido ? 'timer-vencido' : ''}" data-called="${t.called_at}" data-duracion="${duracion}" id="timer-${t.id}">
-                <i class="bi bi-stopwatch me-1"></i>${elapsed} min en juego
+              <span class="atraccion-tag">${escapeHtml(t.atraccion_nombre)}</span>
+              ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>` : ''}
+              <span class="badge bg-warning text-dark px-2">
+                <i class="bi bi-bell-fill me-1"></i>Llamado
+              </span>
+              <span class="timer-badge timer-countdown" id="timer-${t.id}"
+                    data-called="${t.called_at}" data-tipo="llamado">
+                <i class="bi bi-alarm me-1"></i>${restoMin}:${String(restoSeg).padStart(2,'0')} para iniciar
               </span>
             </div>
           </div>
         </div>
-        <div class="d-flex gap-2">
-          <button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id})">
-            <i class="bi bi-check-lg me-1"></i>Finalizar
-          </button>
+        <div class="d-flex gap-2 flex-wrap">
           ${cancelBtn}
+        </div>
+      </div>
+    </div>`;
+}
+
+// Estado 'jugando': cliente llegó, actividad en curso
+// Botones de finalizar — SIN "No Llegó"
+function cardJugando(t) {
+  const baseTime   = t.jugando_desde || t.called_at;
+  const elapsed    = tiempoTranscurrido(baseTime);
+  const duracion   = t.duracion_minutos || 0;
+  const vencido    = duracion > 0 && elapsed > duracion;
+  const esAsignado = me.atraccion_id === t.atraccion_id || me.rol === 'admin';
+
+  let etapaHtml    = '';
+  let btnFinalizar = '';
+
+  if (t.usa_etapas && t.etapa_actual_nombre) {
+    const esMasEtapas = !!t.etapa_siguiente_nombre;
+    const sigTexto = esMasEtapas
+      ? `<span class="etapa-sig"><i class="bi bi-arrow-right me-1"></i>Próxima: <strong>${escapeHtml(t.etapa_siguiente_nombre)}</strong></span>`
+      : `<span class="etapa-sig text-muted"><i class="bi bi-flag-fill me-1"></i>Última etapa</span>`;
+    etapaHtml = `
+      <div class="etapa-info mt-2">
+        <span class="etapa-actual"><i class="bi bi-layers me-1"></i>Etapa: <strong>${escapeHtml(t.etapa_actual_nombre)}</strong></span>
+        ${sigTexto}
+      </div>`;
+
+    if (me.permiso_llamar_turno && esAsignado) {
+      if (esMasEtapas) {
+        btnFinalizar = `<button class="btn btn-primary btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
+          <i class="bi bi-skip-forward-fill me-1"></i>Avanzar Etapa
+        </button>`;
+      } else {
+        btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
+          <i class="bi bi-trophy me-1"></i>Finalizar Juego
+        </button>`;
+      }
+    }
+  } else if (me.permiso_llamar_turno && esAsignado) {
+    // Sin etapas → Finalizar Juego
+    btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
+      <i class="bi bi-trophy me-1"></i>Finalizar Juego
+    </button>`;
+  }
+
+  return `
+    <div class="turno-card jugando" id="turno-${t.id}">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div class="d-flex align-items-center gap-3">
+          <div class="biper-num">${escapeHtml(t.biper_numero)}</div>
+          <div>
+            <div class="fw-semibold">${t.nombre_cliente ? escapeHtml(t.nombre_cliente) : '<span class="text-muted">Sin nombre</span>'}</div>
+            <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
+              <span class="atraccion-tag">${escapeHtml(t.atraccion_nombre)}</span>
+              ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>` : ''}
+              ${duracion ? `<span class="duracion-tag"><i class="bi bi-clock me-1"></i>${duracion} min est.</span>` : ''}
+              <span class="badge bg-primary text-white px-2">
+                <i class="bi bi-play-circle me-1"></i>Jugando
+              </span>
+              <span class="timer-badge ${vencido ? 'timer-vencido' : ''}"
+                    data-base="${baseTime}" data-duracion="${duracion}" data-tipo="jugando"
+                    id="timer-${t.id}">
+                <i class="bi bi-stopwatch me-1"></i>${elapsed} min en juego
+              </span>
+            </div>
+            ${etapaHtml}
+          </div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          ${btnFinalizar}
         </div>
       </div>
     </div>`;
@@ -144,31 +238,46 @@ function vacio(msg = 'Sin turnos en espera') {
     <i class="bi bi-inbox fs-1 d-block mb-2 opacity-50"></i>${msg}</p>`;
 }
 
-// Actualiza los timers de turnos llamados sin re-renderizar todo
 function actualizarTimers() {
-  document.querySelectorAll('[data-called]').forEach(el => {
-    const elapsed  = tiempoTranscurrido(el.dataset.called);
+  // Actualizar timers de jugando (tiempo transcurrido)
+  document.querySelectorAll('[data-base][data-tipo="jugando"]').forEach(el => {
+    const elapsed  = tiempoTranscurrido(el.dataset.base);
     const duracion = parseInt(el.dataset.duracion) || 0;
     const vencido  = duracion > 0 && elapsed > duracion;
     el.innerHTML   = `<i class="bi bi-stopwatch me-1"></i>${elapsed} min en juego`;
     el.className   = `timer-badge ${vencido ? 'timer-vencido' : ''}`;
   });
+
+  // Actualizar countdown de llamado (segundos restantes)
+  document.querySelectorAll('[data-called][data-tipo="llamado"]').forEach(el => {
+    const msPasados = el.dataset.called ? (Date.now() - new Date(el.dataset.called).getTime()) : 0;
+    const restoMs   = Math.max(0, 5 * 60 * 1000 - msPasados);
+    const restoMin  = Math.floor(restoMs / 60000);
+    const restoSeg  = Math.floor((restoMs % 60000) / 1000);
+    el.innerHTML = `<i class="bi bi-alarm me-1"></i>${restoMin}:${String(restoSeg).padStart(2,'0')} para iniciar`;
+  });
 }
 
 // ── Acciones ──────────────────────────────────────────────────────────────────
-async function llamarTurno(id) {
-  const res = await fetch(`/api/turnos/${id}/llamar`, { method: 'PUT' });
-  if (!res.ok) { const d = await res.json(); mostrarToast(d.error||'Error', 'danger'); }
-}
+// Bug 12: no existe función llamarTurno — el sistema lo hace automáticamente
 
-async function finalizarTurno(id) {
-  await fetch(`/api/turnos/${id}/finalizar`, { method: 'PUT' });
+async function finalizarTurno(id, btn) {
+  if (btn) { btn.disabled = true; }
+  try {
+    const res = await fetch(`/api/turnos/${id}/finalizar`, { method: 'PUT' });
+    if (!res.ok) { const d = await res.json(); mostrarToast(d.error || 'Error', 'danger'); }
+  } finally {
+    if (btn) { btn.disabled = false; }
+  }
 }
 
 async function cancelarTurno(id) {
-  if (!confirm('¿Cancelar el biper? El turno quedará anulado.')) return;
+  if (!confirm('¿Marcar como "No llegó"? El turno quedará cancelado.')) return;
   const res = await fetch(`/api/turnos/${id}/cancelar`, { method: 'PUT' });
-  if (!res.ok) { const d = await res.json(); mostrarToast(d.error||'Sin permiso para cancelar', 'danger'); }
+  if (!res.ok) { const d = await res.json(); mostrarToast(d.error || 'Sin permiso para cancelar', 'danger'); return; }
+  mostrarToast('Turno cancelado — No llegó', 'warning');
+  turnos = turnos.filter(x => x.id !== id);
+  renderTurnos();
 }
 
 // ── Socket ────────────────────────────────────────────────────────────────────
@@ -176,8 +285,10 @@ socket.on('turno:nuevo', t => {
   turnos.push(t); renderTurnos(); destacar(t.id);
   mostrarToast(`Nuevo turno – Biper ${t.biper_numero} (${t.atraccion_nombre})`, 'info');
 });
-socket.on('turno:llamado',   t => { upsert(t); renderTurnos(); });
-socket.on('turno:finalizado',t => { turnos = turnos.filter(x => x.id !== t.id); renderTurnos(); });
+socket.on('turno:llamado',        t => { upsert(t); renderTurnos(); });
+socket.on('turno:jugando',        t => { upsert(t); renderTurnos(); });
+socket.on('turno:etapa_avanzada', t => { upsert(t); renderTurnos(); });
+socket.on('turno:finalizado',     t => { turnos = turnos.filter(x => x.id !== t.id); renderTurnos(); });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function upsert(t) {

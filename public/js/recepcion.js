@@ -3,6 +3,21 @@ let me = null;
 let atracciones = [];
 let colaData    = [];
 
+function escapeHtml(str) {
+  return String(str == null ? '' : str).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
+}
+
+// Escapa para uso en atributos onclick (HTML + JS string con comillas simples)
+function esc(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, "\\'");
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 async function init() {
   const res = await fetch('/api/auth/me');
@@ -15,6 +30,7 @@ async function init() {
   if (me.permiso_gestionar_juegos) document.getElementById('btnJuegos').style.display = 'inline-flex';
 
   await cargarAtracciones();
+  await cargarVipersActivos();
   await cargarCola();
 }
 
@@ -33,11 +49,25 @@ async function cargarAtracciones() {
   atracciones.forEach(a => {
     const minM = a.min_miembros || 1;
     const maxM = a.max_miembros || 30;
-    sel.innerHTML += `<option value="${a.id}" data-duracion="${a.duracion_minutos}" data-min-miembros="${minM}" data-max-miembros="${maxM}">${a.nombre} (${a.duracion_minutos} min)</option>`;
+    sel.innerHTML += `<option value="${a.id}" data-duracion="${a.duracion_minutos}" data-min-miembros="${minM}" data-max-miembros="${maxM}" data-usa-subcategorias="${a.usa_subcategorias || 0}">${escapeHtml(a.nombre)} (${a.duracion_minutos} min)</option>`;
   });
 }
 
-document.getElementById('selectJuego').addEventListener('change', () => {
+// ── VIPERs activos (selección opcional al registrar un grupo) ──────────────────
+async function cargarVipersActivos() {
+  const sel = document.getElementById('selectViper');
+  if (!sel) return;
+  try {
+    const res    = await fetch('/api/vipers/activos');
+    const vipers = res.ok ? await res.json() : [];
+    sel.innerHTML = '<option value="">Sin VIPER físico</option>';
+    vipers.forEach(v => {
+      sel.innerHTML += `<option value="${v.id}">${v.codigo_viper}</option>`;
+    });
+  } catch (_) { /* el módulo VIPER es opcional, no debe romper el registro */ }
+}
+
+document.getElementById('selectJuego').addEventListener('change', async () => {
   const opt = document.getElementById('selectJuego').selectedOptions[0];
   const duracion = opt?.dataset.duracion;
   const minM     = parseInt(opt?.dataset.minMiembros) || 1;
@@ -47,7 +77,6 @@ document.getElementById('selectJuego').addEventListener('change', () => {
 
   if (duracion) {
     duEl.innerHTML = `<i class="bi bi-clock me-1"></i>Duración: <strong>${duracion} min</strong>&nbsp;&nbsp;<i class="bi bi-people ms-2 me-1"></i>Personas: <strong>${minM}–${maxM}</strong>`;
-    // Ajustar límites y valor del input de miembros
     inputM.min = minM;
     inputM.max = maxM;
     const current = parseInt(inputM.value) || 1;
@@ -58,6 +87,28 @@ document.getElementById('selectJuego').addEventListener('change', () => {
     inputM.min = 1;
     inputM.max = 30;
   }
+
+  // Manejar subcategorias
+  const wrapSub = document.getElementById('wrapSubcategoria');
+  const selSub  = document.getElementById('selectSubcategoria');
+  selSub.innerHTML = '<option value="">Seleccionar subcategoría…</option>';
+
+  const juegoId       = opt?.value;
+  const usaSubs       = opt?.dataset.usaSubcategorias === '1';
+
+  if (juegoId && usaSubs) {
+    try {
+      const r    = await fetch(`/api/atracciones/${juegoId}/subcategorias`);
+      const subs = r.ok ? await r.json() : [];
+      subs.forEach(s => {
+        selSub.innerHTML += `<option value="${s.id}">${escapeHtml(s.nombre)}</option>`;
+      });
+    } catch (_) {}
+    wrapSub.classList.remove('d-none');
+  } else {
+    wrapSub.classList.add('d-none');
+  }
+
   actualizarEsperaEstimada();
 });
 
@@ -163,16 +214,33 @@ function renderJuegoPane(j) {
              <i class="bi bi-check-lg me-1"></i>Finalizar
            </button>`
         : '';
+      // Info de etapa para recepción
+      let etapaHtml = '';
+      if (t.etapa_actual_nombre) {
+        const sigTexto = t.etapa_siguiente_nombre
+          ? `<span class="text-muted small"><i class="bi bi-arrow-right me-1"></i>Próxima: <strong>${escapeHtml(t.etapa_siguiente_nombre)}</strong></span>`
+          : `<span class="text-muted small"><i class="bi bi-flag-fill me-1"></i>Última etapa</span>`;
+        etapaHtml = `
+          <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
+            <span class="etapa-recep-badge"><i class="bi bi-layers me-1"></i>${escapeHtml(t.etapa_actual_nombre)}</span>
+            ${sigTexto}
+          </div>`;
+      }
+      const subcatHtml = t.subcategoria_nombre
+        ? `<span class="badge bg-success bg-opacity-75 ms-1"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>`
+        : '';
       return `
       <div class="turno-row jugando d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div class="d-flex align-items-center gap-3">
-          <span class="biper-num">${t.biper_numero}</span>
+          <span class="biper-num">${escapeHtml(t.biper_numero)}</span>
           <div>
-            <div class="fw-bold">${t.nombre_cliente || 'Sin nombre'}</div>
-            <div class="d-flex gap-2 mt-1">
+            <div class="fw-bold">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>
+            <div class="d-flex gap-2 mt-1 flex-wrap">
               <span class="miembros-badge"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
               <span class="badge bg-primary"><i class="bi bi-play-fill me-1"></i>JUGANDO</span>
+              ${subcatHtml}
             </div>
+            ${etapaHtml}
           </div>
         </div>
         <div class="d-flex align-items-center gap-3">
@@ -189,40 +257,81 @@ function renderJuegoPane(j) {
   // ── Cola en espera ───────────────────────────────────────────────────────
   if (j.cola.length) {
     html += `<div class="seccion-titulo mt-3"><i class="bi bi-hourglass-split me-1"></i>En espera</div>`;
+
+    // Calcular posición dentro de cada subcategoría para flechas y botón de llamar
+    const colaBySubcat = {};
+    j.cola.forEach(t => {
+      const key = t.subcategoria_id ?? '__null__';
+      if (!colaBySubcat[key]) colaBySubcat[key] = [];
+      colaBySubcat[key].push(t);
+    });
+
     html += j.cola.map(t => {
       const claseEspera = t.tiempo_espera_estimado === 0 ? 'espera-0'
         : t.tiempo_espera_estimado <= 30 ? 'espera-baja' : 'espera-alta';
-      const esPrimero = t.posicion === 1;
 
+      // Posición dentro de la misma subcategoría (o sin subcategoría)
+      const subcatKey     = t.subcategoria_id ?? '__null__';
+      const subcatList    = colaBySubcat[subcatKey] || [];
+      const posSubcat     = subcatList.findIndex(x => x.id === t.id) + 1;
+      const esPrimeroSubcat = posSubcat === 1;
+      const esUltimoSubcat  = posSubcat === subcatList.length;
+
+      // Botón de acción: "Llamar" para primero sin nadie jugando, "Combinar" si hay alguien jugando de la misma subcategoría
       let btnLlamar = '';
       if (me?.permiso_llamar_turno) {
-        if (esPrimero) {
-          const hayJugando = j.jugando.length > 0;
+        const hayJugandoMismaSubcat = j.usa_subcategorias
+          ? j.jugando.some(g => g.subcategoria_id === t.subcategoria_id)
+          : j.jugando.length > 0;
+
+        if (hayJugandoMismaSubcat) {
+          // Hay alguien jugando de la misma subcategoría → "Combinar" activo para todos
+          btnLlamar = `<button class="btn btn-warning btn-sm fw-bold px-3"
+            onclick="llamarGrupo(${t.id},true,'${esc(j.nombre)}','${esc(t.nombre_cliente||'Sin nombre')}')">
+            <i class="bi bi-people-fill me-1"></i>Combinar
+          </button>`;
+        } else if (esPrimeroSubcat) {
+          // Nadie jugando aún → solo el primero de la subcategoría puede llamar
           btnLlamar = `<button class="btn btn-success btn-sm fw-bold px-3"
-            onclick="llamarGrupo(${t.id},${hayJugando},'${esc(j.nombre)}','${esc(t.nombre_cliente||'Sin nombre')}')">
+            onclick="llamarGrupo(${t.id},false,'${esc(j.nombre)}','${esc(t.nombre_cliente||'Sin nombre')}')">
             <i class="bi bi-megaphone me-1"></i>Llamar
           </button>`;
         } else {
           btnLlamar = `<button class="btn btn-outline-secondary btn-sm px-3" disabled
-            title="Primero debe llamarse al grupo #1 de la cola">
+            title="Primero debe llamarse al grupo #1 de su subcategoría">
             <i class="bi bi-lock me-1"></i>Espera turno
           </button>`;
         }
       }
 
+      // Flechas basadas en posición dentro de la misma subcategoría
+      const btnSubir = `<button class="btn btn-outline-secondary btn-sm py-0 px-2" title="Subir en la cola"
+        ${esPrimeroSubcat ? 'disabled' : ''} onclick="moverTurno(${t.id},'subir')">
+        <i class="bi bi-chevron-up"></i>
+      </button>`;
+      const btnBajar = `<button class="btn btn-outline-secondary btn-sm py-0 px-2" title="Bajar en la cola"
+        ${esUltimoSubcat ? 'disabled' : ''} onclick="moverTurno(${t.id},'bajar')">
+        <i class="bi bi-chevron-down"></i>
+      </button>`;
+
+      const subcatEsperaHtml = t.subcategoria_nombre
+        ? `<span class="badge bg-success bg-opacity-75"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>`
+        : '';
       return `
-      <div class="turno-row d-flex align-items-center justify-content-between flex-wrap gap-2 ${esPrimero ? '' : 'opacity-65'}">
+      <div class="turno-row d-flex align-items-center justify-content-between flex-wrap gap-2 ${esPrimeroSubcat ? '' : 'opacity-65'}">
         <div class="d-flex align-items-center gap-3">
           <div class="pos-num">${t.posicion}</div>
-          <span class="biper-num">${t.biper_numero}</span>
+          <span class="biper-num">${escapeHtml(t.biper_numero)}</span>
           <div>
-            <div class="fw-bold">${t.nombre_cliente || 'Sin nombre'}</div>
-            <div class="d-flex gap-2 mt-1">
+            <div class="fw-bold">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>
+            <div class="d-flex gap-2 mt-1 flex-wrap">
               <span class="miembros-badge"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
+              ${subcatEsperaHtml}
             </div>
           </div>
         </div>
         <div class="d-flex align-items-center gap-2">
+          <div class="d-flex flex-column gap-1">${btnSubir}${btnBajar}</div>
           <span class="espera-badge ${claseEspera}">
             <i class="bi bi-hourglass-split me-1"></i>
             ${t.tiempo_espera_estimado === 0 ? '¡Próximo!' : `~${t.tiempo_espera_estimado} min`}
@@ -236,8 +345,7 @@ function renderJuegoPane(j) {
   return html;
 }
 
-// Escapa comillas simples para uso en atributos onclick
-function esc(s) { return String(s).replace(/'/g, "\\'"); }
+// (esc() definido al inicio del archivo)
 
 // ── Formulario ────────────────────────────────────────────────────────────────
 document.getElementById('btnAutoBiper').addEventListener('click', async () => {
@@ -260,15 +368,22 @@ document.getElementById('btnMas').addEventListener('click', () => {
 
 document.getElementById('formRegistro').addEventListener('submit', async e => {
   e.preventDefault();
-  const atraccion_id     = document.getElementById('selectJuego').value;
-  const biper_numero     = document.getElementById('inputBiper').value;
-  const nombre_cliente   = document.getElementById('inputNombre').value.trim();
+  const atraccion_id      = document.getElementById('selectJuego').value;
+  const biper_numero      = document.getElementById('inputBiper').value;
+  const nombre_cliente    = document.getElementById('inputNombre').value.trim();
   const cantidad_miembros = parseInt(document.getElementById('inputMiembros').value) || 1;
+  const viper_id          = document.getElementById('selectViper')?.value || null;
+
+  const opt           = document.getElementById('selectJuego').selectedOptions[0];
+  const usaSubs       = opt?.dataset.usaSubcategorias === '1';
+  const subcategoria_id = usaSubs ? (document.getElementById('selectSubcategoria').value || null) : null;
 
   if (!atraccion_id || !biper_numero || !nombre_cliente) {
     mostrarToast('Completá juego, biper y nombre del grupo', 'warning'); return;
   }
-  const opt  = document.getElementById('selectJuego').selectedOptions[0];
+  if (usaSubs && !subcategoria_id) {
+    mostrarToast('Seleccioná una subcategoría para este juego', 'warning'); return;
+  }
   const minM = parseInt(opt?.dataset.minMiembros) || 1;
   const maxM = parseInt(opt?.dataset.maxMiembros) || 30;
   if (cantidad_miembros < minM || cantidad_miembros > maxM) {
@@ -277,7 +392,7 @@ document.getElementById('formRegistro').addEventListener('submit', async e => {
 
   const res  = await fetch('/api/turnos', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ atraccion_id, biper_numero, nombre_cliente, cantidad_miembros })
+    body: JSON.stringify({ atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id, subcategoria_id })
   });
   const data = await res.json();
 
@@ -288,6 +403,8 @@ document.getElementById('formRegistro').addEventListener('submit', async e => {
   document.getElementById('inputMiembros').value = '1';
   document.getElementById('duracionJuego').textContent = '';
   document.getElementById('tiempoEsperaWrap').classList.add('d-none');
+  document.getElementById('wrapSubcategoria').classList.add('d-none');
+  document.getElementById('selectSubcategoria').innerHTML = '<option value="">Seleccionar subcategoría…</option>';
   await cargarCola();
 });
 
@@ -303,15 +420,20 @@ function pedirFinalizarGrupo(id, nombreFamilia) {
   modalConfFinalizar().show();
 }
 
-document.getElementById('btnConfFinalizarSi').addEventListener('click', async () => {
+document.getElementById('btnConfFinalizarSi').addEventListener('click', async (e) => {
   modalConfFinalizar().hide();
   if (!_pendingFinalizarId) return;
-  const res  = await fetch(`/api/turnos/${_pendingFinalizarId}/finalizar`, { method: 'PUT' });
-  const data = await res.json();
-  if (!res.ok) { mostrarToast(data.error || 'Error al finalizar', 'danger'); }
-  else         { mostrarToast(`✅ Turno de ${_pendingFinalizarNombre} finalizado`, 'success'); }
-  _pendingFinalizarId = _pendingFinalizarNombre = null;
-  await cargarCola();
+  e.target.disabled = true;
+  try {
+    const res  = await fetch(`/api/turnos/${_pendingFinalizarId}/finalizar`, { method: 'PUT' });
+    const data = await res.json();
+    if (!res.ok) { mostrarToast(data.error || 'Error al finalizar', 'danger'); }
+    else         { mostrarToast(`✅ Turno de ${_pendingFinalizarNombre} finalizado`, 'success'); }
+    _pendingFinalizarId = _pendingFinalizarNombre = null;
+    await cargarCola();
+  } finally {
+    e.target.disabled = false;
+  }
 });
 document.getElementById('btnConfFinalizarNo').addEventListener('click', () => {
   modalConfFinalizar().hide();
@@ -327,8 +449,8 @@ async function llamarGrupo(id, hayJugando, nombreJuego, nombreFamilia) {
     // Pedir confirmación antes de llamar
     _pendingLlamarId = id;
     document.getElementById('confLlamarTexto').innerHTML =
-      `<strong>${nombreJuego}</strong> ya tiene un grupo jugando.<br>
-       ¿Querés llamar igualmente a <strong>${nombreFamilia}</strong>?`;
+      `<strong>${escapeHtml(nombreJuego)}</strong> ya tiene un grupo jugando.<br>
+       ¿Querés llamar igualmente a <strong>${escapeHtml(nombreFamilia)}</strong>?`;
     modalConfLlamar().show();
     return;
   }
@@ -337,29 +459,107 @@ async function llamarGrupo(id, hayJugando, nombreJuego, nombreFamilia) {
 
 document.getElementById('btnConfLlamarSi').addEventListener('click', async () => {
   modalConfLlamar().hide();
-  if (_pendingLlamarId) await _ejecutarLlamar(_pendingLlamarId);
+  const idParaLlamar = _pendingLlamarId;
   _pendingLlamarId = null;
+  if (idParaLlamar) await _ejecutarLlamar(idParaLlamar);
 });
 document.getElementById('btnConfLlamarNo').addEventListener('click', () => {
   modalConfLlamar().hide();
   _pendingLlamarId = null;
 });
 
-async function _ejecutarLlamar(id) {
-  const res  = await fetch(`/api/turnos/${id}/llamar`, { method: 'PUT' });
+const modalConfCapacidad = () => bootstrap.Modal.getOrCreateInstance(document.getElementById('modalConfCapacidad'));
+
+document.getElementById('btnConfCapacidadSi').addEventListener('click', async () => {
+  modalConfCapacidad().hide();
+  const idParaLlamar = _pendingLlamarId;
+  _pendingLlamarId = null;
+  if (idParaLlamar) await _ejecutarLlamar(idParaLlamar, true);
+});
+document.getElementById('btnConfCapacidadNo').addEventListener('click', () => {
+  modalConfCapacidad().hide();
+  _pendingLlamarId = null;
+});
+
+const modalConfViperOtroJuego = () => bootstrap.Modal.getOrCreateInstance(document.getElementById('modalConfViperOtroJuego'));
+
+document.getElementById('btnConfViperOtroJuegoSi').addEventListener('click', async () => {
+  modalConfViperOtroJuego().hide();
+  const idParaLlamar = _pendingLlamarId;
+  _pendingLlamarId = null;
+  if (idParaLlamar) await _ejecutarLlamar(idParaLlamar, true);
+});
+document.getElementById('btnConfViperOtroJuegoNo').addEventListener('click', () => {
+  modalConfViperOtroJuego().hide();
+  _pendingLlamarId = null;
+});
+
+let _llamarEnCurso = false;
+async function _ejecutarLlamar(id, force = false) {
+  if (_llamarEnCurso) return;
+  _llamarEnCurso = true;
+  try {
+  const res  = await fetch(`/api/turnos/${id}/llamar`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(force ? { force: true } : {}),
+  });
   const data = await res.json();
   if (!res.ok) {
     mostrarToast(data.error || 'No se pudo llamar al grupo', 'danger');
     return;
   }
+  if (data.advertencia === 'biper_en_otro_juego') {
+    _pendingLlamarId = id;
+    const restanteTexto = data.tiempo_restante > 0
+      ? `con aproximadamente <strong>${data.tiempo_restante} min restantes</strong>`
+      : 'con tiempo excedido';
+    document.getElementById('confViperOtroJuegoTexto').innerHTML =
+      `El VIPER <strong>${escapeHtml(data.biper_numero)}</strong> está actualmente jugando en
+       <strong>${escapeHtml(data.juego_origen)}</strong>
+       (${escapeHtml(data.nombre_cliente || 'Sin nombre')}) ${restanteTexto}.<br><br>
+       ¿Querés llamarlo igualmente?`;
+    modalConfViperOtroJuego().show();
+    return;
+  }
+  if (data.advertencia === 'capacidad_excedida') {
+    _pendingLlamarId = id;
+    document.getElementById('confCapacidadTexto').innerHTML =
+      `Actualmente hay <strong>${data.personasJugando}</strong> persona${data.personasJugando !== 1 ? 's' : ''} jugando.<br>
+       Este grupo tiene <strong>${data.personasGrupo}</strong> persona${data.personasGrupo !== 1 ? 's' : ''}.<br>
+       Si lo llamás habrá <strong>${data.totalPersonas}</strong> personas jugando y el máximo permitido es <strong>${data.maximoPermitido}</strong>.<br>
+       ¿Deseás llamarlo igualmente?`;
+    modalConfCapacidad().show();
+    return;
+  }
   mostrarToast(`📣 Biper ${data.biper_numero} – ${data.nombre_cliente || 'Grupo'} llamado a jugar`, 'success');
+  await cargarCola();
+  } finally {
+    _llamarEnCurso = false;
+  }
+}
+
+// ── Reordenar cola ────────────────────────────────────────────────────────────
+async function moverTurno(id, direccion) {
+  const res  = await fetch(`/api/turnos/${id}/mover`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ direccion }),
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    mostrarToast(data.error || 'No se pudo mover el turno', 'danger');
+    return;
+  }
   await cargarCola();
 }
 
 // ── Socket (actualización en tiempo real) ─────────────────────────────────────
-socket.on('turno:nuevo',     () => cargarCola());
-socket.on('turno:llamado',   () => cargarCola());
-socket.on('turno:finalizado',() => cargarCola());
+socket.on('turno:nuevo',         () => cargarCola());
+socket.on('turno:llamado',       () => cargarCola());
+socket.on('turno:etapa_avanzada',() => cargarCola());
+socket.on('turno:finalizado',    () => cargarCola());
+socket.on('turno:reordenado',    () => cargarCola());
 
 // ── Notificación de turno finalizado (enviada por operador) ───────────────────
 socket.on('recepcion:notificacion', (data) => {
