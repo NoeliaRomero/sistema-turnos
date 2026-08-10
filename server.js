@@ -103,11 +103,36 @@ app.use(session({
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ── Módulo de licencia (requiere estar antes del enforcement middleware) ───────
+const licenciaModule = require('./routes/licencia');
+
+// ── Enforcement de licencia ───────────────────────────────────────────────────
+// Rutas que siempre están disponibles independientemente del estado de licencia:
+//   - /api/auth      → login/logout/me
+//   - /api/licencia  → activar/consultar licencia
+//   - /api/superadmin→ panel superadmin (gestión de admins)
+// Todo lo demás requiere licencia válida.
+// Esto impide que un admin/operador/recepción use el sistema si no está activado,
+// pero permite al superadmin activar la licencia sin restricciones.
+const RUTAS_LIBRES = ['/api/auth', '/api/licencia', '/api/superadmin'];
+app.use('/api', (req, res, next) => {
+  if (RUTAS_LIBRES.some(r => req.path.startsWith(r.replace('/api', '')))) return next();
+  const { valid, reason } = licenciaModule.getLicenseStatus();
+  if (!valid) {
+    const msg = reason === 'expired'
+      ? 'La licencia del sistema está vencida. Contacte al administrador.'
+      : 'Sistema no activado. Contacte al administrador del sistema.';
+    return res.status(403).json({ error: msg, licencia_requerida: true });
+  }
+  next();
+});
+
 // ── Rutas API ─────────────────────────────────────────────────────────────────
 app.use('/api/auth/login',  loginLimiter);
 app.use('/api/auth',        require('./routes/auth'));
 const backupModule = require('./routes/backup');
 app.use('/api/backup',      backupModule.router);
+app.use('/api/licencia',    licenciaModule.router);
 app.use('/api/atracciones', require('./routes/atracciones'));
 app.use('/api/turnos',      require('./routes/turnos')(io));
 app.use('/api/usuarios',    require('./routes/usuarios'));

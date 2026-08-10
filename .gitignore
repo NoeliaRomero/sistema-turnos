@@ -13,3 +13,11 @@ backups/
 db/.restore_pending
 db/pending_restore.db
 db/session.key
+
+# Licencia y datos de instalación (runtime, específicos de cada PC)
+db/license.lic
+db/install.id
+
+# Herramientas de desarrollador — clave privada NUNCA en repositorio
+tools/private.pem
+tools/*.lic

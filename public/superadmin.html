@@ -67,6 +67,21 @@
     .plan-basic   { background: rgba(251,191,36,.15); color: #fbbf24; }
     .plan-limited { background: rgba(239,68,68,.15);  color: #f87171; }
 
+    /* ── Licencia ── */
+    .lic-card { background: #1e293b; border: 1px solid rgba(255,255,255,.07); border-radius: 18px; overflow: hidden; margin-bottom: 32px; }
+    .lic-card-header { padding: 20px 24px 16px; border-bottom: 1px solid rgba(255,255,255,.06); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+    .lic-card-body   { padding: 20px 24px; }
+    .lic-badge-ok      { background: rgba(16,185,129,.15); color: #34d399; font-size:.75rem; font-weight:700; padding:4px 14px; border-radius:20px; }
+    .lic-badge-warn    { background: rgba(251,191,36,.15);  color: #fbbf24; font-size:.75rem; font-weight:700; padding:4px 14px; border-radius:20px; }
+    .lic-badge-error   { background: rgba(239,68,68,.12);   color: #f87171; font-size:.75rem; font-weight:700; padding:4px 14px; border-radius:20px; }
+    .lic-field { margin-bottom: 14px; }
+    .lic-label { font-size:.7rem; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#475569; margin-bottom:4px; }
+    .lic-value { font-size:.9rem; color:#e2e8f0; font-family: 'Courier New', monospace; word-break:break-all; }
+    .lic-id-box { background:#0f172a; border:1px solid rgba(99,102,241,.3); border-radius:10px; padding:12px 16px; font-family:'Courier New',monospace; font-size:.82rem; color:#a5b4fc; word-break:break-all; user-select:all; }
+    .lic-textarea { background:#0f172a; border:1px solid rgba(255,255,255,.1); border-radius:10px; color:#e2e8f0; font-family:'Courier New',monospace; font-size:.78rem; resize:vertical; width:100%; padding:12px; }
+    .lic-textarea:focus { border-color:#6366f1; outline:none; box-shadow:0 0 0 .2rem rgba(99,102,241,.3); }
+    .lic-divider { border:none; border-top:1px solid rgba(255,255,255,.06); margin:20px 0; }
+
     /* ── Toasts ── */
     .toast-ok   { background: #14532d; color: white; }
     .toast-warn { background: #78350f; color: white; }
@@ -100,6 +115,79 @@
 
 <div class="content">
 
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SECCIÓN: LICENCIA DEL SISTEMA                                          -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="toolbar" style="margin-bottom:16px;">
+    <div>
+      <h5><i class="bi bi-shield-lock me-2" style="color:#818cf8"></i>Licencia del Sistema</h5>
+      <p>Activación, estado y gestión de la licencia de esta instalación</p>
+    </div>
+  </div>
+
+  <!-- Estado de licencia -->
+  <div class="lic-card">
+    <div class="lic-card-header">
+      <span style="font-weight:700; color:#f1f5f9; font-size:.95rem;">Estado de la licencia</span>
+      <span id="licEstadoBadge" class="lic-badge-warn">Cargando...</span>
+    </div>
+    <div class="lic-card-body">
+      <div id="licEstadoDetalle">
+        <div style="color:#475569; font-size:.85rem;">Cargando información de licencia...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Installation ID -->
+  <div class="lic-card">
+    <div class="lic-card-header">
+      <span style="font-weight:700; color:#f1f5f9; font-size:.95rem;">
+        <i class="bi bi-fingerprint me-2" style="color:#818cf8"></i>Identificador de instalación
+      </span>
+      <button class="btn btn-outline-secondary btn-sm" onclick="copiarInstallId()">
+        <i class="bi bi-clipboard me-1"></i>Copiar
+      </button>
+    </div>
+    <div class="lic-card-body">
+      <p style="color:#64748b; font-size:.82rem; margin-bottom:12px;">
+        Este código identifica de forma única esta instalación. Enviarlo al desarrollador para solicitar una licencia.
+      </p>
+      <div class="lic-id-box" id="licInstallId">—</div>
+    </div>
+  </div>
+
+  <!-- Activar licencia -->
+  <div class="lic-card">
+    <div class="lic-card-header">
+      <span style="font-weight:700; color:#f1f5f9; font-size:.95rem;">
+        <i class="bi bi-key me-2" style="color:#818cf8"></i>Activar licencia
+      </span>
+    </div>
+    <div class="lic-card-body">
+      <p style="color:#64748b; font-size:.82rem; margin-bottom:12px;">
+        Pegá la cadena de licencia provista por el desarrollador y presioná <strong style="color:#a5b4fc">Activar</strong>.
+      </p>
+      <textarea id="licCadena" class="lic-textarea" rows="4"
+        placeholder="Pegar aquí la cadena de licencia..."></textarea>
+      <div id="licActivarMsg" class="mt-2 small d-none"></div>
+      <div class="mt-3 d-flex gap-2">
+        <button class="btn btn-sm" id="btnActivarLicencia"
+          style="background:#6366f1; color:white; border:none;">
+          <i class="bi bi-check-circle me-1"></i>Activar licencia
+        </button>
+        <button class="btn btn-sm btn-outline-danger" id="btnRevocarLicencia">
+          <i class="bi bi-x-circle me-1"></i>Revocar licencia
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Divider -->
+  <hr class="lic-divider" style="margin:28px 0 24px">
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SECCIÓN: CONTROL DE MÓDULOS POR CLIENTE                                -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
   <div class="toolbar">
     <div>
       <h5>Cuentas de Administrador</h5>
