@@ -38,6 +38,9 @@
 <nav class="navbar navbar-dark navbar-custom px-4 py-3">
   <span class="navbar-brand fw-bold fs-5"><i class="bi bi-gear me-2"></i>Configuraciones del Sistema</span>
   <div class="d-flex align-items-center gap-2">
+    <span class="badge rounded-pill text-bg-success small" id="badgeServidorLAN" style="font-size:.72rem; display:none">
+      <i class="bi bi-wifi me-1"></i>LAN: ACTIVO &bull; Puerto <span id="badgePuertoLAN">…</span>
+    </span>
     <span class="text-white-50 small" id="usuarioNombre"></span>
     <button class="btn btn-outline-light btn-sm" id="btnVolver">
       <i class="bi bi-arrow-left me-1"></i>Volver
@@ -62,6 +65,9 @@
         </button>
         <button type="button" class="list-group-item" data-panel="backups">
           <i class="bi bi-cloud-arrow-up"></i>Configuración de Backups
+        </button>
+        <button type="button" class="list-group-item" data-panel="servidor">
+          <i class="bi bi-hdd-network"></i>Puerto del Servidor LAN
         </button>
       </div>
     </div>
@@ -477,6 +483,70 @@
               </button>
             </div>
           </div>
+        </div>
+
+      </div>
+
+      <!-- Panel Puerto del Servidor LAN -->
+      <div class="config-panel d-none" id="panelServidor">
+        <h5 class="fw-bold mb-1"><i class="bi bi-hdd-network me-2 text-primary"></i>Puerto del Servidor LAN</h5>
+        <p class="text-muted mb-4">Configurá el puerto TCP en el que el servidor local escucha conexiones de la red.</p>
+
+        <!-- Estado actual -->
+        <div class="card p-4 mb-3">
+          <h6 class="fw-bold mb-3"><i class="bi bi-reception-4 me-2 text-success"></i>Estado actual del servidor</h6>
+          <div class="row g-3 align-items-center">
+            <div class="col-auto">
+              <div class="d-flex align-items-center gap-2">
+                <span class="badge rounded-pill" id="badgeEstadoServidor" style="font-size:.82rem; padding:6px 14px">Cargando…</span>
+              </div>
+            </div>
+            <div class="col-auto">
+              <span class="text-muted small">Puerto activo:</span>
+              <span class="fw-bold ms-1" id="txtPuertoActivo">–</span>
+            </div>
+            <div class="col-auto">
+              <span class="text-muted small">Puerto configurado:</span>
+              <span class="fw-bold ms-1" id="txtPuertoConfigurado">–</span>
+            </div>
+          </div>
+          <div class="alert alert-warning d-none mt-3 mb-0 small py-2" id="alertaPuertoDistinto">
+            <i class="bi bi-exclamation-triangle me-1"></i>
+            El puerto configurado difiere del activo. Reiniciá el servidor para aplicar el cambio.
+          </div>
+        </div>
+
+        <!-- Cambiar puerto -->
+        <div class="card p-4 mb-3">
+          <h6 class="fw-bold mb-3"><i class="bi bi-sliders me-2 text-primary"></i>Cambiar puerto del servidor</h6>
+
+          <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+              <label class="form-label fw-semibold small">Puerto nuevo</label>
+              <input type="number" class="form-control" id="inputPuertoNuevo"
+                     min="1" max="65535" placeholder="ej. 4000" step="1">
+              <div class="form-text">Entre 1 y 65535. Puertos comunes: 3000, 4000, 8080.</div>
+            </div>
+            <div class="col-md-auto">
+              <button class="btn btn-primary px-4" id="btnGuardarPuerto">
+                <i class="bi bi-save me-2"></i>Guardar puerto
+              </button>
+            </div>
+            <div class="col-md-auto">
+              <button class="btn btn-outline-secondary px-4" id="btnDetectarPuertos">
+                <i class="bi bi-search me-2"></i>Detectar puertos disponibles
+              </button>
+            </div>
+          </div>
+
+          <div id="msgGuardarPuerto" class="alert d-none mt-3 mb-0 small py-2"></div>
+        </div>
+
+        <!-- Lista de puertos disponibles -->
+        <div class="card p-4" id="cardPuertosDisponibles" style="display:none!important">
+          <h6 class="fw-bold mb-3"><i class="bi bi-list-check me-2 text-primary"></i>Puertos TCP disponibles detectados</h6>
+          <div id="listaPuertosDisponibles" class="d-flex flex-wrap gap-2"></div>
+          <div class="text-muted small mt-2" id="notaPuertosDisponibles"></div>
         </div>
 
       </div>

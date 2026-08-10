@@ -140,7 +140,11 @@ app.use('/api/stats',       require('./routes/stats'));
 app.use('/api/superadmin',  require('./routes/superadmin'));
 app.use('/api/vipers',      require('./routes/vipers')(io));
 app.use('/api/serial',         require('./routes/serial'));
-app.use('/api/config-general', require('./routes/config-general'));
+app.use('/api/config-general',   require('./routes/config-general'));
+
+// ── Módulo de configuración del servidor (puerto LAN) ─────────────────────────
+const configServidorModule = require('./routes/config-servidor');
+app.use('/api/config-servidor', configServidorModule.router);
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
 io.on('connection', socket => {
@@ -167,7 +171,10 @@ app.use((err, req, res, next) => {
 });
 
 // ── Arranque ──────────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 3000;
+// Orden de prioridad: archivo db/server.port → variable de entorno → 3000
+const PORT = configServidorModule.leerPuertoGuardado() || Number(process.env.PORT) || 3000;
+global._PUERTO_ACTIVO = PORT;
+
 server.listen(PORT, () => {
   console.log(`\n✅ Sistema de Turnos iniciado`);
   console.log(`🌐 http://localhost:${PORT}\n`);

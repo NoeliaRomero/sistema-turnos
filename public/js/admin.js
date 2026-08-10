@@ -10,7 +10,22 @@ function escapeHtml(str) {
   const me = await res.json();
   if (me.rol !== 'admin') { window.location.href = '/login.html'; return; }
   document.getElementById('usuarioNombre').textContent = me.nombre;
+  cargarBadgeServidorLAN();
 })();
+
+async function cargarBadgeServidorLAN() {
+  try {
+    const res = await fetch('/api/config-servidor/estado');
+    if (!res.ok) return;
+    const d = await res.json();
+    const badge  = document.getElementById('badgeServidorLAN');
+    const puerto = document.getElementById('badgePuertoLAN');
+    if (d.servidor_activo && d.puerto_activo) {
+      puerto.textContent = d.puerto_activo;
+      badge.style.display = '';
+    }
+  } catch (_) {}
+}
 
 document.getElementById('btnLogout').addEventListener('click', async () => {
   await fetch('/api/auth/logout', { method: 'POST' });

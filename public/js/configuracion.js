@@ -38,7 +38,8 @@ document.getElementById('configMenu').addEventListener('click', e => {
   document.querySelectorAll('.config-panel').forEach(p => p.classList.add('d-none'));
   document.getElementById('panel' + btn.dataset.panel.charAt(0).toUpperCase() + btn.dataset.panel.slice(1)).classList.remove('d-none');
 
-  if (btn.dataset.panel === 'backups') inicializarPanelBackups();
+  if (btn.dataset.panel === 'backups')  inicializarPanelBackups();
+  if (btn.dataset.panel === 'servidor') cargarEstadoServidor();
 });
 
 // ── Socket.io: log serial + actualización de VIPERs ────────────────────────────
@@ -873,3 +874,134 @@ document.getElementById('btnExportarXLSX').addEventListener('click', async (e) =
   e.target.disabled = true;
   try { await ejecutarExportacion('xlsx'); } finally { e.target.disabled = false; }
 });
+
+// ── Puerto del Servidor LAN ───────────────────────────────────────────────────
+
+async function cargarEstadoServidor() {
+  try {
+    const res = await fetch('/api/config-servidor/estado');
+    if (!res.ok) return;
+    const d = await res.json();
+
+    // Badge navbar
+    const badgeNav = document.getElementById('badgeServidorLAN');
+    const puertoNav = document.getElementById('badgePuertoLAN');
+    if (d.servidor_activo && d.puerto_activo) {
+      puertoNav.textContent = d.puerto_activo;
+      badgeNav.style.display = '';
+    } else {
+      badgeNav.style.display = 'none';
+    }
+
+    // Panel
+    const badgePan = document.getElementById('badgeEstadoServidor');
+    if (!badgePan) return;
+
+    if (d.servidor_activo) {
+      badgePan.className = 'badge rounded-pill text-bg-success';
+      badgePan.textContent = 'ACTIVO';
+    } else {
+      badgePan.className = 'badge rounded-pill text-bg-secondary';
+      badgePan.textContent = 'Sin información';
+    }
+
+    document.getElementById('txtPuertoActivo').textContent      = d.puerto_activo      ?? '–';
+    document.getElementById('txtPuertoConfigurado').textContent = d.puerto_configurado ?? '–';
+
+    const alertaDistinto = document.getElementById('alertaPuertoDistinto');
+    if (d.puerto_configurado && d.puerto_activo && d.puerto_configurado !== d.puerto_activo) {
+      alertaDistinto.classList.remove('d-none');
+    } else {
+      alertaDistinto.classList.add('d-none');
+    }
+  } catch (_) {}
+}
+
+document.getElementById('btnGuardarPuerto').addEventListener('click', async () => {
+  const input = document.getElementById('inputPuertoNuevo');
+  const msg   = document.getElementById('msgGuardarPuerto');
+  const val   = input.value.trim();
+
+  msg.className = 'alert d-none mt-3 mb-0 small py-2';
+  msg.textContent = '';
+
+  if (!val) {
+    msg.className = 'alert alert-warning mt-3 mb-0 small py-2';
+    msg.textContent = 'Ingresá un número de puerto.';
+    return;
+  }
+
+  const btn = document.getElementById('btnGuardarPuerto');
+  btn.disabled = true;
+  try {
+    const res  = await fetch('/api/config-servidor/puerto', {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ puerto: val }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      msg.className = 'alert alert-success mt-3 mb-0 small py-2';
+      msg.textContent = data.mensaje;
+      input.value = '';
+      await cargarEstadoServidor();
+    } else {
+      msg.className = 'alert alert-danger mt-3 mb-0 small py-2';
+      msg.textContent = data.error || 'Error al guardar el puerto.';
+    }
+  } catch (_) {
+    msg.className = 'alert alert-danger mt-3 mb-0 small py-2';
+    msg.textContent = 'Error de conexión al guardar el puerto.';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('btnDetectarPuertos').addEventListener('click', async () => {
+  const btn  = document.getElementById('btnDetectarPuertos');
+  const card = document.getElementById('cardPuertosDisponibles');
+  const lista = document.getElementById('listaPuertosDisponibles');
+  const nota  = document.getElementById('notaPuertosDisponibles');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Detectando…';
+  card.style.removeProperty('display');
+
+  try {
+    const res  = await fetch('/api/config-servidor/puertos-disponibles');
+    const data = await res.json();
+
+    if (!res.ok || !Array.isArray(data.puertos)) {
+      lista.innerHTML = '<span class="text-danger small">Error al detectar puertos.</span>';
+      return;
+    }
+
+    if (data.puertos.length === 0) {
+      lista.innerHTML = '<span class="text-muted small">No se encontraron puertos disponibles en el rango escaneado.</span>';
+      nota.textContent = '';
+      return;
+    }
+
+    lista.innerHTML = data.puertos.map(p =>
+      `<button class="btn btn-outline-primary btn-sm port-pill" data-puerto="${p}">${p}</button>`
+    ).join('');
+    nota.textContent = `${data.puertos.length} puerto${data.puertos.length !== 1 ? 's' : ''} disponible${data.puertos.length !== 1 ? 's' : ''} detectado${data.puertos.length !== 1 ? 's' : ''}.`;
+
+    lista.querySelectorAll('.port-pill').forEach(b => {
+      b.addEventListener('click', () => {
+        document.getElementById('inputPuertoNuevo').value = b.dataset.puerto;
+        lista.querySelectorAll('.port-pill').forEach(x => x.classList.remove('active', 'btn-primary'));
+        b.classList.add('active', 'btn-primary');
+        b.classList.remove('btn-outline-primary');
+      });
+    });
+  } catch (_) {
+    lista.innerHTML = '<span class="text-danger small">Error de conexión al detectar puertos.</span>';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-search me-2"></i>Detectar puertos disponibles';
+  }
+});
+
+// Cargar estado del servidor al iniciar (badge del navbar)
+cargarEstadoServidor();

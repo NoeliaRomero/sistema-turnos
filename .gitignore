@@ -18,6 +18,9 @@ db/session.key
 db/license.lic
 db/install.id
 
+# Configuración de puerto del servidor LAN (específico de cada instalación)
+db/server.port
+
 # Herramientas de desarrollador — clave privada NUNCA en repositorio
 tools/private.pem
 tools/*.lic
