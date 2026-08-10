@@ -8,6 +8,26 @@ const crypto       = require('crypto');
 const helmet       = require('helmet');
 const rateLimit    = require('express-rate-limit');
 
+// ── Restauración pendiente (aplica ANTES de cargar la DB) ─────────────────────
+// Si el admin solicitó restaurar un backup, la DB de reemplazo queda en
+// db/pending_restore.db con el flag db/.restore_pending. Se aplica aquí,
+// antes de que el módulo db/ abra la conexión.
+const DB_DIR           = path.join(__dirname, 'db');
+const PENDING_DB       = path.join(DB_DIR, 'pending_restore.db');
+const PENDING_FLAG     = path.join(DB_DIR, '.restore_pending');
+const MAIN_DB          = path.join(DB_DIR, 'turnos.db');
+
+if (fs.existsSync(PENDING_FLAG) && fs.existsSync(PENDING_DB)) {
+  try {
+    fs.copyFileSync(PENDING_DB, MAIN_DB);
+    fs.unlinkSync(PENDING_FLAG);
+    fs.unlinkSync(PENDING_DB);
+    console.log('✅ Base de datos restaurada exitosamente desde backup pendiente.');
+  } catch (err) {
+    console.error('❌ Error al aplicar restauración pendiente:', err.message);
+  }
+}
+
 const db = require('./db/database');
 
 // ── Secreto de sesión único por instalación ───────────────────────────────────
@@ -86,6 +106,8 @@ app.use(express.static(path.join(__dirname, 'public')));
 // ── Rutas API ─────────────────────────────────────────────────────────────────
 app.use('/api/auth/login',  loginLimiter);
 app.use('/api/auth',        require('./routes/auth'));
+const backupModule = require('./routes/backup');
+app.use('/api/backup',      backupModule.router);
 app.use('/api/atracciones', require('./routes/atracciones'));
 app.use('/api/turnos',      require('./routes/turnos')(io));
 app.use('/api/usuarios',    require('./routes/usuarios'));
@@ -124,4 +146,6 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
   console.log(`\n✅ Sistema de Turnos iniciado`);
   console.log(`🌐 http://localhost:${PORT}\n`);
+  // Configurar backup automático según la configuración guardada
+  backupModule.configurarCron();
 });

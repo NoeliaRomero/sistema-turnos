@@ -172,9 +172,30 @@ db.exec(`
   );
 `);
 
+// ── Tabla configuracion_backup ────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS configuracion_backup (
+    id               INTEGER PRIMARY KEY CHECK (id = 1),
+    habilitado       INTEGER NOT NULL DEFAULT 0,
+    frecuencia       TEXT    NOT NULL DEFAULT 'manual',
+    hora             TEXT    NOT NULL DEFAULT '02:00',
+    dia_semana       INTEGER NOT NULL DEFAULT 0,
+    dia_mes          INTEGER NOT NULL DEFAULT 1,
+    fecha_anual      TEXT    NOT NULL DEFAULT '01-01',
+    max_backups      INTEGER NOT NULL DEFAULT 10,
+    carpeta_destino  TEXT    DEFAULT NULL
+  );
+`);
+
 // Inicialización de tablas de configuración
 if (db.prepare('SELECT COUNT(*) AS c FROM configuracion_general').get().c === 0) {
   db.prepare('INSERT INTO configuracion_general (id, sincronizar_grupos_combinados) VALUES (1, 0)').run();
+}
+
+if (db.prepare('SELECT COUNT(*) AS c FROM configuracion_backup').get().c === 0) {
+  db.prepare(
+    "INSERT INTO configuracion_backup (id, habilitado, frecuencia, hora, dia_semana, dia_mes, fecha_anual, max_backups) VALUES (1, 0, 'manual', '02:00', 0, 1, '01-01', 10)"
+  ).run();
 }
 
 if (db.prepare('SELECT COUNT(*) AS c FROM configuracion_rf').get().c === 0) {
