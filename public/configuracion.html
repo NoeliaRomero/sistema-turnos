@@ -311,12 +311,197 @@
 
       <!-- Panel Backups -->
       <div class="config-panel d-none" id="panelBackups">
-        <h5 class="fw-bold mb-1"><i class="bi bi-cloud-arrow-up me-2 text-primary"></i>Configuración de Backups</h5>
-        <p class="text-muted mb-4">Esta sección permitirá administrar copias de seguridad automáticas y manuales del sistema.</p>
-        <div class="card p-5 text-center">
-          <i class="bi bi-cloud-arrow-up fs-1 text-muted opacity-50 d-block mb-3"></i>
-          <h6 class="fw-bold text-muted">Próximamente disponible</h6>
-          <p class="text-muted small mb-0">Aquí podrás programar backups automáticos, descargar copias manuales y restaurar datos del sistema.</p>
+        <h5 class="fw-bold mb-1"><i class="bi bi-database me-2 text-primary"></i>Configuración de Backups</h5>
+        <p class="text-muted mb-4">Administrá copias de seguridad del sistema, restauración y exportación de datos.</p>
+
+        <!-- Alerta restauración pendiente -->
+        <div class="alert alert-warning d-none mb-4" id="alertaRestauracionPendiente">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>
+          <strong>Hay una restauración pendiente.</strong> Reiniciá el servidor para completar el proceso.
+        </div>
+
+        <!-- Backup manual -->
+        <div class="card p-4 mb-3">
+          <h6 class="fw-bold mb-3"><i class="bi bi-save me-2 text-primary"></i>Backup Manual</h6>
+          <div class="d-flex align-items-center gap-3 flex-wrap">
+            <button class="btn btn-primary px-4" id="btnCrearBackup">
+              <i class="bi bi-database-add me-2"></i>Crear backup ahora
+            </button>
+            <span class="text-muted small" id="carpetaBackupLabel"></span>
+          </div>
+          <div id="backupMsgInline" class="mt-3 d-none"></div>
+        </div>
+
+        <!-- Backup automático -->
+        <div class="card p-4 mb-3">
+          <h6 class="fw-bold mb-3"><i class="bi bi-clock-history me-2 text-primary"></i>Backup Automático</h6>
+          <div class="row g-3">
+            <div class="col-12">
+              <div class="d-flex align-items-center gap-3">
+                <div class="fw-semibold">Estado:</div>
+                <div class="form-check form-switch mb-0">
+                  <input class="form-check-input" type="checkbox" role="switch" id="switchBackupAuto" style="width:2.5em; height:1.4em; cursor:pointer">
+                  <label class="form-check-label" id="labelBackupAuto">Desactivado</label>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Frecuencia</label>
+              <select class="form-select" id="selectFrecuencia">
+                <option value="manual">Solo manual</option>
+                <option value="diario">Diario</option>
+                <option value="semanal">Semanal</option>
+                <option value="mensual">Mensual</option>
+                <option value="anual">Anual</option>
+              </select>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label fw-semibold small">Hora</label>
+              <input type="time" class="form-control" id="inputHoraBackup" value="02:00">
+            </div>
+            <div class="col-md-3" id="camposDiaSemana">
+              <label class="form-label fw-semibold small">Día de la semana</label>
+              <select class="form-select" id="selectDiaSemana">
+                <option value="0">Domingo</option>
+                <option value="1">Lunes</option>
+                <option value="2">Martes</option>
+                <option value="3">Miércoles</option>
+                <option value="4">Jueves</option>
+                <option value="5">Viernes</option>
+                <option value="6">Sábado</option>
+              </select>
+            </div>
+            <div class="col-md-2" id="camposDiaMes">
+              <label class="form-label fw-semibold small">Día del mes</label>
+              <input type="number" class="form-control" id="inputDiaMes" min="1" max="28" value="1">
+            </div>
+            <div class="col-md-3" id="camposFechaAnual">
+              <label class="form-label fw-semibold small">Fecha (DD/MM)</label>
+              <input type="text" class="form-control" id="inputFechaAnual" placeholder="01-01" maxlength="5">
+              <div class="form-text small">Formato: DD-MM (ej: 01-01)</div>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label fw-semibold small">Conservar backups</label>
+              <input type="number" class="form-control" id="inputMaxBackups" min="1" max="365" value="10">
+            </div>
+            <div class="col-md-4">
+              <label class="form-label fw-semibold small">Carpeta de destino</label>
+              <input type="text" class="form-control" id="inputCarpetaDestino" placeholder="Vacío = carpeta backups/ del sistema">
+            </div>
+            <div class="col-12">
+              <button class="btn btn-success px-4" id="btnGuardarConfigBackup">
+                <i class="bi bi-check-lg me-2"></i>Guardar configuración
+              </button>
+              <span class="text-success ms-3 d-none" id="configGuardadaMsg"><i class="bi bi-check-circle me-1"></i>Configuración guardada.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Lista de backups -->
+        <div class="card mb-3">
+          <div class="card-body pb-0">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+              <h6 class="fw-bold mb-0"><i class="bi bi-folder2-open me-2 text-primary"></i>Backups Disponibles</h6>
+              <button class="btn btn-sm btn-outline-secondary" id="btnRefrescarBackups">
+                <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+              </button>
+            </div>
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th class="ps-4">Archivo</th>
+                  <th class="text-center">Tipo</th>
+                  <th class="text-center">Tamaño</th>
+                  <th class="text-center">Fecha</th>
+                  <th class="text-end pe-4">Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="tablaBackups">
+                <tr><td colspan="5" class="text-center text-muted py-4">Cargando…</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Exportación -->
+        <div class="card p-4 mb-3">
+          <h6 class="fw-bold mb-3"><i class="bi bi-file-earmark-spreadsheet me-2 text-primary"></i>Exportación de Datos</h6>
+          <div class="row g-3">
+            <div class="col-md-3">
+              <label class="form-label fw-semibold small">Tipo de datos</label>
+              <select class="form-select" id="selectTipoExport">
+                <option value="turnos">Turnos</option>
+                <option value="usuarios">Usuarios</option>
+                <option value="juegos">Juegos</option>
+                <option value="vipers">VIPERs</option>
+                <option value="estadisticas">Estadísticas</option>
+              </select>
+            </div>
+            <div class="col-md-2" id="filtroDesde">
+              <label class="form-label fw-semibold small">Desde</label>
+              <input type="date" class="form-control" id="inputDesde">
+            </div>
+            <div class="col-md-2" id="filtroHasta">
+              <label class="form-label fw-semibold small">Hasta</label>
+              <input type="date" class="form-control" id="inputHasta">
+            </div>
+            <div class="col-12 d-flex gap-2 flex-wrap pt-1">
+              <button class="btn btn-outline-success px-4" id="btnExportarCSV">
+                <i class="bi bi-filetype-csv me-2"></i>Exportar CSV
+              </button>
+              <button class="btn btn-outline-primary px-4" id="btnExportarXLSX">
+                <i class="bi bi-file-earmark-excel me-2"></i>Exportar Excel (.xlsx)
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Modal confirmar restauración -->
+      <div class="modal fade" id="modalRestaurar" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content border-0 rounded-4">
+            <div class="modal-header border-0 pb-0 bg-warning-subtle">
+              <h5 class="modal-title fw-bold"><i class="bi bi-exclamation-triangle-fill me-2 text-warning"></i>Confirmar Restauración</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <div class="alert alert-warning">
+                <strong>ATENCIÓN:</strong> Restaurar este backup reemplazará TODOS los datos actuales del sistema. Esta acción no se puede deshacer.
+              </div>
+              <p class="mb-1">Backup a restaurar: <strong id="modalRestaurarNombre" class="text-break"></strong></p>
+              <p class="text-muted small mb-0">Se creará un backup de seguridad del estado actual antes de restaurar.</p>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+              <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button class="btn btn-danger px-4 fw-bold" id="btnConfirmarRestaurar">
+                <i class="bi bi-arrow-counterclockwise me-2"></i>Sí, restaurar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal confirmar eliminar backup -->
+      <div class="modal fade" id="modalEliminarBackup" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+          <div class="modal-content border-0 rounded-4">
+            <div class="modal-header border-0 pb-0">
+              <h5 class="modal-title fw-bold">¿Eliminar este backup?</h5>
+              <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+              <p class="text-muted mb-1">Esta acción no podrá deshacerse.</p>
+              <p class="small fw-semibold text-break" id="modalEliminarBackupNombre"></p>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+              <button class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+              <button class="btn btn-danger px-4 fw-bold" id="btnConfirmarEliminarBackup">Eliminar</button>
+            </div>
+          </div>
         </div>
       </div>
 

@@ -4,6 +4,7 @@ const path   = require('path');
 
 const db = new DatabaseSync(path.join(__dirname, 'turnos.db'));
 db.exec('PRAGMA journal_mode = WAL');
+db.exec('PRAGMA foreign_keys = OFF'); // fix crítico: node:sqlite habilita FK por defecto
 
 // ── Tablas principales ────────────────────────────────────────────────────────
 db.exec(`
@@ -44,7 +45,7 @@ db.exec(`
   );
 `);
 
-// ── Tabla vipers ─────────────────────────────────────────────────────────────
+// ── Tabla vipers ──────────────────────────────────────────────────────────────
 db.exec(`
   CREATE TABLE IF NOT EXISTS vipers (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -79,12 +80,12 @@ db.exec(`
   );
 `);
 
-// ── Migraciones ───────────────────────────────────────────────────────────────
+// ── Migraciones (acumuladas de ambas ramas) ───────────────────────────────────
 [
+  // Columnas originales / compartidas
   "ALTER TABLE turnos      ADD COLUMN llamado_por              INTEGER REFERENCES usuarios(id)",
   "ALTER TABLE turnos      ADD COLUMN finalizado_por           INTEGER REFERENCES usuarios(id)",
   "ALTER TABLE turnos      ADD COLUMN cantidad_miembros        INTEGER DEFAULT 1",
-  "ALTER TABLE turnos      ADD COLUMN viper_id                 INTEGER REFERENCES vipers(id)",
   "ALTER TABLE atracciones ADD COLUMN duracion_minutos         INTEGER DEFAULT 30",
   "ALTER TABLE atracciones ADD COLUMN min_miembros             INTEGER DEFAULT 1",
   "ALTER TABLE atracciones ADD COLUMN max_miembros             INTEGER DEFAULT 20",
@@ -97,19 +98,25 @@ db.exec(`
   "ALTER TABLE usuarios    ADD COLUMN feature_llamar_turno    INTEGER DEFAULT 1",
   "ALTER TABLE atracciones ADD COLUMN usa_etapas              INTEGER DEFAULT 0",
   "ALTER TABLE turnos      ADD COLUMN etapa_actual_id         INTEGER REFERENCES juego_etapas(id)",
-  "ALTER TABLE vipers      ADD COLUMN estado                   TEXT DEFAULT 'PENDIENTE'",
-  "ALTER TABLE vipers      ADD COLUMN codigo_raw                TEXT",
-  "ALTER TABLE vipers      ADD COLUMN baudrate                  INTEGER DEFAULT 115200",
-  "ALTER TABLE vipers      ADD COLUMN fecha_validacion          DATETIME",
-  "ALTER TABLE vipers      ADD COLUMN ultimo_test               DATETIME",
-  "ALTER TABLE vipers      ADD COLUMN ultimo_error              TEXT",
-  "ALTER TABLE vipers      ADD COLUMN codigo_rf                 TEXT",
-  "ALTER TABLE vipers      ADD COLUMN canal                     INTEGER DEFAULT 1",
-  "ALTER TABLE vipers      ADD COLUMN fecha_creacion             DATETIME",
-  "ALTER TABLE vipers      ADD COLUMN ultima_activacion          DATETIME",
-  "ALTER TABLE turnos      ADD COLUMN orden_cola                INTEGER",
-  "ALTER TABLE atracciones ADD COLUMN usa_subcategorias         INTEGER DEFAULT 0",
-  "ALTER TABLE turnos      ADD COLUMN subcategoria_id           INTEGER REFERENCES juego_subcategorias(id)",
+  // De demo-cliente
+  "ALTER TABLE turnos      ADD COLUMN viper_id                INTEGER REFERENCES vipers(id)",
+  "ALTER TABLE vipers      ADD COLUMN estado                  TEXT DEFAULT 'PENDIENTE'",
+  "ALTER TABLE vipers      ADD COLUMN codigo_raw              TEXT",
+  "ALTER TABLE vipers      ADD COLUMN baudrate                INTEGER DEFAULT 115200",
+  "ALTER TABLE vipers      ADD COLUMN fecha_validacion        DATETIME",
+  "ALTER TABLE vipers      ADD COLUMN ultimo_test             DATETIME",
+  "ALTER TABLE vipers      ADD COLUMN ultimo_error            TEXT",
+  "ALTER TABLE vipers      ADD COLUMN codigo_rf               TEXT",
+  "ALTER TABLE vipers      ADD COLUMN canal                   INTEGER DEFAULT 1",
+  "ALTER TABLE vipers      ADD COLUMN fecha_creacion          DATETIME",
+  "ALTER TABLE vipers      ADD COLUMN ultima_activacion       DATETIME",
+  "ALTER TABLE turnos      ADD COLUMN orden_cola              INTEGER",
+  "ALTER TABLE atracciones ADD COLUMN usa_subcategorias       INTEGER DEFAULT 0",
+  "ALTER TABLE turnos      ADD COLUMN subcategoria_id         INTEGER REFERENCES juego_subcategorias(id)",
+  // De desarrollo
+  "ALTER TABLE juego_etapas ADD COLUMN activa                 INTEGER DEFAULT 1",
+  "ALTER TABLE turnos      ADD COLUMN jugando_desde           DATETIME DEFAULT NULL",
+  "ALTER TABLE turnos      ADD COLUMN creado_por              INTEGER REFERENCES usuarios(id)",
 ].forEach(sql => { try { db.exec(sql); } catch (_) {} });
 
 // Inicializar orden_cola para turnos existentes sin valor
@@ -147,6 +154,14 @@ db.exec(`
   );
 `);
 
+// ── Tabla configuracion_general ───────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS configuracion_general (
+    id                            INTEGER PRIMARY KEY,
+    sincronizar_grupos_combinados INTEGER NOT NULL DEFAULT 0
+  );
+`);
+
 // ── Tabla juego_subcategorias ─────────────────────────────────────────────────
 db.exec(`
   CREATE TABLE IF NOT EXISTS juego_subcategorias (
@@ -157,23 +172,49 @@ db.exec(`
   );
 `);
 
-// Completar fecha_creacion de VIPERs creados antes de esta migración
-db.exec(`UPDATE vipers SET fecha_creacion = datetime('now','localtime') WHERE fecha_creacion IS NULL`);
+// ── Tabla configuracion_backup ────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS configuracion_backup (
+    id               INTEGER PRIMARY KEY CHECK (id = 1),
+    habilitado       INTEGER NOT NULL DEFAULT 0,
+    frecuencia       TEXT    NOT NULL DEFAULT 'manual',
+    hora             TEXT    NOT NULL DEFAULT '02:00',
+    dia_semana       INTEGER NOT NULL DEFAULT 0,
+    dia_mes          INTEGER NOT NULL DEFAULT 1,
+    fecha_anual      TEXT    NOT NULL DEFAULT '01-01',
+    max_backups      INTEGER NOT NULL DEFAULT 10,
+    carpeta_destino  TEXT    DEFAULT NULL
+  );
+`);
+
+// Inicialización de tablas de configuración
+if (db.prepare('SELECT COUNT(*) AS c FROM configuracion_general').get().c === 0) {
+  db.prepare('INSERT INTO configuracion_general (id, sincronizar_grupos_combinados) VALUES (1, 0)').run();
+}
+
+if (db.prepare('SELECT COUNT(*) AS c FROM configuracion_backup').get().c === 0) {
+  db.prepare(
+    "INSERT INTO configuracion_backup (id, habilitado, frecuencia, hora, dia_semana, dia_mes, fecha_anual, max_backups) VALUES (1, 0, 'manual', '02:00', 0, 1, '01-01', 10)"
+  ).run();
+}
 
 if (db.prepare('SELECT COUNT(*) AS c FROM configuracion_rf').get().c === 0) {
   db.prepare('INSERT INTO configuracion_rf (id, frecuencia, canal, retransmisiones, intervalo_ms) VALUES (1, ?, ?, ?, ?)')
     .run('433.92 MHz', 1, 3, 100);
 }
 
-// Normalizar estado de VIPERs creados antes de esta migración (basados en "activo")
+if (db.prepare('SELECT COUNT(*) AS c FROM configuracion_serial').get().c === 0) {
+  db.prepare('INSERT INTO configuracion_serial (id, puerto, baudios) VALUES (1, NULL, 115200)').run();
+}
+
+// Completar fecha_creacion de VIPERs anteriores a esta migración
+db.exec(`UPDATE vipers SET fecha_creacion = datetime('now','localtime') WHERE fecha_creacion IS NULL`);
+
+// Normalizar estado de VIPERs
 db.exec(`
   UPDATE vipers SET estado = 'ACTIVO'    WHERE activo = 1 AND (estado IS NULL OR estado = 'PENDIENTE');
   UPDATE vipers SET estado = 'PENDIENTE' WHERE estado IS NULL;
 `);
-
-if (db.prepare('SELECT COUNT(*) AS c FROM configuracion_serial').get().c === 0) {
-  db.prepare('INSERT INTO configuracion_serial (id, puerto, baudios) VALUES (1, NULL, 115200)').run();
-}
 
 // ── Datos iniciales ───────────────────────────────────────────────────────────
 if (db.prepare('SELECT COUNT(*) AS c FROM atracciones').get().c === 0) {

@@ -8,6 +8,7 @@ const socket = io();
   me = await res.json();
   if (me.rol !== 'admin') { window.location.href = '/login.html'; return; }
   document.getElementById('usuarioNombre').textContent = me.nombre;
+  cargarConfigGeneral();
   cargarVipers();
   cargarSerialConfig();
   cargarEstadoArduino();
@@ -36,6 +37,8 @@ document.getElementById('configMenu').addEventListener('click', e => {
 
   document.querySelectorAll('.config-panel').forEach(p => p.classList.add('d-none'));
   document.getElementById('panel' + btn.dataset.panel.charAt(0).toUpperCase() + btn.dataset.panel.slice(1)).classList.remove('d-none');
+
+  if (btn.dataset.panel === 'backups') inicializarPanelBackups();
 });
 
 // ── Socket.io: log serial + actualización de VIPERs ────────────────────────────
@@ -569,3 +572,304 @@ function mostrarToast(mensaje, tipo = 'success') {
   new bootstrap.Toast(el, { delay: 3500 }).show();
   el.addEventListener('hidden.bs.toast', () => el.remove());
 }
+
+// ── Configuración General ─────────────────────────────────────────────────────
+async function cargarConfigGeneral() {
+  const res = await fetch('/api/config-general');
+  if (!res.ok) return;
+  const cfg = await res.json();
+  document.getElementById('switchSincronizarGrupos').checked = !!cfg.sincronizar_grupos_combinados;
+}
+
+document.getElementById('switchSincronizarGrupos').addEventListener('change', async function () {
+  const res = await fetch('/api/config-general', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sincronizar_grupos_combinados: this.checked ? 1 : 0 }),
+  });
+  const msg = document.getElementById('sincronizarGuardadoMsg');
+  if (res.ok) {
+    msg.classList.remove('d-none');
+    setTimeout(() => msg.classList.add('d-none'), 3000);
+  } else {
+    mostrarToast('Error al guardar la configuración', 'danger');
+    this.checked = !this.checked;
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PANEL BACKUPS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let backupPanelIniciado = false;
+let backupAEliminar     = null;
+let backupARestaurar    = null;
+
+function inicializarPanelBackups() {
+  if (backupPanelIniciado) { cargarBackups(); return; }
+  backupPanelIniciado = true;
+  cargarConfigBackup();
+  cargarBackups();
+  verificarRestauracionPendiente();
+}
+
+// ── Verificar si hay restauración pendiente ──────────────────────────────────
+async function verificarRestauracionPendiente() {
+  try {
+    const res = await fetch('/api/backup/estado-restauracion');
+    if (!res.ok) return;
+    const data = await res.json();
+    const alerta = document.getElementById('alertaRestauracionPendiente');
+    if (data.pendiente && alerta) alerta.classList.remove('d-none');
+    else if (alerta) alerta.classList.add('d-none');
+  } catch (_) {}
+}
+
+// ── Cargar configuración de backup ───────────────────────────────────────────
+async function cargarConfigBackup() {
+  const res = await fetch('/api/backup/config');
+  if (!res.ok) return;
+  const cfg = await res.json();
+
+  document.getElementById('switchBackupAuto').checked      = !!cfg.habilitado;
+  document.getElementById('labelBackupAuto').textContent   = cfg.habilitado ? 'Activado' : 'Desactivado';
+  document.getElementById('selectFrecuencia').value        = cfg.frecuencia || 'manual';
+  document.getElementById('inputHoraBackup').value         = cfg.hora || '02:00';
+  document.getElementById('selectDiaSemana').value         = String(cfg.dia_semana ?? 0);
+  document.getElementById('inputDiaMes').value             = cfg.dia_mes ?? 1;
+  document.getElementById('inputFechaAnual').value         = cfg.fecha_anual || '01-01';
+  document.getElementById('inputMaxBackups').value         = cfg.max_backups ?? 10;
+  document.getElementById('inputCarpetaDestino').value     = cfg.carpeta_destino || '';
+
+  actualizarCamposFrecuencia(cfg.frecuencia || 'manual');
+}
+
+function actualizarCamposFrecuencia(frec) {
+  document.getElementById('camposDiaSemana').style.display  = frec === 'semanal'  ? '' : 'none';
+  document.getElementById('camposDiaMes').style.display     = frec === 'mensual'  ? '' : 'none';
+  document.getElementById('camposFechaAnual').style.display = frec === 'anual'    ? '' : 'none';
+}
+
+document.getElementById('selectFrecuencia').addEventListener('change', function () {
+  actualizarCamposFrecuencia(this.value);
+});
+
+document.getElementById('switchBackupAuto').addEventListener('change', function () {
+  document.getElementById('labelBackupAuto').textContent = this.checked ? 'Activado' : 'Desactivado';
+});
+
+// ── Guardar configuración ────────────────────────────────────────────────────
+document.getElementById('btnGuardarConfigBackup').addEventListener('click', async () => {
+  const btn = document.getElementById('btnGuardarConfigBackup');
+  btn.disabled = true;
+  try {
+    const body = {
+      habilitado:      document.getElementById('switchBackupAuto').checked ? 1 : 0,
+      frecuencia:      document.getElementById('selectFrecuencia').value,
+      hora:            document.getElementById('inputHoraBackup').value,
+      dia_semana:      Number(document.getElementById('selectDiaSemana').value),
+      dia_mes:         Number(document.getElementById('inputDiaMes').value),
+      fecha_anual:     document.getElementById('inputFechaAnual').value,
+      max_backups:     Number(document.getElementById('inputMaxBackups').value),
+      carpeta_destino: document.getElementById('inputCarpetaDestino').value.trim() || null,
+    };
+    const res = await fetch('/api/backup/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      const msg = document.getElementById('configGuardadaMsg');
+      msg.classList.remove('d-none');
+      setTimeout(() => msg.classList.add('d-none'), 3000);
+    } else {
+      const d = await res.json();
+      mostrarToast(d.error || 'Error al guardar la configuración', 'danger');
+    }
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// ── Crear backup manual ──────────────────────────────────────────────────────
+document.getElementById('btnCrearBackup').addEventListener('click', async () => {
+  const btn = document.getElementById('btnCrearBackup');
+  const msg = document.getElementById('backupMsgInline');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creando backup…';
+  msg.classList.add('d-none');
+
+  try {
+    const res  = await fetch('/api/backup/crear', { method: 'POST' });
+    const data = await res.json();
+    if (res.ok) {
+      msg.className = 'mt-3 alert alert-success';
+      msg.innerHTML = `<i class="bi bi-check-circle me-2"></i>Backup creado correctamente: <strong>${escapeHtml(data.nombre)}</strong>`;
+      msg.classList.remove('d-none');
+      cargarBackups();
+    } else {
+      msg.className = 'mt-3 alert alert-danger';
+      msg.innerHTML = `<i class="bi bi-x-circle me-2"></i>${escapeHtml(data.error || 'Error desconocido')}`;
+      msg.classList.remove('d-none');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-database-add me-2"></i>Crear backup ahora';
+  }
+});
+
+// ── Cargar lista de backups ──────────────────────────────────────────────────
+async function cargarBackups() {
+  const tbody = document.getElementById('tablaBackups');
+  try {
+    const res  = await fetch('/api/backup/listar');
+    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">Error al cargar backups</td></tr>'; return; }
+    const data = await res.json();
+
+    const label = document.getElementById('carpetaBackupLabel');
+    if (label) label.textContent = `Carpeta: ${data.carpeta}`;
+
+    if (!data.lista.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No hay backups disponibles</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.lista.map(b => {
+      const tipo = b.nombre.includes('_auto.zip') ? '<span class="badge bg-secondary">Automático</span>' : '<span class="badge bg-primary">Manual</span>';
+      const fecha = new Date(b.fecha).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+      return `<tr>
+        <td class="ps-4 small text-break fw-semibold" style="max-width:260px">${escapeHtml(b.nombre)}</td>
+        <td class="text-center">${tipo}</td>
+        <td class="text-center small">${escapeHtml(b.tamano)}</td>
+        <td class="text-center small">${fecha}</td>
+        <td class="text-end pe-4">
+          <a href="/api/backup/descargar/${encodeURIComponent(b.nombre)}" class="btn btn-sm btn-outline-success me-1" title="Descargar"><i class="bi bi-download"></i></a>
+          <button class="btn btn-sm btn-outline-warning me-1" onclick="abrirRestaurar('${escapeHtml(b.nombre).replace(/'/g,"&#39;")}')" title="Restaurar"><i class="bi bi-arrow-counterclockwise"></i></button>
+          <button class="btn btn-sm btn-outline-danger" onclick="abrirEliminarBackup('${escapeHtml(b.nombre).replace(/'/g,"&#39;")}')" title="Eliminar"><i class="bi bi-trash3"></i></button>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch (_) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">Error de conexión</td></tr>';
+  }
+}
+
+document.getElementById('btnRefrescarBackups').addEventListener('click', () => cargarBackups());
+
+// ── Restaurar backup ─────────────────────────────────────────────────────────
+const modalRestaurarInst = new bootstrap.Modal(document.getElementById('modalRestaurar'));
+
+function abrirRestaurar(nombre) {
+  backupARestaurar = nombre;
+  document.getElementById('modalRestaurarNombre').textContent = nombre;
+  modalRestaurarInst.show();
+}
+
+document.getElementById('btnConfirmarRestaurar').addEventListener('click', async () => {
+  const btn = document.getElementById('btnConfirmarRestaurar');
+  btn.disabled = true;
+  btn.textContent = 'Procesando…';
+
+  try {
+    const res  = await fetch('/api/backup/restaurar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre: backupARestaurar }),
+    });
+    const data = await res.json();
+    modalRestaurarInst.hide();
+
+    if (res.ok) {
+      mostrarToast(data.mensaje, 'warning');
+      verificarRestauracionPendiente();
+    } else {
+      mostrarToast(data.error || 'Error al preparar la restauración', 'danger');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-counterclockwise me-2"></i>Sí, restaurar';
+  }
+});
+
+// ── Eliminar backup ──────────────────────────────────────────────────────────
+const modalEliminarBackupInst = new bootstrap.Modal(document.getElementById('modalEliminarBackup'));
+
+function abrirEliminarBackup(nombre) {
+  backupAEliminar = nombre;
+  document.getElementById('modalEliminarBackupNombre').textContent = nombre;
+  modalEliminarBackupInst.show();
+}
+
+document.getElementById('btnConfirmarEliminarBackup').addEventListener('click', async () => {
+  const btn = document.getElementById('btnConfirmarEliminarBackup');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/backup/${encodeURIComponent(backupAEliminar)}`, { method: 'DELETE' });
+    modalEliminarBackupInst.hide();
+    if (res.ok) {
+      mostrarToast('Backup eliminado.', 'success');
+      cargarBackups();
+    } else {
+      const d = await res.json();
+      mostrarToast(d.error || 'Error al eliminar', 'danger');
+    }
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// ── Exportación CSV ──────────────────────────────────────────────────────────
+document.getElementById('selectTipoExport').addEventListener('change', function () {
+  const conFecha = ['turnos'].includes(this.value);
+  document.getElementById('filtroDesde').style.display = conFecha ? '' : 'none';
+  document.getElementById('filtroHasta').style.display = conFecha ? '' : 'none';
+});
+
+async function ejecutarExportacion(formato) {
+  const tipo   = document.getElementById('selectTipoExport').value;
+  const desde  = document.getElementById('inputDesde').value;
+  const hasta  = document.getElementById('inputHasta').value;
+
+  const body = { tipo, desde: desde || undefined, hasta: hasta || undefined };
+
+  const endpoint = formato === 'xlsx' ? '/api/backup/exportar/xlsx' : '/api/backup/exportar/csv';
+  const bodyXlsx = formato === 'xlsx' ? { desde: desde || undefined, hasta: hasta || undefined } : body;
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bodyXlsx),
+    });
+
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      mostrarToast(d.error || 'Error al exportar', 'danger');
+      return;
+    }
+
+    const cd       = res.headers.get('content-disposition') || '';
+    const match    = cd.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : `exportacion.${formato}`;
+    const blob     = await res.blob();
+    const url      = URL.createObjectURL(blob);
+    const a        = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    mostrarToast(`Exportación "${filename}" descargada.`, 'success');
+  } catch (_) {
+    mostrarToast('Error al exportar los datos.', 'danger');
+  }
+}
+
+document.getElementById('btnExportarCSV').addEventListener('click', async (e) => {
+  e.target.disabled = true;
+  try { await ejecutarExportacion('csv'); } finally { e.target.disabled = false; }
+});
+
+document.getElementById('btnExportarXLSX').addEventListener('click', async (e) => {
+  e.target.disabled = true;
+  try { await ejecutarExportacion('xlsx'); } finally { e.target.disabled = false; }
+});
