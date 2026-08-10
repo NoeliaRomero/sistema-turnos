@@ -714,6 +714,103 @@ module.exports = (io) => {
     res.json(turno);
   });
 
+  // ── Editar turno en espera (solo estado='esperando') ─────────────────────────
+  // Permite modificar subcategoria_id y/o cantidad_miembros.
+  // No permite cambiar el juego ni el biper (evita revalidación compleja).
+  router.put('/:id', requireAuth('admin', 'recepcion'), (req, res) => {
+    const turnoId = Number(req.params.id);
+    if (!Number.isInteger(turnoId) || turnoId <= 0) {
+      return res.status(400).json({ error: 'ID de turno inválido.' });
+    }
+
+    const turno = db.prepare(
+      "SELECT t.*, a.min_miembros, a.max_miembros, a.usa_subcategorias FROM turnos t JOIN atracciones a ON t.atraccion_id = a.id WHERE t.id = ?"
+    ).get(turnoId);
+
+    if (!turno) return res.status(404).json({ error: 'Turno no encontrado.' });
+    if (turno.estado !== 'esperando') {
+      return res.status(409).json({ error: 'Solo se pueden editar turnos que están en espera.' });
+    }
+
+    const { cantidad_miembros, subcategoria_id } = req.body;
+
+    // ── Validar cantidad_miembros ─────────────────────────────────────────────
+    let nuevosMiembros = turno.cantidad_miembros;
+    if (cantidad_miembros !== undefined) {
+      nuevosMiembros = parseInt(cantidad_miembros, 10);
+      if (!Number.isInteger(nuevosMiembros) || nuevosMiembros < 1) {
+        return res.status(400).json({ error: 'La cantidad de miembros debe ser un número entero mayor a cero.' });
+      }
+      if (turno.min_miembros && nuevosMiembros < turno.min_miembros) {
+        return res.status(400).json({
+          error: `Este juego requiere al menos ${turno.min_miembros} persona${turno.min_miembros !== 1 ? 's' : ''} por grupo.`,
+        });
+      }
+      if (turno.max_miembros && nuevosMiembros > turno.max_miembros) {
+        return res.status(400).json({
+          error: `Este juego permite como máximo ${turno.max_miembros} persona${turno.max_miembros !== 1 ? 's' : ''} por grupo.`,
+        });
+      }
+    }
+
+    // ── Validar subcategoria_id ───────────────────────────────────────────────
+    let nuevaSubcategoriaId = turno.subcategoria_id;
+    if (subcategoria_id !== undefined) {
+      if (!turno.usa_subcategorias) {
+        // Juego sin subcategorías: ignorar el campo silenciosamente
+        nuevaSubcategoriaId = null;
+      } else if (subcategoria_id === null || subcategoria_id === '') {
+        return res.status(400).json({ error: 'Este juego requiere una subcategoría.' });
+      } else {
+        const subId = Number(subcategoria_id);
+        if (!Number.isInteger(subId) || subId <= 0) {
+          return res.status(400).json({ error: 'El identificador de subcategoría es inválido.' });
+        }
+        const sub = db.prepare(
+          'SELECT id FROM juego_subcategorias WHERE id = ? AND juego_id = ?'
+        ).get(subId, turno.atraccion_id);
+        if (!sub) {
+          return res.status(400).json({ error: 'La subcategoría seleccionada no pertenece a este juego.' });
+        }
+        nuevaSubcategoriaId = subId;
+      }
+    }
+
+    db.prepare(
+      'UPDATE turnos SET cantidad_miembros = ?, subcategoria_id = ? WHERE id = ? AND estado = \'esperando\''
+    ).run(nuevosMiembros, nuevaSubcategoriaId, turnoId);
+
+    const turnoActualizado = conEtapaSig(db.prepare(SELECT_TURNO).get(turnoId));
+    if (!turnoActualizado) return res.status(409).json({ error: 'El turno cambió de estado durante la edición.' });
+
+    io.emit('turno:editado', turnoActualizado);
+    res.json(turnoActualizado);
+  });
+
+  // ── Eliminar turno en espera (solo estado='esperando') ────────────────────────
+  router.delete('/:id', requireAuth('admin', 'recepcion'), (req, res) => {
+    const turnoId = Number(req.params.id);
+    if (!Number.isInteger(turnoId) || turnoId <= 0) {
+      return res.status(400).json({ error: 'ID de turno inválido.' });
+    }
+
+    const turno = db.prepare("SELECT * FROM turnos WHERE id = ?").get(turnoId);
+    if (!turno) return res.status(404).json({ error: 'Turno no encontrado.' });
+    if (turno.estado !== 'esperando') {
+      return res.status(409).json({ error: 'Solo se pueden eliminar turnos que están en espera.' });
+    }
+
+    // Limpiar historial de etapas pendientes (sin iniciada_at — nunca comenzaron)
+    db.prepare(
+      'DELETE FROM turno_etapas_historial WHERE turno_id = ? AND iniciada_at IS NULL'
+    ).run(turnoId);
+
+    db.prepare("DELETE FROM turnos WHERE id = ? AND estado = 'esperando'").run(turnoId);
+
+    io.emit('turno:eliminado', { id: turnoId, atraccion_id: turno.atraccion_id });
+    res.json({ ok: true });
+  });
+
   // ── Mover turno en la cola (subir / bajar) ────────────────────────────────────
   router.put('/:id/mover', requireAuth('admin', 'recepcion'), (req, res) => {
     const { id } = req.params;

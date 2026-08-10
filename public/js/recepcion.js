@@ -317,6 +317,17 @@ function renderJuegoPane(j) {
       const subcatEsperaHtml = t.subcategoria_nombre
         ? `<span class="badge bg-success bg-opacity-75"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>`
         : '';
+
+      // Botones editar / eliminar (solo en espera — el backend también valida)
+      const btnEditar = `<button class="btn btn-outline-primary btn-sm px-2" title="Editar turno"
+        onclick="pedirEditarTurno(${t.id})">
+        <i class="bi bi-pencil"></i>
+      </button>`;
+      const btnEliminar = `<button class="btn btn-outline-danger btn-sm px-2" title="Eliminar turno"
+        onclick="pedirEliminarTurno(${t.id},'${esc(t.nombre_cliente||'Sin nombre')}','${esc(j.nombre)}',${t.cantidad_miembros})">
+        <i class="bi bi-trash"></i>
+      </button>`;
+
       return `
       <div class="turno-row d-flex align-items-center justify-content-between flex-wrap gap-2 ${esPrimeroSubcat ? '' : 'opacity-65'}">
         <div class="d-flex align-items-center gap-3">
@@ -336,6 +347,7 @@ function renderJuegoPane(j) {
             <i class="bi bi-hourglass-split me-1"></i>
             ${t.tiempo_espera_estimado === 0 ? '¡Próximo!' : `~${t.tiempo_espera_estimado} min`}
           </span>
+          ${btnEditar}${btnEliminar}
           ${btnLlamar}
         </div>
       </div>`;
@@ -554,12 +566,159 @@ async function moverTurno(id, direccion) {
   await cargarCola();
 }
 
+// ── Editar turno en espera ────────────────────────────────────────────────────
+let _editarTurnoId      = null;
+let _editarAtraccionId  = null;
+let _editarUsaSubs      = false;
+
+const modalEditar = () => bootstrap.Modal.getOrCreateInstance(document.getElementById('modalEditarTurno'));
+
+async function pedirEditarTurno(id) {
+  // Obtener datos actuales del turno desde la cola local
+  let turno = null;
+  for (const j of colaData) {
+    turno = j.cola.find(t => t.id === id);
+    if (turno) { _editarAtraccionId = j.id; _editarUsaSubs = !!j.usa_subcategorias; break; }
+  }
+  if (!turno) { mostrarToast('No se encontró el turno', 'danger'); return; }
+
+  _editarTurnoId = id;
+
+  // Poblar campos
+  const inputM = document.getElementById('editarInputMiembros');
+  inputM.value = turno.cantidad_miembros;
+  inputM.min   = turno.min_miembros || 1;
+  inputM.max   = turno.max_miembros || 30;
+  document.getElementById('editarCapacidadTexto').textContent =
+    (turno.min_miembros || turno.max_miembros)
+      ? `Mínimo: ${turno.min_miembros || 1} · Máximo: ${turno.max_miembros || 30} personas`
+      : '';
+
+  const wrapSub = document.getElementById('editarSubcategoriaWrap');
+  const selSub  = document.getElementById('editarSelectSubcategoria');
+  document.getElementById('editarMsgError').classList.add('d-none');
+
+  if (_editarUsaSubs) {
+    // Cargar subcategorías del juego desde la API de atracciones
+    try {
+      const res  = await fetch(`/api/atracciones/${_editarAtraccionId}/subcategorias`);
+      const subs = await res.json();
+      selSub.innerHTML = subs.map(s =>
+        `<option value="${s.id}" ${s.id === turno.subcategoria_id ? 'selected' : ''}>${escapeHtml(s.nombre)}</option>`
+      ).join('');
+      wrapSub.classList.remove('d-none');
+    } catch (_) {
+      wrapSub.classList.add('d-none');
+    }
+  } else {
+    wrapSub.classList.add('d-none');
+  }
+
+  modalEditar().show();
+}
+
+document.getElementById('editarBtnMenos').addEventListener('click', () => {
+  const el  = document.getElementById('editarInputMiembros');
+  const min = parseInt(el.min) || 1;
+  if (parseInt(el.value) > min) el.value = parseInt(el.value) - 1;
+});
+document.getElementById('editarBtnMas').addEventListener('click', () => {
+  const el  = document.getElementById('editarInputMiembros');
+  const max = parseInt(el.max) || 30;
+  if (parseInt(el.value) < max) el.value = parseInt(el.value) + 1;
+});
+document.getElementById('btnCancelarEditar').addEventListener('click', () => {
+  modalEditar().hide(); _editarTurnoId = null;
+});
+document.getElementById('btnCerrarModalEditar').addEventListener('click', () => {
+  modalEditar().hide(); _editarTurnoId = null;
+});
+
+document.getElementById('btnConfirmarEditar').addEventListener('click', async () => {
+  if (!_editarTurnoId) return;
+
+  const cantidad_miembros = parseInt(document.getElementById('editarInputMiembros').value, 10);
+  const msgEl = document.getElementById('editarMsgError');
+  msgEl.classList.add('d-none');
+
+  const body = { cantidad_miembros };
+  if (_editarUsaSubs) {
+    body.subcategoria_id = document.getElementById('editarSelectSubcategoria').value || null;
+  }
+
+  const btn = document.getElementById('btnConfirmarEditar');
+  btn.disabled = true;
+  try {
+    const res  = await fetch(`/api/turnos/${_editarTurnoId}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      msgEl.textContent = data.error || 'Error al guardar los cambios.';
+      msgEl.classList.remove('d-none');
+      return;
+    }
+    modalEditar().hide();
+    _editarTurnoId = null;
+    mostrarToast('✅ Turno actualizado correctamente', 'success');
+    await cargarCola();
+  } catch (_) {
+    msgEl.textContent = 'Error de comunicación con el servidor.';
+    msgEl.classList.remove('d-none');
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// ── Eliminar turno en espera ──────────────────────────────────────────────────
+let _eliminarTurnoId = null;
+const modalEliminar  = () => bootstrap.Modal.getOrCreateInstance(document.getElementById('modalEliminarTurno'));
+
+function pedirEliminarTurno(id, nombreFamilia, nombreJuego, personas) {
+  _eliminarTurnoId = id;
+  document.getElementById('eliminarDetalleFamilia').textContent =
+    `Familia: ${nombreFamilia} · ${personas} persona${personas !== 1 ? 's' : ''}`;
+  document.getElementById('eliminarDetalleJuego').textContent = `Juego: ${nombreJuego}`;
+  modalEliminar().show();
+}
+
+document.getElementById('btnConfEliminarNo').addEventListener('click', () => {
+  modalEliminar().hide(); _eliminarTurnoId = null;
+});
+
+document.getElementById('btnConfEliminarSi').addEventListener('click', async () => {
+  if (!_eliminarTurnoId) return;
+  const btn = document.getElementById('btnConfEliminarSi');
+  btn.disabled = true;
+  try {
+    const res  = await fetch(`/api/turnos/${_eliminarTurnoId}`, { method: 'DELETE' });
+    const data = await res.json();
+    if (!res.ok) {
+      modalEliminar().hide();
+      mostrarToast(data.error || 'No se pudo eliminar el turno', 'danger');
+    } else {
+      modalEliminar().hide();
+      mostrarToast('🗑️ Turno eliminado', 'success');
+      await cargarCola();
+    }
+  } catch (_) {
+    modalEliminar().hide();
+    mostrarToast('Error de comunicación con el servidor.', 'danger');
+  } finally {
+    btn.disabled = false;
+    _eliminarTurnoId = null;
+  }
+});
+
 // ── Socket (actualización en tiempo real) ─────────────────────────────────────
 socket.on('turno:nuevo',         () => cargarCola());
 socket.on('turno:llamado',       () => cargarCola());
 socket.on('turno:etapa_avanzada',() => cargarCola());
 socket.on('turno:finalizado',    () => cargarCola());
 socket.on('turno:reordenado',    () => cargarCola());
+socket.on('turno:editado',       () => cargarCola());
+socket.on('turno:eliminado',     () => cargarCola());
 
 // ── Notificación de turno finalizado (enviada por operador) ───────────────────
 socket.on('recepcion:notificacion', (data) => {

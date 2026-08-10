@@ -265,6 +265,68 @@
   </div>
 </div>
 
+<!-- Modal: Editar turno en espera -->
+<div class="modal fade" id="modalEditarTurno" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4">
+      <div class="modal-header border-0 pb-1">
+        <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2 text-primary"></i>Editar turno</h5>
+        <button type="button" class="btn-close" id="btnCerrarModalEditar"></button>
+      </div>
+      <div class="modal-body">
+        <div id="editarSubcategoriaWrap" class="mb-3 d-none">
+          <label class="form-label fw-semibold small">Subcategoría</label>
+          <select class="form-select" id="editarSelectSubcategoria"></select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold small">Cantidad de personas</label>
+          <div class="input-group">
+            <button type="button" class="btn btn-outline-secondary" id="editarBtnMenos">
+              <i class="bi bi-dash"></i>
+            </button>
+            <input type="number" id="editarInputMiembros" class="form-control text-center fw-bold"
+              min="1" max="30" value="1">
+            <button type="button" class="btn btn-outline-secondary" id="editarBtnMas">
+              <i class="bi bi-plus"></i>
+            </button>
+          </div>
+          <div class="form-text" id="editarCapacidadTexto"></div>
+        </div>
+        <div id="editarMsgError" class="alert alert-danger d-none py-2 small"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0 d-flex gap-2">
+        <button type="button" class="btn btn-secondary flex-fill" id="btnCancelarEditar">
+          <i class="bi bi-x-circle me-1"></i>Cancelar
+        </button>
+        <button type="button" class="btn btn-primary flex-fill fw-bold" id="btnConfirmarEditar">
+          <i class="bi bi-check-lg me-1"></i>Guardar cambios
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Confirmar eliminación de turno -->
+<div class="modal fade" id="modalEliminarTurno" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4 text-center p-4">
+      <div class="fs-1 mb-2">🗑️</div>
+      <h6 class="fw-bold mb-2">Eliminar turno</h6>
+      <p class="text-muted small mb-1" id="eliminarDetalleFamilia"></p>
+      <p class="text-muted small mb-3" id="eliminarDetalleJuego"></p>
+      <p class="text-danger small mb-3 fw-semibold">Esta acción no se puede deshacer.</p>
+      <div class="d-flex gap-2">
+        <button class="btn btn-secondary flex-fill" id="btnConfEliminarNo">
+          <i class="bi bi-x-circle me-1"></i>Cancelar
+        </button>
+        <button class="btn btn-danger flex-fill fw-bold" id="btnConfEliminarSi">
+          <i class="bi bi-trash me-1"></i>Eliminar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer"></div>
 
 <script src="/socket.io/socket.io.js"></script>
