@@ -12,7 +12,9 @@ const rateLimit    = require('express-rate-limit');
 // Si el admin solicitó restaurar un backup, la DB de reemplazo queda en
 // db/pending_restore.db con el flag db/.restore_pending. Se aplica aquí,
 // antes de que el módulo db/ abra la conexión.
-const DB_DIR           = path.join(__dirname, 'db');
+// En Electron, SISTEMA_DB_DIR apunta a userData/db (escribible y persistente).
+// En modo desarrollo (node server.js) se usa el directorio db/ del proyecto.
+const DB_DIR           = process.env.SISTEMA_DB_DIR || path.join(__dirname, 'db');
 const PENDING_DB       = path.join(DB_DIR, 'pending_restore.db');
 const PENDING_FLAG     = path.join(DB_DIR, '.restore_pending');
 const MAIN_DB          = path.join(DB_DIR, 'turnos.db');
@@ -32,7 +34,7 @@ const db = require('./db/database');
 
 // ── Secreto de sesión único por instalación ───────────────────────────────────
 // Se genera la primera vez y se persiste en db/session.key (fuera del repo git).
-const SESSION_KEY_PATH = path.join(__dirname, 'db', 'session.key');
+const SESSION_KEY_PATH = path.join(DB_DIR, 'session.key');
 let SESSION_SECRET;
 if (fs.existsSync(SESSION_KEY_PATH)) {
   SESSION_SECRET = fs.readFileSync(SESSION_KEY_PATH, 'utf8').trim();

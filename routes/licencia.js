@@ -34,7 +34,8 @@ WQIDAQAB
 -----END PUBLIC KEY-----`;
 
 // ── Rutas de archivos ─────────────────────────────────────────────────────────
-const DB_DIR          = path.join(__dirname, '..', 'db');
+// En Electron usa userData/db; en desarrollo usa db/ del proyecto.
+const DB_DIR          = process.env.SISTEMA_DB_DIR || path.join(__dirname, '..', 'db');
 const LICENSE_FILE    = path.join(DB_DIR, 'license.lic');
 const INSTALL_ID_FILE = path.join(DB_DIR, 'install.id');
 

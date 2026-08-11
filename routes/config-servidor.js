@@ -7,7 +7,9 @@ const express = require('express');
 const router  = express.Router();
 const { requireAuth } = require('../middleware/auth');
 
-const PORT_FILE = path.join(__dirname, '..', 'db', 'server.port');
+// En Electron usa userData/db; en desarrollo usa db/ del proyecto.
+const DB_DIR_SRV = process.env.SISTEMA_DB_DIR || path.join(__dirname, '..', 'db');
+const PORT_FILE  = path.join(DB_DIR_SRV, 'server.port');
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 

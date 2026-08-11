@@ -14,7 +14,9 @@ const ExcelJS  = require('exceljs');
 // ── Constantes ────────────────────────────────────────────────────────────────
 const SCHEMA_VERSION = 1;
 const APP_ROOT       = path.join(__dirname, '..');
-const DEFAULT_BACKUP_DIR = path.join(APP_ROOT, 'backups');
+// En Electron: userData/db y userData/backups. En dev: db/ y backups/ del proyecto.
+const DB_DIR_RUNTIME     = process.env.SISTEMA_DB_DIR     || path.join(APP_ROOT, 'db');
+const DEFAULT_BACKUP_DIR = process.env.SISTEMA_BACKUP_DIR || path.join(APP_ROOT, 'backups');
 const BACKUP_REGEX   = /^SistemaUniversal_Backup_\d{4}-\d{2}-\d{2}_\d{4}_(manual|auto)\.zip$/;
 
 // ── Scheduler ─────────────────────────────────────────────────────────────────
@@ -302,8 +304,8 @@ router.post('/restaurar', async (req, res) => {
     const zip    = new AdmZip(rutaZip);
     const dbData = zip.getEntry('turnos.db').getData();
 
-    const pendingDb   = path.join(APP_ROOT, 'db', 'pending_restore.db');
-    const pendingFlag = path.join(APP_ROOT, 'db', '.restore_pending');
+    const pendingDb   = path.join(DB_DIR_RUNTIME, 'pending_restore.db');
+    const pendingFlag = path.join(DB_DIR_RUNTIME, '.restore_pending');
 
     fs.writeFileSync(pendingDb, dbData);
     fs.writeFileSync(pendingFlag, JSON.stringify({
@@ -321,8 +323,8 @@ router.post('/restaurar', async (req, res) => {
   } catch (err) {
     console.error('[BACKUP] Error al preparar restauración:', err.message);
     // Limpiar archivos parciales
-    try { fs.unlinkSync(path.join(APP_ROOT, 'db', 'pending_restore.db')); } catch (_) {}
-    try { fs.unlinkSync(path.join(APP_ROOT, 'db', '.restore_pending')); } catch (_) {}
+    try { fs.unlinkSync(path.join(DB_DIR_RUNTIME, 'pending_restore.db')); } catch (_) {}
+    try { fs.unlinkSync(path.join(DB_DIR_RUNTIME, '.restore_pending')); } catch (_) {}
     res.status(500).json({ error: 'No se pudo preparar la restauración.' });
   }
 });
@@ -364,7 +366,7 @@ router.get('/descargar/:nombre', (req, res) => {
 
 // ── GET /api/backup/estado-restauracion ──────────────────────────────────────
 router.get('/estado-restauracion', (req, res) => {
-  const flag = path.join(APP_ROOT, 'db', '.restore_pending');
+  const flag = path.join(DB_DIR_RUNTIME, '.restore_pending');
   if (fs.existsSync(flag)) {
     try {
       const info = JSON.parse(fs.readFileSync(flag, 'utf8'));

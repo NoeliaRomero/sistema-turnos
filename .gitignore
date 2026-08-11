@@ -24,3 +24,6 @@ db/server.port
 # Herramientas de desarrollador — clave privada NUNCA en repositorio
 tools/private.pem
 tools/*.lic
+
+# Electron build output
+dist/

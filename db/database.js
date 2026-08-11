@@ -2,7 +2,10 @@ const { DatabaseSync } = require('node:sqlite');
 const bcrypt = require('bcryptjs');
 const path   = require('path');
 
-const db = new DatabaseSync(path.join(__dirname, 'turnos.db'));
+// En Electron, SISTEMA_DB_DIR apunta a userData/db (escribible).
+// En desarrollo (node server.js), __dirname es <proyecto>/db.
+const DATA_DIR = process.env.SISTEMA_DB_DIR || __dirname;
+const db = new DatabaseSync(path.join(DATA_DIR, 'turnos.db'));
 db.exec('PRAGMA journal_mode = WAL');
 db.exec('PRAGMA foreign_keys = OFF'); // fix crítico: node:sqlite habilita FK por defecto
 
