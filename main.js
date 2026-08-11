@@ -18,6 +18,10 @@ const path = require('path');
 const fs   = require('fs');
 const net  = require('net');
 
+// Fijar el nombre ANTES de getPath('userData') para que el directorio de datos
+// sea consistente entre desarrollo y producción: AppData\Roaming\SistemaUniversal
+app.setName('SistemaUniversal');
+
 // ── Directorios de datos ──────────────────────────────────────────────────────
 // En Electron el asar es de solo lectura; todo lo que el sistema escribe
 // (DB, licencia, configuración, backups) va a userData, que persiste entre
