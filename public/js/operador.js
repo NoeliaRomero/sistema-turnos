@@ -68,20 +68,6 @@ async function cargarAtracciones() {
   }
 
   sel.addEventListener('change', () => { filtroId = sel.value; renderTurnos(); });
-
-  // Bug 9: operador sin atracción asignada
-  if (me.rol === 'operador' && !me.atraccion_id) {
-    const container = document.querySelector('.container-fluid') || document.body;
-    const aviso = document.createElement('div');
-    aviso.className = 'alert alert-warning d-flex align-items-start gap-3 mx-3 mt-4';
-    aviso.innerHTML = `
-      <i class="bi bi-exclamation-triangle-fill fs-4 flex-shrink-0 text-warning"></i>
-      <div>
-        <div class="fw-bold mb-1">Sin atracción asignada</div>
-        <div>Este operador no tiene ninguna atracción asignada. Contactá al Administrador para que asigne una atracción a tu usuario antes de continuar.</div>
-      </div>`;
-    container.insertBefore(aviso, container.firstChild);
-  }
 }
 
 async function cargarTurnos() {
