@@ -102,7 +102,7 @@
         <form id="formRegistro" novalidate>
 
           <div class="mb-3">
-            <label class="form-label fw-semibold">Juego <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold" for="selectJuego">Juego <span class="text-danger">*</span></label>
             <select class="form-select form-select-lg" id="selectJuego" required>
               <option value="">Seleccionar juego…</option>
             </select>
@@ -110,14 +110,14 @@
           </div>
 
           <div class="mb-3 d-none" id="wrapSubcategoria">
-            <label class="form-label fw-semibold">Subcategoría <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold" for="selectSubcategoria">Subcategoría <span class="text-danger">*</span></label>
             <select class="form-select form-select-lg" id="selectSubcategoria">
               <option value="">Seleccionar subcategoría…</option>
             </select>
           </div>
 
           <div class="mb-3">
-            <label class="form-label fw-semibold">Número de Biper <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold" for="inputBiper">Número de Biper <span class="text-danger">*</span></label>
             <div class="input-group input-group-lg">
               <input type="number" id="inputBiper" class="form-control" min="1" max="999" placeholder="Ej: 5" required>
               <button type="button" class="btn btn-outline-secondary" id="btnAutoBiper" title="Asignar automáticamente">
@@ -127,7 +127,7 @@
           </div>
 
           <div class="mb-3" style="display:none">
-            <label class="form-label fw-semibold">Dispositivo VIPER</label>
+            <label class="form-label fw-semibold" for="selectViper">Dispositivo VIPER</label>
             <select class="form-select" id="selectViper">
               <option value="">Sin VIPER físico</option>
             </select>
@@ -135,13 +135,13 @@
           </div>
 
           <div class="mb-3">
-            <label class="form-label fw-semibold">Familia / Nombre del grupo <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold" for="inputNombre">Familia / Nombre del grupo <span class="text-danger">*</span></label>
             <input type="text" id="inputNombre" class="form-control form-control-lg"
               placeholder="Ej: Familia García" maxlength="60" required>
           </div>
 
           <div class="mb-4">
-            <label class="form-label fw-semibold">Cantidad de miembros <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold" for="inputMiembros">Cantidad de miembros <span class="text-danger">*</span></label>
             <div class="input-group input-group-lg">
               <button type="button" class="btn btn-outline-secondary" id="btnMenos">
                 <i class="bi bi-dash-lg"></i>
@@ -275,11 +275,11 @@
       </div>
       <div class="modal-body">
         <div id="editarSubcategoriaWrap" class="mb-3 d-none">
-          <label class="form-label fw-semibold small">Subcategoría</label>
+          <label class="form-label fw-semibold small" for="editarSelectSubcategoria">Subcategoría</label>
           <select class="form-select" id="editarSelectSubcategoria"></select>
         </div>
         <div class="mb-3">
-          <label class="form-label fw-semibold small">Cantidad de personas</label>
+          <label class="form-label fw-semibold small" for="editarInputMiembros">Cantidad de personas</label>
           <div class="input-group">
             <button type="button" class="btn btn-outline-secondary" id="editarBtnMenos">
               <i class="bi bi-dash"></i>

@@ -231,20 +231,20 @@
       <div class="modal-body">
         <input type="hidden" id="userId">
         <div class="mb-3">
-          <label class="form-label fw-semibold">Nombre completo <span class="text-danger">*</span></label>
+          <label class="form-label fw-semibold" for="uNombre">Nombre completo <span class="text-danger">*</span></label>
           <input type="text" class="form-control" id="uNombre" placeholder="Ej: Juan Pérez">
         </div>
         <div class="mb-3">
-          <label class="form-label fw-semibold">Nombre de usuario <span class="text-danger">*</span></label>
+          <label class="form-label fw-semibold" for="uUsername">Nombre de usuario <span class="text-danger">*</span></label>
           <input type="text" class="form-control" id="uUsername" placeholder="Ej: juan.perez">
         </div>
         <div class="mb-3">
-          <label class="form-label fw-semibold" id="passLabel">Contraseña <span class="text-danger">*</span></label>
+          <label class="form-label fw-semibold" id="passLabel" for="uPassword">Contraseña <span class="text-danger">*</span></label>
           <input type="password" class="form-control" id="uPassword" placeholder="Mínimo 6 caracteres">
           <div class="form-text" id="passHint"></div>
         </div>
         <div class="mb-3">
-          <label class="form-label fw-semibold">Rol <span class="text-danger">*</span></label>
+          <label class="form-label fw-semibold" for="uRol">Rol <span class="text-danger">*</span></label>
           <select class="form-select" id="uRol">
             <option value="">Seleccionar…</option>
             <option value="admin">Administrador</option>
@@ -253,13 +253,13 @@
           </select>
         </div>
         <div class="mb-3" id="atraccionWrap" style="display:none">
-          <label class="form-label fw-semibold">Atracción asignada</label>
+          <label class="form-label fw-semibold" for="uAtraccion">Atracción asignada</label>
           <select class="form-select" id="uAtraccion">
             <option value="">Sin asignar</option>
           </select>
         </div>
         <div id="permisosWrap" style="display:none">
-          <label class="form-label fw-semibold mb-2">Permisos adicionales</label>
+          <p class="form-label fw-semibold mb-2">Permisos adicionales</p>
           <div class="perm-group">
             <div class="form-check mb-2">
               <input class="form-check-input" type="checkbox" id="uPermisoLlamar">
@@ -347,7 +347,7 @@
       <div class="modal-body">
         <input type="hidden" id="juegoId">
         <div class="mb-3">
-          <label class="form-label fw-semibold">Nombre del juego <span class="text-danger">*</span></label>
+          <label class="form-label fw-semibold" for="jNombre">Nombre del juego <span class="text-danger">*</span></label>
           <input type="text" class="form-control form-control-lg" id="jNombre" placeholder="Ej: Laser Tag" maxlength="60">
         </div>
         <div class="mb-3">
@@ -365,7 +365,7 @@
           <div class="form-text">Si está activado, al registrar un grupo se deberá seleccionar una subcategoría (ej: nivel de dificultad, modalidad, horario, etc.)</div>
         </div>
         <div class="mb-3" id="wrapDuracionManual">
-          <label class="form-label fw-semibold">Duración estimada (minutos) <span class="text-danger">*</span></label>
+          <label class="form-label fw-semibold" for="jDuracion">Duración estimada (minutos) <span class="text-danger">*</span></label>
           <div class="input-group input-group-lg">
             <input type="number" class="form-control" id="jDuracion" min="1" max="300" value="30">
             <span class="input-group-text">min</span>
@@ -397,14 +397,14 @@
         </div>
         <div class="row g-3 mb-3">
           <div class="col-6">
-            <label class="form-label fw-semibold">Mínimo de personas</label>
+            <label class="form-label fw-semibold" for="jMinMiembros">Mínimo de personas</label>
             <div class="input-group">
               <input type="number" class="form-control" id="jMinMiembros" min="1" max="100" value="1">
               <span class="input-group-text"><i class="bi bi-people"></i></span>
             </div>
           </div>
           <div class="col-6">
-            <label class="form-label fw-semibold">Máximo de personas</label>
+            <label class="form-label fw-semibold" for="jMaxMiembros">Máximo de personas</label>
             <div class="input-group">
               <input type="number" class="form-control" id="jMaxMiembros" min="1" max="100" value="20">
               <span class="input-group-text"><i class="bi bi-people-fill"></i></span>

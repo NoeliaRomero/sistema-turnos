@@ -49,13 +49,13 @@
         <h5 class="fw-bold mb-4"><i class="bi bi-plus-circle-fill me-2 text-primary"></i>Nueva Venta</h5>
         <form id="formVenta" novalidate>
           <div class="mb-3">
-            <label class="form-label fw-semibold">Atracción <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold" for="selectAtraccion">Atracción <span class="text-danger">*</span></label>
             <select class="form-select form-select-lg" id="selectAtraccion" required>
               <option value="">Seleccionar…</option>
             </select>
           </div>
           <div class="mb-3">
-            <label class="form-label fw-semibold">Número de Biper <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold" for="inputBiper">Número de Biper <span class="text-danger">*</span></label>
             <div class="input-group input-group-lg">
               <input type="number" id="inputBiper" class="form-control" min="1" max="999" placeholder="Ej: 5" required>
               <button type="button" class="btn btn-outline-secondary" id="btnAutoBiper" title="Asignar automáticamente">
@@ -65,7 +65,7 @@
             <div class="form-text">Clic en <i class="bi bi-magic"></i> para asignar automáticamente</div>
           </div>
           <div class="mb-4">
-            <label class="form-label fw-semibold">Nombre / Familia <span class="text-muted fw-normal">(opcional)</span></label>
+            <label class="form-label fw-semibold" for="inputNombre">Nombre / Familia <span class="text-muted fw-normal">(opcional)</span></label>
             <input type="text" id="inputNombre" class="form-control form-control-lg" placeholder="Ej: Familia García" maxlength="60">
           </div>
           <button type="submit" class="btn btn-primary btn-lg w-100 fw-bold">

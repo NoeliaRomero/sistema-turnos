@@ -129,18 +129,18 @@
           <h6 class="fw-bold mb-3"><i class="bi bi-usb-symbol me-2 text-primary"></i>Configuración Serial (Arduino)</h6>
           <form id="formSerialConfig" class="row g-3 align-items-end">
             <div class="col-md-4">
-              <label class="form-label fw-semibold small">Puerto COM</label>
+              <label class="form-label fw-semibold small" for="selectPuertoCom">Puerto COM</label>
               <select class="form-select" id="selectPuertoCom"></select>
             </div>
             <div class="col-md-3">
-              <label class="form-label fw-semibold small">Baudios</label>
+              <label class="form-label fw-semibold small" for="selectBaudios">Baudios</label>
               <select class="form-select" id="selectBaudios">
                 <option value="9600">9600</option>
                 <option value="115200" selected>115200</option>
               </select>
             </div>
             <div class="col-md-3">
-              <label class="form-label fw-semibold small d-block">Estado de conexión</label>
+              <p class="form-label fw-semibold small d-block">Estado de conexión</p>
               <span class="estado-badge" id="badgeConexionSerial">Desconocido</span>
             </div>
             <div class="col-md-2">
@@ -216,11 +216,11 @@
           <h6 class="fw-bold mb-3"><i class="bi bi-usb-symbol me-2 text-primary"></i>Configuración Serial (Arduino)</h6>
           <form id="formSerialConfigViper" class="row g-3 align-items-end">
             <div class="col-md-4">
-              <label class="form-label fw-semibold small">Puerto COM</label>
+              <label class="form-label fw-semibold small" for="vSerialPuerto">Puerto COM</label>
               <input type="text" class="form-control" id="vSerialPuerto" value="COM1">
             </div>
             <div class="col-md-3">
-              <label class="form-label fw-semibold small">Baudios</label>
+              <label class="form-label fw-semibold small" for="vSerialBaudios">Baudios</label>
               <input type="number" class="form-control" id="vSerialBaudios" value="115200">
             </div>
             <div class="col-md-3">
@@ -254,7 +254,7 @@
           <h6 class="fw-bold mb-3"><i class="bi bi-broadcast-pin me-2 text-primary"></i>Configuración RF</h6>
           <form id="formRfConfig" class="row g-3 align-items-end">
             <div class="col-md-3">
-              <label class="form-label fw-semibold small">Frecuencia RF</label>
+              <label class="form-label fw-semibold small" for="rfFrecuencia">Frecuencia RF</label>
               <select class="form-select" id="rfFrecuencia">
                 <option value="315 MHz">315 MHz</option>
                 <option value="433.92 MHz" selected>433.92 MHz</option>
@@ -263,7 +263,7 @@
               </select>
             </div>
             <div class="col-md-2">
-              <label class="form-label fw-semibold small">Canal</label>
+              <label class="form-label fw-semibold small" for="rfCanal">Canal</label>
               <select class="form-select" id="rfCanal">
                 <option value="1">1</option>
                 <option value="2">2</option>
@@ -272,11 +272,11 @@
               </select>
             </div>
             <div class="col-md-3">
-              <label class="form-label fw-semibold small">Retransmisiones</label>
+              <label class="form-label fw-semibold small" for="rfRetransmisiones">Retransmisiones</label>
               <input type="number" class="form-control" id="rfRetransmisiones" value="3" min="0">
             </div>
             <div class="col-md-2">
-              <label class="form-label fw-semibold small">Intervalo (ms)</label>
+              <label class="form-label fw-semibold small" for="rfIntervalo">Intervalo (ms)</label>
               <input type="number" class="form-control" id="rfIntervalo" value="100" min="0">
             </div>
             <div class="col-md-2">
@@ -368,12 +368,12 @@
                 <div class="fw-semibold">Estado:</div>
                 <div class="form-check form-switch mb-0">
                   <input class="form-check-input" type="checkbox" role="switch" id="switchBackupAuto" style="width:2.5em; height:1.4em; cursor:pointer">
-                  <label class="form-check-label" id="labelBackupAuto">Desactivado</label>
+                  <label class="form-check-label" id="labelBackupAuto" for="switchBackupAuto">Desactivado</label>
                 </div>
               </div>
             </div>
             <div class="col-md-3">
-              <label class="form-label fw-semibold small">Frecuencia</label>
+              <label class="form-label fw-semibold small" for="selectFrecuencia">Frecuencia</label>
               <select class="form-select" id="selectFrecuencia">
                 <option value="manual">Solo manual</option>
                 <option value="diario">Diario</option>
@@ -383,11 +383,11 @@
               </select>
             </div>
             <div class="col-md-2">
-              <label class="form-label fw-semibold small">Hora</label>
+              <label class="form-label fw-semibold small" for="inputHoraBackup">Hora</label>
               <input type="time" class="form-control" id="inputHoraBackup" value="02:00">
             </div>
             <div class="col-md-3" id="camposDiaSemana">
-              <label class="form-label fw-semibold small">Día de la semana</label>
+              <label class="form-label fw-semibold small" for="selectDiaSemana">Día de la semana</label>
               <select class="form-select" id="selectDiaSemana">
                 <option value="0">Domingo</option>
                 <option value="1">Lunes</option>
@@ -399,20 +399,20 @@
               </select>
             </div>
             <div class="col-md-2" id="camposDiaMes">
-              <label class="form-label fw-semibold small">Día del mes</label>
+              <label class="form-label fw-semibold small" for="inputDiaMes">Día del mes</label>
               <input type="number" class="form-control" id="inputDiaMes" min="1" max="28" value="1">
             </div>
             <div class="col-md-3" id="camposFechaAnual">
-              <label class="form-label fw-semibold small">Fecha (DD/MM)</label>
+              <label class="form-label fw-semibold small" for="inputFechaAnual">Fecha (DD/MM)</label>
               <input type="text" class="form-control" id="inputFechaAnual" placeholder="01-01" maxlength="5">
               <div class="form-text small">Formato: DD-MM (ej: 01-01)</div>
             </div>
             <div class="col-md-2">
-              <label class="form-label fw-semibold small">Conservar backups</label>
+              <label class="form-label fw-semibold small" for="inputMaxBackups">Conservar backups</label>
               <input type="number" class="form-control" id="inputMaxBackups" min="1" max="365" value="10">
             </div>
             <div class="col-md-4">
-              <label class="form-label fw-semibold small">Carpeta de destino</label>
+              <label class="form-label fw-semibold small" for="inputCarpetaDestino">Carpeta de destino</label>
               <input type="text" class="form-control" id="inputCarpetaDestino" placeholder="Vacío = carpeta backups/ del sistema">
             </div>
             <div class="col-12">
@@ -457,7 +457,7 @@
           <h6 class="fw-bold mb-3"><i class="bi bi-file-earmark-spreadsheet me-2 text-primary"></i>Exportación de Datos</h6>
           <div class="row g-3">
             <div class="col-md-3">
-              <label class="form-label fw-semibold small">Tipo de datos</label>
+              <label class="form-label fw-semibold small" for="selectTipoExport">Tipo de datos</label>
               <select class="form-select" id="selectTipoExport">
                 <option value="turnos">Turnos</option>
                 <option value="usuarios">Usuarios</option>
@@ -467,11 +467,11 @@
               </select>
             </div>
             <div class="col-md-2" id="filtroDesde">
-              <label class="form-label fw-semibold small">Desde</label>
+              <label class="form-label fw-semibold small" for="inputDesde">Desde</label>
               <input type="date" class="form-control" id="inputDesde">
             </div>
             <div class="col-md-2" id="filtroHasta">
-              <label class="form-label fw-semibold small">Hasta</label>
+              <label class="form-label fw-semibold small" for="inputHasta">Hasta</label>
               <input type="date" class="form-control" id="inputHasta">
             </div>
             <div class="col-12 d-flex gap-2 flex-wrap pt-1">
@@ -543,7 +543,7 @@
 
           <div class="row g-3 align-items-end">
             <div class="col-md-4">
-              <label class="form-label fw-semibold small">Puerto nuevo</label>
+              <label class="form-label fw-semibold small" for="inputPuertoNuevo">Puerto nuevo</label>
               <input type="number" class="form-control" id="inputPuertoNuevo"
                      min="1" max="65535" placeholder="ej. 4000" step="1">
               <div class="form-text">Entre 1 y 65535. Puertos comunes: 3000, 4000, 8080.</div>
@@ -631,7 +631,7 @@
       </div>
       <div class="modal-body">
         <div class="mb-3">
-          <label class="form-label fw-semibold">Código VIPER <span class="text-danger">*</span></label>
+          <label class="form-label fw-semibold" for="vCodigoViper">Código VIPER <span class="text-danger">*</span></label>
           <input type="text" class="form-control" id="vCodigoViper" placeholder="Ingrese el código del VIPER">
         </div>
         <div id="viperError" class="alert alert-danger d-none"></div>
@@ -655,7 +655,7 @@
       <div class="modal-body">
         <p class="text-muted small">Se enviará el siguiente mensaje por el puerto serial configurado. El VIPER quedará en estado <strong>VALIDANDO</strong> a la espera de la captura del código RAW.</p>
         <div class="mb-3">
-          <label class="form-label fw-semibold">Mensaje a enviar</label>
+          <label class="form-label fw-semibold" for="senalMensaje">Mensaje a enviar</label>
           <textarea class="form-control" id="senalMensaje" rows="2">READY_PARA_TEST_DE_CABLE</textarea>
         </div>
         <div id="senalError" class="alert alert-danger d-none"></div>
@@ -702,7 +702,7 @@
           <input type="text" class="form-control" id="rfCodigoDetectado" readonly style="font-family:monospace;">
         </div>
         <div class="mb-3">
-          <label class="form-label fw-semibold small">Asociar a VIPER existente</label>
+          <label class="form-label fw-semibold small" for="rfAsociarViperId">Asociar a VIPER existente</label>
           <select class="form-select" id="rfAsociarViperId"></select>
         </div>
         <div id="rfAsociarError" class="alert alert-danger d-none"></div>
@@ -725,20 +725,20 @@
       </div>
       <div class="modal-body">
         <div class="mb-3">
-          <label class="form-label fw-semibold">Código VIPER <span class="text-danger">*</span></label>
+          <label class="form-label fw-semibold" for="eCodigoViper">Código VIPER <span class="text-danger">*</span></label>
           <input type="text" class="form-control" id="eCodigoViper">
         </div>
         <div class="mb-3">
-          <label class="form-label fw-semibold">Código RF</label>
+          <label class="form-label fw-semibold" for="eCodigoRf">Código RF</label>
           <input type="text" class="form-control" id="eCodigoRf" style="font-family:monospace;">
         </div>
         <div class="row g-3">
           <div class="col-md-6">
-            <label class="form-label fw-semibold">Canal</label>
+            <label class="form-label fw-semibold" for="eCanal">Canal</label>
             <input type="number" class="form-control" id="eCanal" min="1" value="1">
           </div>
           <div class="col-md-6">
-            <label class="form-label fw-semibold">Estado</label>
+            <label class="form-label fw-semibold" for="eEstado">Estado</label>
             <select class="form-select" id="eEstado">
               <option value="PENDIENTE">Pendiente</option>
               <option value="VALIDANDO">Validando</option>
