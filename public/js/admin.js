@@ -230,8 +230,8 @@ async function cargarUsuarios() {
   }).join('');
 }
 
-function rolClass(rol) { return { admin:'rol-admin', operador:'rol-operador', recepcion:'rol-recepcion', caja:'rol-recepcion' }[rol]||''; }
-function rolLabel(rol) { return { admin:'Administrador', operador:'Operador', recepcion:'Recepción', caja:'Caja' }[rol]||rol; }
+function rolClass(rol) { return { admin:'rol-admin', operador:'rol-operador', recepcion:'rol-recepcion' }[rol]||''; }
+function rolLabel(rol) { return { admin:'Administrador', operador:'Operador', recepcion:'Recepción' }[rol]||rol; }
 
 // ── Modal usuario ─────────────────────────────────────────────────────────────
 const modalUsuario  = new bootstrap.Modal(document.getElementById('modalUsuario'));

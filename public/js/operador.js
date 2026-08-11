@@ -46,14 +46,42 @@ async function cargarAtracciones() {
     sel.innerHTML += `<option value="${a.id}">${a.nombre}</option>`;
   });
 
-  // Bug 5: operador ve solo su juego, selector bloqueado
+  // Operador ve solo su juego, selector bloqueado
   if (me.rol === 'operador' && me.atraccion_id) {
     sel.value    = String(me.atraccion_id);
     filtroId     = String(me.atraccion_id);
     sel.disabled = true;
   }
 
+  // Bug 9: operador sin atracción asignada — mostrar aviso claro
+  if (me.rol === 'operador' && !me.atraccion_id) {
+    const container = document.querySelector('.container-fluid');
+    const aviso = document.createElement('div');
+    aviso.className = 'alert alert-warning d-flex align-items-start gap-3 mt-3';
+    aviso.innerHTML = `
+      <i class="bi bi-exclamation-triangle-fill fs-4 flex-shrink-0 text-warning mt-1"></i>
+      <div>
+        <div class="fw-bold mb-1">Sin atracción asignada</div>
+        <div>Este operador no tiene ninguna atracción asignada. Contactá al Administrador para que asigne una atracción a tu usuario antes de continuar.</div>
+      </div>`;
+    container.insertBefore(aviso, container.firstChild);
+  }
+
   sel.addEventListener('change', () => { filtroId = sel.value; renderTurnos(); });
+
+  // Bug 9: operador sin atracción asignada
+  if (me.rol === 'operador' && !me.atraccion_id) {
+    const container = document.querySelector('.container-fluid') || document.body;
+    const aviso = document.createElement('div');
+    aviso.className = 'alert alert-warning d-flex align-items-start gap-3 mx-3 mt-4';
+    aviso.innerHTML = `
+      <i class="bi bi-exclamation-triangle-fill fs-4 flex-shrink-0 text-warning"></i>
+      <div>
+        <div class="fw-bold mb-1">Sin atracción asignada</div>
+        <div>Este operador no tiene ninguna atracción asignada. Contactá al Administrador para que asigne una atracción a tu usuario antes de continuar.</div>
+      </div>`;
+    container.insertBefore(aviso, container.firstChild);
+  }
 }
 
 async function cargarTurnos() {
@@ -188,18 +216,18 @@ function cardJugando(t) {
     if (me.permiso_llamar_turno && esAsignado) {
       if (esMasEtapas) {
         btnFinalizar = `<button class="btn btn-primary btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
-          <i class="bi bi-skip-forward-fill me-1"></i>Avanzar Etapa
+          <i class="bi bi-skip-forward-fill me-1"></i>Finalizar Etapa
         </button>`;
       } else {
         btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
-          <i class="bi bi-trophy me-1"></i>Finalizar Juego
+          <i class="bi bi-trophy me-1"></i>Finalizar
         </button>`;
       }
     }
   } else if (me.permiso_llamar_turno && esAsignado) {
-    // Sin etapas → Finalizar Juego
+    // Sin etapas → Finalizar
     btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
-      <i class="bi bi-trophy me-1"></i>Finalizar Juego
+      <i class="bi bi-trophy me-1"></i>Finalizar
     </button>`;
   }
 

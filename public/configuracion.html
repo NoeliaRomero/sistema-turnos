@@ -516,6 +516,27 @@
           </div>
         </div>
 
+        <!-- Información LAN -->
+        <div class="card p-4 mb-3" id="cardInfoLAN">
+          <h6 class="fw-bold mb-3"><i class="bi bi-wifi me-2 text-success"></i>Información de conexión LAN</h6>
+          <div id="infoLANContenido" class="text-muted small">Cargando…</div>
+        </div>
+
+        <!-- Reiniciar servidor -->
+        <div class="mt-3 d-none" id="divBtnReiniciar">
+          <button class="btn btn-warning px-4" id="btnReiniciarServidor">
+            <i class="bi bi-arrow-clockwise me-2"></i>Reiniciar Servidor
+          </button>
+          <span class="text-muted small ms-3">El sistema se cerrará y volverá a abrirse con el nuevo puerto.</span>
+        </div>
+
+        <div class="mt-3" id="divReinicioDirecto">
+          <button class="btn btn-outline-warning btn-sm" id="btnReiniciarDirecto">
+            <i class="bi bi-arrow-clockwise me-1"></i>Reiniciar Servidor Ahora
+          </button>
+          <span class="text-muted" style="font-size:.8rem"> — Aplica la configuración actual y reinicia.</span>
+        </div>
+
         <!-- Cambiar puerto -->
         <div class="card p-4 mb-3">
           <h6 class="fw-bold mb-3"><i class="bi bi-sliders me-2 text-primary"></i>Cambiar puerto del servidor</h6>

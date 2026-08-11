@@ -914,8 +914,91 @@ async function cargarEstadoServidor() {
     } else {
       alertaDistinto.classList.add('d-none');
     }
+
+    const divBtnReiniciar = document.getElementById('divBtnReiniciar');
+    if (divBtnReiniciar) {
+      if (d.puerto_configurado && d.puerto_activo && d.puerto_configurado !== d.puerto_activo) {
+        divBtnReiniciar.classList.remove('d-none');
+      } else {
+        divBtnReiniciar.classList.add('d-none');
+      }
+    }
+
+    // Cargar info LAN
+    try {
+      const resRed = await fetch('/api/config-servidor/red');
+      if (resRed.ok) {
+        const red = await resRed.json();
+        const cont = document.getElementById('infoLANContenido');
+        if (cont) {
+          let html = '<div class="row g-3">';
+          if (red.ips && red.ips.length > 0) {
+            html += `<div class="col-md-6">
+              <div class="fw-semibold mb-1"><i class="bi bi-hdd-network me-1 text-primary"></i>Dirección(es) IP del servidor</div>`;
+            red.ips.forEach(ip => {
+              const url = `http://${ip}:${red.puerto}`;
+              html += `<div class="mb-1">
+                <code class="fs-6 text-success fw-bold">${ip}</code>
+                <div class="mt-1"><span class="text-muted">URL completa: </span>
+                  <code class="text-dark">${url}</code>
+                  <button class="btn btn-outline-secondary btn-sm ms-2 py-0 px-2" style="font-size:.7rem"
+                    onclick="navigator.clipboard.writeText('${url}').then(()=>mostrarToast('URL copiada','success'))">
+                    <i class="bi bi-clipboard me-1"></i>Copiar
+                  </button>
+                </div>
+              </div>`;
+            });
+            html += '</div>';
+          }
+          if (red.hostname) {
+            html += `<div class="col-md-6">
+              <div class="fw-semibold mb-1"><i class="bi bi-pc-display me-1 text-primary"></i>Nombre del equipo (hostname)</div>
+              <code class="fs-6">${red.hostname}</code>
+              <div class="mt-1 text-muted" style="font-size:.8rem">
+                Alternativa: <code>${red.url_hostname}</code>
+                <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem">Puede no funcionar en todas las redes</span>
+              </div>
+              <div class="mt-1 text-muted" style="font-size:.75rem">
+                <i class="bi bi-info-circle me-1"></i>La IP es el método más confiable para conexión LAN.
+              </div>
+            </div>`;
+          }
+          html += '</div>';
+          html += `<div class="alert alert-info mt-3 mb-0 py-2 small">
+            <i class="bi bi-people me-1"></i>
+            Los demás equipos de la red deben acceder a: <strong>http://[IP]:${red.puerto}</strong>
+            — reemplazá [IP] por una de las IPs mostradas arriba.
+          </div>`;
+          cont.innerHTML = html;
+        }
+      }
+    } catch (_) {}
   } catch (_) {}
 }
+
+async function reiniciarServidor() {
+  if (!confirm('¿Reiniciar el servidor? La aplicación se cerrará y volverá a abrirse automáticamente.')) return;
+  const btn = document.getElementById('btnReiniciarServidor') || document.getElementById('btnReiniciarDirecto');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Reiniciando…';
+  }
+  try {
+    await fetch('/api/config-servidor/reiniciar', { method: 'POST' });
+  } catch (_) {}
+  setTimeout(() => {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Reiniciar';
+    }
+    mostrarToast('Si la aplicación no se reinició, cerrá y volvé a abrirla manualmente.', 'warning');
+  }, 5000);
+}
+
+['btnReiniciarServidor', 'btnReiniciarDirecto'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('click', reiniciarServidor);
+});
 
 document.getElementById('btnGuardarPuerto').addEventListener('click', async () => {
   const input = document.getElementById('inputPuertoNuevo');

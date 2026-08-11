@@ -65,6 +65,8 @@ migrateDataIfNeeded();
 // (database.js, backup.js, licencia.js, config-servidor.js) lean los paths correctos.
 process.env.SISTEMA_DB_DIR     = DB_DIR;
 process.env.SISTEMA_BACKUP_DIR = BACKUP_DIR;
+console.log(`[Sistema Universal] userData: ${userData}`);
+console.log(`[Sistema Universal] DB: ${DB_DIR}`);
 
 // ── Lectura del puerto configurado ────────────────────────────────────────────
 function leerPuerto() {
@@ -180,6 +182,14 @@ app.whenReady().then(crearVentana);
 // En Windows/Linux: cerrar la app cuando se cierran todas las ventanas
 app.on('window-all-closed', () => {
   app.quit();
+});
+
+// Cuando el servidor solicita reinicio (process.exit con _RELAUNCH_PENDIENTE),
+// relanzar la app para aplicar la nueva configuración de puerto.
+process.on('exit', () => {
+  if (global._RELAUNCH_PENDIENTE) {
+    app.relaunch();
+  }
 });
 
 // En macOS: recrear la ventana al hacer clic en el dock

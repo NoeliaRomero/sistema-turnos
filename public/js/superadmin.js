@@ -310,3 +310,45 @@ function mostrarToast(mensaje, tipo = 'ok') {
   new bootstrap.Toast(el, { delay: 2800 }).show();
   el.addEventListener('hidden.bs.toast', () => el.remove());
 }
+
+
+// ── Permiso configuración de red ──────────────────────────────────────────────
+async function cargarPermisoRed() {
+  try {
+    const res = await fetch('/api/config-general');
+    if (!res.ok) return;
+    const cfg = await res.json();
+    const sw = document.getElementById('switchPermisoRedAdmin');
+    if (sw) sw.checked = !!cfg.admin_puede_configurar_red;
+  } catch (_) {}
+}
+
+const switchPermisoRed = document.getElementById('switchPermisoRedAdmin');
+if (switchPermisoRed) {
+  switchPermisoRed.addEventListener('change', async () => {
+    const msg = document.getElementById('msgPermisoRed');
+    try {
+      const res = await fetch('/api/config-general/permiso-red', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ admin_puede_configurar_red: switchPermisoRed.checked }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        msg.className = 'alert alert-success mt-3 mb-0 small py-2';
+        msg.textContent = `Permiso ${switchPermisoRed.checked ? 'habilitado' : 'deshabilitado'} correctamente.`;
+      } else {
+        msg.className = 'alert alert-danger mt-3 mb-0 small py-2';
+        msg.textContent = data.error || 'Error al actualizar el permiso.';
+      }
+      msg.classList.remove('d-none');
+      setTimeout(() => msg.classList.add('d-none'), 4000);
+    } catch (_) {
+      msg.className = 'alert alert-danger mt-3 mb-0 small py-2';
+      msg.textContent = 'Error de conexión.';
+      msg.classList.remove('d-none');
+    }
+  });
+}
+
+cargarPermisoRed();

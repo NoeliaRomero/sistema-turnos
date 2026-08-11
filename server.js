@@ -179,8 +179,8 @@ global._PUERTO_ACTIVO = PORT;
 
 server.listen(PORT, () => {
   console.log(`\n✅ Sistema de Turnos iniciado`);
-  console.log(`🌐 http://localhost:${PORT}\n`);
-  // Configurar backup automático según la configuración guardada
+  console.log(`🌐 http://localhost:${PORT}`);
+  console.log(`💾 DB: ${path.join(process.env.SISTEMA_DB_DIR || path.join(__dirname, 'db'), 'turnos.db')}\n`);
   backupModule.configurarCron();
 });
 

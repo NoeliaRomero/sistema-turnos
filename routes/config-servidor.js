@@ -3,6 +3,7 @@
 const net     = require('net');
 const fs      = require('fs');
 const path    = require('path');
+const os      = require('os');
 const express = require('express');
 const router  = express.Router();
 const { requireAuth } = require('../middleware/auth');
@@ -75,7 +76,7 @@ router.get('/estado', requireAuth('admin'), (req, res) => {
 
 // GET /api/config-servidor/puertos-disponibles
 // Devuelve la lista de puertos TCP disponibles en este momento.
-router.get('/puertos-disponibles', requireAuth('admin'), async (req, res) => {
+router.get('/puertos-disponibles', requireConfigRed, async (req, res) => {
   try {
     const disponibles = await escanearPuertos(CANDIDATOS);
     res.json({ puertos: disponibles });
@@ -86,7 +87,7 @@ router.get('/puertos-disponibles', requireAuth('admin'), async (req, res) => {
 
 // PUT /api/config-servidor/puerto
 // Guarda el nuevo puerto. El servidor debe reiniciarse para aplicarlo.
-router.put('/puerto', requireAuth('admin'), async (req, res) => {
+router.put('/puerto', requireConfigRed, async (req, res) => {
   const { puerto } = req.body;
 
   if (puerto === undefined || puerto === null || puerto === '') {
@@ -124,6 +125,54 @@ router.put('/puerto', requireAuth('admin'), async (req, res) => {
       ? `Puerto ${p} guardado. Reiniciá el servidor para aplicar el cambio.`
       : `Puerto ${p} guardado. Ya es el puerto activo.`,
   });
+});
+
+function obtenerIPsLocales() {
+  const ips = [];
+  for (const ifaces of Object.values(os.networkInterfaces())) {
+    for (const iface of ifaces) {
+      if (!iface.internal && iface.family === 'IPv4') {
+        ips.push(iface.address);
+      }
+    }
+  }
+  return ips;
+}
+
+// GET /api/config-servidor/red — IP local, hostname, puerto activo
+router.get('/red', requireAuth('admin'), (req, res) => {
+  const puerto   = global._PUERTO_ACTIVO || leerPuertoGuardado() || 3000;
+  const ips      = obtenerIPsLocales();
+  const hostname = os.hostname();
+  res.json({
+    ips,
+    hostname,
+    puerto,
+    urls: ips.map(ip => `http://${ip}:${puerto}`),
+    url_hostname: `http://${hostname}:${puerto}`,
+  });
+});
+
+function requireConfigRed(req, res, next) {
+  const user = req.session?.usuario;
+  if (!user) return res.status(401).json({ error: 'No autenticado' });
+  if (user.rol === 'superadmin') return next();
+  if (user.rol === 'admin') {
+    const db = require('../db/database');
+    const cfg = db.prepare('SELECT admin_puede_configurar_red FROM configuracion_general WHERE id=1').get();
+    if (cfg?.admin_puede_configurar_red) return next();
+    return res.status(403).json({ error: 'No tenés permiso para modificar la configuración de red. Contactá al Superadmin.' });
+  }
+  return res.status(403).json({ error: 'No autorizado.' });
+}
+
+// POST /api/config-servidor/reiniciar
+router.post('/reiniciar', requireAuth('admin'), (req, res) => {
+  res.json({ ok: true, mensaje: 'Reiniciando servidor…' });
+  setTimeout(() => {
+    global._RELAUNCH_PENDIENTE = true;
+    process.exit(0);
+  }, 800);
 });
 
 // ── Exportar helper para server.js ────────────────────────────────────────────

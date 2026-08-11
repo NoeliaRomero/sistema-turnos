@@ -527,9 +527,12 @@ async function _ejecutarLlamar(id, force = false) {
       ? `con aproximadamente <strong>${data.tiempo_restante} min restantes</strong>`
       : 'con tiempo excedido';
     document.getElementById('confViperOtroJuegoTexto').innerHTML =
-      `El VIPER <strong>${escapeHtml(data.biper_numero)}</strong> está actualmente jugando en
-       <strong>${escapeHtml(data.juego_origen)}</strong>
-       (${escapeHtml(data.nombre_cliente || 'Sin nombre')}) ${restanteTexto}.<br><br>
+      `El VIPER <strong>${escapeHtml(data.biper_numero)}</strong> está actualmente jugando en:<br><br>
+       <div class="ms-2 mb-2">
+         <div><span class="text-muted">Juego:</span> <strong>${escapeHtml(data.juego_origen)}</strong></div>
+         <div><span class="text-muted">Familia / Grupo:</span> <strong>${escapeHtml(data.nombre_cliente || 'Sin nombre')}</strong></div>
+         <div><span class="text-muted">Tiempo restante:</span> ${restanteTexto}</div>
+       </div>
        ¿Querés llamarlo igualmente?`;
     modalConfViperOtroJuego().show();
     return;

@@ -128,6 +128,11 @@ db.exec(`
   WHERE orden_cola IS NULL AND estado = 'esperando'
 `);
 
+// Migration: add admin_puede_configurar_red if not exists
+try {
+  db.exec('ALTER TABLE configuracion_general ADD COLUMN admin_puede_configurar_red INTEGER NOT NULL DEFAULT 1');
+} catch (_) {}
+
 // ── Tabla juego_etapas ────────────────────────────────────────────────────────
 db.exec(`
   CREATE TABLE IF NOT EXISTS juego_etapas (
@@ -164,6 +169,9 @@ db.exec(`
     sincronizar_grupos_combinados INTEGER NOT NULL DEFAULT 0
   );
 `);
+
+// Migration: add admin_puede_configurar_red column if it doesn't exist yet
+try { db.exec('ALTER TABLE configuracion_general ADD COLUMN admin_puede_configurar_red INTEGER NOT NULL DEFAULT 1'); } catch (_) {}
 
 // ── Tabla juego_subcategorias ─────────────────────────────────────────────────
 db.exec(`

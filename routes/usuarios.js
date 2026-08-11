@@ -20,7 +20,7 @@ router.get('/', (req, res) => {
   res.json(usuarios);
 });
 
-const ROLES_VALIDOS = ['admin','operador','recepcion','caja'];
+const ROLES_VALIDOS = ['admin','operador','recepcion'];
 
 router.post('/', (req, res) => {
   const { nombre, username, password, rol, atraccion_id,
