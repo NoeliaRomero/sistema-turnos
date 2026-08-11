@@ -105,10 +105,19 @@ let mainWindow = null;
 async function crearVentana() {
   const puerto = leerPuerto();
 
+  // Capturar errores asíncronos del servidor (ej: EADDRINUSE) ANTES de iniciarlo.
+  // server.listen() falla de forma asíncrona, por eso el try/catch no alcanza.
+  let serverError = null;
+  const uncaughtHandler = (err) => {
+    serverError = err;
+  };
+  process.once('uncaughtException', uncaughtHandler);
+
   // Iniciar servidor Express (corre en este mismo proceso)
   try {
     require('./server');
   } catch (err) {
+    process.removeListener('uncaughtException', uncaughtHandler);
     dialog.showErrorBox(
       'Error al iniciar el servidor',
       `No se pudo iniciar el servidor Express:\n\n${err.message}\n\nRevisá los logs para más información.`,
@@ -117,20 +126,21 @@ async function crearVentana() {
     return;
   }
 
-  // Esperar a que Express esté escuchando
+  // Esperar a que Express esté escuchando (o falle con error de puerto)
   try {
     await waitForServer(puerto);
-  } catch (err) {
-    dialog.showErrorBox(
-      `Puerto ${puerto} no disponible`,
-      `No se pudo iniciar el servidor en el puerto ${puerto}.\n\n` +
-      `El puerto puede estar ocupado por otro proceso.\n\n` +
-      `Podés cambiar el puerto desde:\nConfiguraciones → Puerto del Servidor LAN\n\n` +
-      `Luego reiniciá Sistema Universal.`,
-    );
+  } catch (_timeoutErr) {
+    process.removeListener('uncaughtException', uncaughtHandler);
+    const motivo = serverError
+      ? (serverError.code === 'EADDRINUSE'
+          ? `El puerto ${puerto} está siendo usado por otro proceso.\n\nCerrá cualquier instancia anterior de Sistema Universal y volvé a intentarlo.\n\nSi el problema persiste, cambiá el puerto desde:\nConfiguraciones → Puerto del Servidor LAN`
+          : `Error del servidor: ${serverError.message}`)
+      : `El servidor no respondió en el puerto ${puerto} después de 20 segundos.\n\nRevisá que el puerto no esté bloqueado por un firewall o antivirus.`;
+    dialog.showErrorBox(`No se pudo iniciar el servidor (puerto ${puerto})`, motivo);
     app.quit();
     return;
   }
+  process.removeListener('uncaughtException', uncaughtHandler);
 
   mainWindow = new BrowserWindow({
     width:  1280,

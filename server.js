@@ -183,3 +183,8 @@ server.listen(PORT, () => {
   // Configurar backup automático según la configuración guardada
   backupModule.configurarCron();
 });
+
+server.on('error', (err) => {
+  // Propagar como excepción para que main.js pueda capturarla
+  process.nextTick(() => { throw err; });
+});
