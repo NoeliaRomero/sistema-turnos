@@ -62,7 +62,9 @@ async function init() {
   }
 
   await cargarAtracciones();
-  if (adminMe.feature_graficos) await cargarStats();
+  if (adminMe.feature_graficos) {
+    try { await cargarStats(); } catch (e) { console.error('cargarStats:', e); }
+  }
   await cargarUsuarios();
 }
 
@@ -184,7 +186,9 @@ let _usuariosCache = [];
 
 async function cargarUsuarios() {
   const res      = await fetch('/api/usuarios');
+  if (!res.ok) return;
   const usuarios = await res.json();
+  if (!Array.isArray(usuarios)) return;
   _usuariosCache = usuarios;
   const tbody    = document.getElementById('tablaUsuarios');
 
@@ -632,6 +636,9 @@ async function _guardarJuego() { {
 } }
 
 // Cargar juegos al activar el tab
+document.getElementById('tabBtnUsuarios')?.addEventListener('shown.bs.tab', () => {
+  cargarUsuarios();
+});
 document.getElementById('tabBtnJuegos')?.addEventListener('shown.bs.tab', () => {
   cargarJuegos();
 });
