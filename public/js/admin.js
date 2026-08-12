@@ -65,14 +65,21 @@ async function init() {
     if (tabJuegos) tabJuegos.closest('.nav-item').style.display = 'none';
   }
 
-  await cargarAtracciones();
-  if (adminMe.feature_graficos) await cargarStats();
-  await cargarUsuarios();
+  // Cada carga es independiente: si una falla, las demás igual deben mostrarse.
+  const cargas = [
+    cargarAtracciones().catch(err => console.error('Error al cargar atracciones:', err)),
+    cargarUsuarios().catch(err => console.error('Error al cargar usuarios:', err)),
+  ];
+  if (adminMe.feature_graficos) {
+    cargas.push(cargarStats().catch(err => console.error('Error al cargar estadísticas:', err)));
+  }
+  await Promise.allSettled(cargas);
 }
 
 // ── Atracciones (para el selector del modal usuario) ──────────────────────────
 async function cargarAtracciones() {
   const res = await fetch('/api/atracciones');
+  if (!res.ok) throw new Error(`GET /api/atracciones -> ${res.status}`);
   atracciones = await res.json();
   const sel = document.getElementById('uAtraccion');
   sel.innerHTML = '<option value="">Sin asignar</option>';
@@ -95,7 +102,8 @@ document.getElementById('btnRefreshStats').addEventListener('click', cargarStats
 
 // ── Estadísticas ──────────────────────────────────────────────────────────────
 async function cargarStats() {
-  const res  = await fetch(`/api/stats?periodo=${periodo}`);
+  const res = await fetch(`/api/stats?periodo=${periodo}`);
+  if (!res.ok) throw new Error(`GET /api/stats -> ${res.status}`);
   const data = await res.json();
   renderCards(data.resumen);
   renderAtraccionChart(data.porAtraccion);
@@ -187,7 +195,8 @@ function renderTablaOperadores(ops) {
 let _usuariosCache = [];
 
 async function cargarUsuarios() {
-  const res      = await fetch('/api/usuarios');
+  const res = await fetch('/api/usuarios');
+  if (!res.ok) throw new Error(`GET /api/usuarios -> ${res.status}`);
   const usuarios = await res.json();
   _usuariosCache = usuarios;
   const tbody    = document.getElementById('tablaUsuarios');
