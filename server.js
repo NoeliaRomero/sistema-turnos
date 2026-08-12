@@ -12,7 +12,9 @@ const rateLimit    = require('express-rate-limit');
 // Si el admin solicitó restaurar un backup, la DB de reemplazo queda en
 // db/pending_restore.db con el flag db/.restore_pending. Se aplica aquí,
 // antes de que el módulo db/ abra la conexión.
-const DB_DIR           = path.join(__dirname, 'db');
+// En Electron, SISTEMA_DB_DIR apunta a userData/db (escribible y persistente).
+// En modo desarrollo (node server.js) se usa el directorio db/ del proyecto.
+const DB_DIR           = process.env.SISTEMA_DB_DIR || path.join(__dirname, 'db');
 const PENDING_DB       = path.join(DB_DIR, 'pending_restore.db');
 const PENDING_FLAG     = path.join(DB_DIR, '.restore_pending');
 const MAIN_DB          = path.join(DB_DIR, 'turnos.db');
@@ -32,7 +34,7 @@ const db = require('./db/database');
 
 // ── Secreto de sesión único por instalación ───────────────────────────────────
 // Se genera la primera vez y se persiste en db/session.key (fuera del repo git).
-const SESSION_KEY_PATH = path.join(__dirname, 'db', 'session.key');
+const SESSION_KEY_PATH = path.join(DB_DIR, 'session.key');
 let SESSION_SECRET;
 if (fs.existsSync(SESSION_KEY_PATH)) {
   SESSION_SECRET = fs.readFileSync(SESSION_KEY_PATH, 'utf8').trim();
@@ -89,7 +91,10 @@ const loginLimiter = rateLimit({
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(express.json());
-app.use(session({
+
+// Instancia única de sesión, compartida entre Express y Socket.IO
+// (io.engine.use más abajo) para que ambos lean/escriban la misma sesión.
+const sessionMiddleware = session({
   secret:            process.env.SESSION_SECRET || SESSION_SECRET,
   resave:            false,
   saveUninitialized: false,
@@ -99,15 +104,42 @@ app.use(session({
     secure:   false,  // false: el sistema opera sobre HTTP en LAN (sin TLS)
     maxAge:   10 * 60 * 60 * 1000, // 10 h
   },
-}));
+});
+app.use(sessionMiddleware);
+io.engine.use(sessionMiddleware);
 
 app.use(express.static(path.join(__dirname, 'public')));
+
+// ── Módulo de licencia (requiere estar antes del enforcement middleware) ───────
+const licenciaModule = require('./routes/licencia');
+
+// ── Enforcement de licencia ───────────────────────────────────────────────────
+// Rutas que siempre están disponibles independientemente del estado de licencia:
+//   - /api/auth      → login/logout/me
+//   - /api/licencia  → activar/consultar licencia
+//   - /api/superadmin→ panel superadmin (gestión de admins)
+// Todo lo demás requiere licencia válida.
+// Esto impide que un admin/operador/recepción use el sistema si no está activado,
+// pero permite al superadmin activar la licencia sin restricciones.
+const RUTAS_LIBRES = ['/api/auth', '/api/licencia', '/api/superadmin'];
+app.use('/api', (req, res, next) => {
+  if (RUTAS_LIBRES.some(r => req.path.startsWith(r.replace('/api', '')))) return next();
+  const { valid, reason } = licenciaModule.getLicenseStatus();
+  if (!valid) {
+    const msg = reason === 'expired'
+      ? 'La licencia del sistema está vencida. Contacte al administrador.'
+      : 'Sistema no activado. Contacte al administrador del sistema.';
+    return res.status(403).json({ error: msg, licencia_requerida: true });
+  }
+  next();
+});
 
 // ── Rutas API ─────────────────────────────────────────────────────────────────
 app.use('/api/auth/login',  loginLimiter);
 app.use('/api/auth',        require('./routes/auth'));
 const backupModule = require('./routes/backup');
 app.use('/api/backup',      backupModule.router);
+app.use('/api/licencia',    licenciaModule.router);
 app.use('/api/atracciones', require('./routes/atracciones'));
 app.use('/api/turnos',      require('./routes/turnos')(io));
 app.use('/api/usuarios',    require('./routes/usuarios'));
@@ -115,12 +147,32 @@ app.use('/api/stats',       require('./routes/stats'));
 app.use('/api/superadmin',  require('./routes/superadmin'));
 app.use('/api/vipers',      require('./routes/vipers')(io));
 app.use('/api/serial',         require('./routes/serial'));
-app.use('/api/config-general', require('./routes/config-general'));
+app.use('/api/config-general',   require('./routes/config-general'));
+
+// ── Módulo de configuración del servidor (puerto LAN) ─────────────────────────
+const configServidorModule = require('./routes/config-servidor');
+app.use('/api/config-servidor', configServidorModule.router);
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
+// Presencia "en vivo": registra sockets autenticados (sesión compartida vía
+// io.engine.use arriba) y notifica a admins solo en transiciones 0↔1.
+// Sockets sin sesión (pantalla pública, login) quedan conectados sin registrar.
+const presencia = require('./services/presencia');
+presencia.init(io);
+
 io.on('connection', socket => {
-  console.log('Cliente conectado:', socket.id);
-  socket.on('disconnect', () => console.log('Cliente desconectado:', socket.id));
+  const usuario = socket.request.session?.usuario;
+  if (usuario) {
+    socket.join(`usuario:${usuario.id}`);
+    if (usuario.rol === 'admin' || usuario.rol === 'superadmin') {
+      socket.join('admins');
+    }
+    presencia.registrar(socket, usuario.id);
+  }
+
+  socket.on('disconnect', () => {
+    presencia.desregistrar(socket);
+  });
 });
 
 // ── 404: rutas de API no encontradas ─────────────────────────────────────────
@@ -142,10 +194,18 @@ app.use((err, req, res, next) => {
 });
 
 // ── Arranque ──────────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 3000;
+// Orden de prioridad: archivo db/server.port → variable de entorno → 3000
+const PORT = configServidorModule.leerPuertoGuardado() || Number(process.env.PORT) || 3000;
+global._PUERTO_ACTIVO = PORT;
+
 server.listen(PORT, () => {
   console.log(`\n✅ Sistema de Turnos iniciado`);
-  console.log(`🌐 http://localhost:${PORT}\n`);
-  // Configurar backup automático según la configuración guardada
+  console.log(`🌐 http://localhost:${PORT}`);
+  console.log(`💾 DB: ${path.join(process.env.SISTEMA_DB_DIR || path.join(__dirname, 'db'), 'turnos.db')}\n`);
   backupModule.configurarCron();
+});
+
+server.on('error', (err) => {
+  // Propagar como excepción para que main.js pueda capturarla
+  process.nextTick(() => { throw err; });
 });

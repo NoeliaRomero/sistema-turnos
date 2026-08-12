@@ -20,6 +20,17 @@ function flashPantalla() {
   setTimeout(() => el.classList.remove('show'), 300);
 }
 
+// ── Toast de turno cancelado ──────────────────────────────────────────────────
+let toastCanceladoTimeout = null;
+function mostrarToastCancelado(mensaje) {
+  const el = document.getElementById('toastCancelado');
+  if (!el) return;
+  el.textContent = mensaje;
+  el.classList.add('show');
+  if (toastCanceladoTimeout) clearTimeout(toastCanceladoTimeout);
+  toastCanceladoTimeout = setTimeout(() => el.classList.remove('show'), 2500);
+}
+
 // ── Sonido de llamada ─────────────────────────────────────────────────────────
 function beep() {
   try {
@@ -138,7 +149,12 @@ socket.on('turno:llamado', () => {
 });
 socket.on('turno:jugando',        () => cargarCola());
 socket.on('turno:nuevo',          () => cargarCola());
-socket.on('turno:finalizado',     () => cargarCola());
+socket.on('turno:finalizado',     (turno) => {
+  if (turno && turno.estado === 'cancelado') {
+    mostrarToastCancelado(`Turno cancelado — Biper ${turno.biper_numero ?? ''}`);
+  }
+  cargarCola();
+});
 socket.on('turno:etapa_avanzada', () => cargarCola());
 
 // ── Actualizar timers localmente cada 30s sin recargar todo ──────────────────

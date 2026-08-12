@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Recepción – Sistema de Turnos</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+  <link href="/vendor/bootstrap.min.css" rel="stylesheet">
+  <link href="/vendor/bootstrap-icons.min.css" rel="stylesheet">
   <style>
     body { background: #f0f4f8; }
     .navbar-custom { background: #7c2d12; }
@@ -102,7 +102,7 @@
         <form id="formRegistro" novalidate>
 
           <div class="mb-3">
-            <label class="form-label fw-semibold">Juego <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold" for="selectJuego">Juego <span class="text-danger">*</span></label>
             <select class="form-select form-select-lg" id="selectJuego" required>
               <option value="">Seleccionar juego…</option>
             </select>
@@ -110,14 +110,14 @@
           </div>
 
           <div class="mb-3 d-none" id="wrapSubcategoria">
-            <label class="form-label fw-semibold">Subcategoría <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold" for="selectSubcategoria">Subcategoría <span class="text-danger">*</span></label>
             <select class="form-select form-select-lg" id="selectSubcategoria">
               <option value="">Seleccionar subcategoría…</option>
             </select>
           </div>
 
           <div class="mb-3">
-            <label class="form-label fw-semibold">Número de Biper <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold" for="inputBiper">Número de Biper <span class="text-danger">*</span></label>
             <div class="input-group input-group-lg">
               <input type="number" id="inputBiper" class="form-control" min="1" max="999" placeholder="Ej: 5" required>
               <button type="button" class="btn btn-outline-secondary" id="btnAutoBiper" title="Asignar automáticamente">
@@ -127,7 +127,7 @@
           </div>
 
           <div class="mb-3" style="display:none">
-            <label class="form-label fw-semibold">Dispositivo VIPER</label>
+            <label class="form-label fw-semibold" for="selectViper">Dispositivo VIPER</label>
             <select class="form-select" id="selectViper">
               <option value="">Sin VIPER físico</option>
             </select>
@@ -135,13 +135,13 @@
           </div>
 
           <div class="mb-3">
-            <label class="form-label fw-semibold">Familia / Nombre del grupo <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold" for="inputNombre">Familia / Nombre del grupo <span class="text-danger">*</span></label>
             <input type="text" id="inputNombre" class="form-control form-control-lg"
               placeholder="Ej: Familia García" maxlength="60" required>
           </div>
 
           <div class="mb-4">
-            <label class="form-label fw-semibold">Cantidad de miembros <span class="text-danger">*</span></label>
+            <label class="form-label fw-semibold" for="inputMiembros">Cantidad de miembros <span class="text-danger">*</span></label>
             <div class="input-group input-group-lg">
               <button type="button" class="btn btn-outline-secondary" id="btnMenos">
                 <i class="bi bi-dash-lg"></i>
@@ -211,6 +211,27 @@
   </div>
 </div>
 
+<!-- Modal confirmación: cancelar turno -->
+<div class="modal fade" id="modalConfCancelarTurno" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4 text-center p-4">
+      <div class="fs-1 mb-2">⚠️</div>
+      <h6 class="fw-bold mb-2">¿Cancelar turno?</h6>
+      <p class="text-muted small mb-3">
+        El turno de <strong id="confCancelarTurnoNombre"></strong> quedará cancelado y no podrá revertirse.
+      </p>
+      <div class="d-flex gap-2">
+        <button class="btn btn-secondary flex-fill" id="btnConfCancelarTurnoNo">
+          <i class="bi bi-x-circle me-1"></i>No
+        </button>
+        <button class="btn btn-danger flex-fill fw-bold" id="btnConfCancelarTurnoSi">
+          <i class="bi bi-check-lg me-1"></i>Sí, cancelar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal confirmación: llamar con juego ocupado -->
 <div class="modal fade" id="modalConfLlamar" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
   <div class="modal-dialog modal-sm modal-dialog-centered">
@@ -265,10 +286,72 @@
   </div>
 </div>
 
+<!-- Modal: Editar turno en espera -->
+<div class="modal fade" id="modalEditarTurno" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4">
+      <div class="modal-header border-0 pb-1">
+        <h5 class="modal-title fw-bold"><i class="bi bi-pencil-square me-2 text-primary"></i>Editar turno</h5>
+        <button type="button" class="btn-close" id="btnCerrarModalEditar"></button>
+      </div>
+      <div class="modal-body">
+        <div id="editarSubcategoriaWrap" class="mb-3 d-none">
+          <label class="form-label fw-semibold small" for="editarSelectSubcategoria">Subcategoría</label>
+          <select class="form-select" id="editarSelectSubcategoria"></select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold small" for="editarInputMiembros">Cantidad de personas</label>
+          <div class="input-group">
+            <button type="button" class="btn btn-outline-secondary" id="editarBtnMenos">
+              <i class="bi bi-dash"></i>
+            </button>
+            <input type="number" id="editarInputMiembros" class="form-control text-center fw-bold"
+              min="1" max="30" value="1">
+            <button type="button" class="btn btn-outline-secondary" id="editarBtnMas">
+              <i class="bi bi-plus"></i>
+            </button>
+          </div>
+          <div class="form-text" id="editarCapacidadTexto"></div>
+        </div>
+        <div id="editarMsgError" class="alert alert-danger d-none py-2 small"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0 d-flex gap-2">
+        <button type="button" class="btn btn-secondary flex-fill" id="btnCancelarEditar">
+          <i class="bi bi-x-circle me-1"></i>Cancelar
+        </button>
+        <button type="button" class="btn btn-primary flex-fill fw-bold" id="btnConfirmarEditar">
+          <i class="bi bi-check-lg me-1"></i>Guardar cambios
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Confirmar eliminación de turno -->
+<div class="modal fade" id="modalEliminarTurno" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4 text-center p-4">
+      <div class="fs-1 mb-2">🗑️</div>
+      <h6 class="fw-bold mb-2">Eliminar turno</h6>
+      <p class="text-muted small mb-1" id="eliminarDetalleFamilia"></p>
+      <p class="text-muted small mb-3" id="eliminarDetalleJuego"></p>
+      <p class="text-danger small mb-3 fw-semibold">Esta acción no se puede deshacer.</p>
+      <div class="d-flex gap-2">
+        <button class="btn btn-secondary flex-fill" id="btnConfEliminarNo">
+          <i class="bi bi-x-circle me-1"></i>Cancelar
+        </button>
+        <button class="btn btn-danger flex-fill fw-bold" id="btnConfEliminarSi">
+          <i class="bi bi-trash me-1"></i>Eliminar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer"></div>
 
 <script src="/socket.io/socket.io.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+<script src="/vendor/bootstrap.bundle.min.js"></script>
 <script src="/js/recepcion.js"></script>
 <script src="/js/demo-panel.js"></script>
 </body>

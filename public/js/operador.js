@@ -46,11 +46,25 @@ async function cargarAtracciones() {
     sel.innerHTML += `<option value="${a.id}">${a.nombre}</option>`;
   });
 
-  // Bug 5: operador ve solo su juego, selector bloqueado
+  // Operador ve solo su juego, selector bloqueado
   if (me.rol === 'operador' && me.atraccion_id) {
     sel.value    = String(me.atraccion_id);
     filtroId     = String(me.atraccion_id);
     sel.disabled = true;
+  }
+
+  // Bug 9: operador sin atracción asignada — mostrar aviso claro
+  if (me.rol === 'operador' && !me.atraccion_id) {
+    const container = document.querySelector('.container-fluid');
+    const aviso = document.createElement('div');
+    aviso.className = 'alert alert-warning d-flex align-items-start gap-3 mt-3';
+    aviso.innerHTML = `
+      <i class="bi bi-exclamation-triangle-fill fs-4 flex-shrink-0 text-warning mt-1"></i>
+      <div>
+        <div class="fw-bold mb-1">Sin atracción asignada</div>
+        <div>Este operador no tiene ninguna atracción asignada. Contactá al Administrador para que asigne una atracción a tu usuario antes de continuar.</div>
+      </div>`;
+    container.insertBefore(aviso, container.firstChild);
   }
 
   sel.addEventListener('change', () => { filtroId = sel.value; renderTurnos(); });
@@ -134,6 +148,10 @@ function cardLlamado(t) {
     ? `<button class="btn btn-danger btn-sm px-3 fw-bold" onclick="cancelarTurno(${t.id})">
          <i class="bi bi-person-x me-1"></i>No Llegó
        </button>` : '';
+  const llegoBtn   = esAsignado
+    ? `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="llegoTurno(${t.id},this)">
+         <i class="bi bi-check-circle me-1"></i>Llegó
+       </button>` : '';
 
   return `
     <div class="turno-card llamado" id="turno-${t.id}">
@@ -156,6 +174,7 @@ function cardLlamado(t) {
           </div>
         </div>
         <div class="d-flex gap-2 flex-wrap">
+          ${llegoBtn}
           ${cancelBtn}
         </div>
       </div>
@@ -185,21 +204,21 @@ function cardJugando(t) {
         ${sigTexto}
       </div>`;
 
-    if (me.permiso_llamar_turno && esAsignado) {
+    if (esAsignado) {
       if (esMasEtapas) {
         btnFinalizar = `<button class="btn btn-primary btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
-          <i class="bi bi-skip-forward-fill me-1"></i>Avanzar Etapa
+          <i class="bi bi-skip-forward-fill me-1"></i>Finalizar Etapa
         </button>`;
       } else {
         btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
-          <i class="bi bi-trophy me-1"></i>Finalizar Juego
+          <i class="bi bi-trophy me-1"></i>Finalizar
         </button>`;
       }
     }
-  } else if (me.permiso_llamar_turno && esAsignado) {
-    // Sin etapas → Finalizar Juego
+  } else if (esAsignado) {
+    // Sin etapas → Finalizar
     btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
-      <i class="bi bi-trophy me-1"></i>Finalizar Juego
+      <i class="bi bi-trophy me-1"></i>Finalizar
     </button>`;
   }
 
@@ -271,6 +290,16 @@ async function finalizarTurno(id, btn) {
   }
 }
 
+async function llegoTurno(id, btn) {
+  if (btn) { btn.disabled = true; }
+  try {
+    const res = await fetch(`/api/turnos/${id}/llegar`, { method: 'PUT' });
+    if (!res.ok) { const d = await res.json(); mostrarToast(d.error || 'Error', 'danger'); }
+  } finally {
+    if (btn) { btn.disabled = false; }
+  }
+}
+
 async function cancelarTurno(id) {
   if (!confirm('¿Marcar como "No llegó"? El turno quedará cancelado.')) return;
   const res = await fetch(`/api/turnos/${id}/cancelar`, { method: 'PUT' });
@@ -306,10 +335,23 @@ function formatHora(dt) {
   if (!dt) return '';
   return new Date(dt).toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' });
 }
+// Tope de carteles visibles a la vez — evita que clickear rápido y seguido un
+// botón que da el mismo error apile una fila de carteles tapando la pantalla.
+const TOAST_MAX_VISIBLES = 2;
+
 function mostrarToast(mensaje, tipo = 'success') {
+  const container = document.getElementById('toastContainer');
+
+  const visibles = Array.from(container.children);
+  while (visibles.length >= TOAST_MAX_VISIBLES) {
+    const masViejo = visibles.shift();
+    const inst = bootstrap.Toast.getInstance(masViejo);
+    if (inst) inst.hide(); else masViejo.remove();
+  }
+
   const id  = 'toast-' + Date.now();
   const col = { success:'bg-success', danger:'bg-danger', warning:'bg-warning text-dark', info:'bg-info text-dark' }[tipo];
-  document.getElementById('toastContainer').insertAdjacentHTML('beforeend', `
+  container.insertAdjacentHTML('beforeend', `
     <div id="${id}" class="toast align-items-center text-white ${col} border-0" role="alert">
       <div class="d-flex">
         <div class="toast-body fw-semibold">${mensaje}</div>

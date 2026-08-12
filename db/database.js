@@ -2,7 +2,10 @@ const { DatabaseSync } = require('node:sqlite');
 const bcrypt = require('bcryptjs');
 const path   = require('path');
 
-const db = new DatabaseSync(path.join(__dirname, 'turnos.db'));
+// En Electron, SISTEMA_DB_DIR apunta a userData/db (escribible).
+// En desarrollo (node server.js), __dirname es <proyecto>/db.
+const DATA_DIR = process.env.SISTEMA_DB_DIR || __dirname;
+const db = new DatabaseSync(path.join(DATA_DIR, 'turnos.db'));
 db.exec('PRAGMA journal_mode = WAL');
 db.exec('PRAGMA foreign_keys = OFF'); // fix crítico: node:sqlite habilita FK por defecto
 
@@ -125,6 +128,11 @@ db.exec(`
   WHERE orden_cola IS NULL AND estado = 'esperando'
 `);
 
+// Migration: add admin_puede_configurar_red if not exists
+try {
+  db.exec('ALTER TABLE configuracion_general ADD COLUMN admin_puede_configurar_red INTEGER NOT NULL DEFAULT 1');
+} catch (_) {}
+
 // ── Tabla juego_etapas ────────────────────────────────────────────────────────
 db.exec(`
   CREATE TABLE IF NOT EXISTS juego_etapas (
@@ -161,6 +169,9 @@ db.exec(`
     sincronizar_grupos_combinados INTEGER NOT NULL DEFAULT 0
   );
 `);
+
+// Migration: add admin_puede_configurar_red column if it doesn't exist yet
+try { db.exec('ALTER TABLE configuracion_general ADD COLUMN admin_puede_configurar_red INTEGER NOT NULL DEFAULT 1'); } catch (_) {}
 
 // ── Tabla juego_subcategorias ─────────────────────────────────────────────────
 db.exec(`

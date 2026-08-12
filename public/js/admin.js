@@ -10,7 +10,26 @@ function escapeHtml(str) {
   const me = await res.json();
   if (me.rol !== 'admin') { window.location.href = '/login.html'; return; }
   document.getElementById('usuarioNombre').textContent = me.nombre;
+  cargarBadgeServidorLAN();
 })();
+
+async function cargarBadgeServidorLAN() {
+  try {
+    const res = await fetch('/api/config-servidor/estado');
+    if (!res.ok) return;
+    const d = await res.json();
+    const badge  = document.getElementById('badgeServidorLAN');
+    const puerto = document.getElementById('badgePuertoLAN');
+    const ipSpan = document.getElementById('badgeIpLAN');
+    if (d.servidor_activo && d.puerto_activo) {
+      puerto.textContent = d.puerto_activo;
+      if (ipSpan) ipSpan.textContent = d.ip ? `${d.ip} : ` : 'Puerto ';
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+  } catch (_) {}
+}
 
 document.getElementById('btnLogout').addEventListener('click', async () => {
   await fetch('/api/auth/logout', { method: 'POST' });
@@ -46,14 +65,21 @@ async function init() {
     if (tabJuegos) tabJuegos.closest('.nav-item').style.display = 'none';
   }
 
-  await cargarAtracciones();
-  if (adminMe.feature_graficos) await cargarStats();
-  await cargarUsuarios();
+  // Cada carga es independiente: si una falla, las demás igual deben mostrarse.
+  const cargas = [
+    cargarAtracciones().catch(err => console.error('Error al cargar atracciones:', err)),
+    cargarUsuarios().catch(err => console.error('Error al cargar usuarios:', err)),
+  ];
+  if (adminMe.feature_graficos) {
+    cargas.push(cargarStats().catch(err => console.error('Error al cargar estadísticas:', err)));
+  }
+  await Promise.allSettled(cargas);
 }
 
 // ── Atracciones (para el selector del modal usuario) ──────────────────────────
 async function cargarAtracciones() {
   const res = await fetch('/api/atracciones');
+  if (!res.ok) throw new Error(`GET /api/atracciones -> ${res.status}`);
   atracciones = await res.json();
   const sel = document.getElementById('uAtraccion');
   sel.innerHTML = '<option value="">Sin asignar</option>';
@@ -76,7 +102,8 @@ document.getElementById('btnRefreshStats').addEventListener('click', cargarStats
 
 // ── Estadísticas ──────────────────────────────────────────────────────────────
 async function cargarStats() {
-  const res  = await fetch(`/api/stats?periodo=${periodo}`);
+  const res = await fetch(`/api/stats?periodo=${periodo}`);
+  if (!res.ok) throw new Error(`GET /api/stats -> ${res.status}`);
   const data = await res.json();
   renderCards(data.resumen);
   renderAtraccionChart(data.porAtraccion);
@@ -168,13 +195,14 @@ function renderTablaOperadores(ops) {
 let _usuariosCache = [];
 
 async function cargarUsuarios() {
-  const res      = await fetch('/api/usuarios');
+  const res = await fetch('/api/usuarios');
+  if (!res.ok) throw new Error(`GET /api/usuarios -> ${res.status}`);
   const usuarios = await res.json();
   _usuariosCache = usuarios;
   const tbody    = document.getElementById('tablaUsuarios');
 
   if (!usuarios.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Sin usuarios</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Sin usuarios</td></tr>';
     return;
   }
 
@@ -192,7 +220,7 @@ async function cargarUsuarios() {
       if (u.permiso_gestionar_juegos && adminMe?.feature_juegos)         perms.push('<span class="perm-badge"><i class="bi bi-controller"></i> Juegos</span>');
     }
     return `
-    <tr>
+    <tr data-usuario-id="${u.id}">
       <td class="ps-4 fw-semibold">${escapeHtml(u.nombre)}</td>
       <td class="text-muted">@${escapeHtml(u.username)}</td>
       <td><span class="rol-badge ${rolClass(u.rol)}">${rolLabel(u.rol)}</span></td>
@@ -203,6 +231,7 @@ async function cargarUsuarios() {
           ${u.activo ? 'Activo' : 'Inactivo'}
         </span>
       </td>
+      <td class="text-center">${badgeEnVivo(u.en_vivo)}</td>
       <td class="text-end pe-4">
         <button class="btn btn-sm btn-outline-primary me-1" onclick="editarUsuario(${u.id})">
           <i class="bi bi-pencil"></i>
@@ -215,8 +244,27 @@ async function cargarUsuarios() {
   }).join('');
 }
 
-function rolClass(rol) { return { admin:'rol-admin', operador:'rol-operador', recepcion:'rol-recepcion', caja:'rol-recepcion' }[rol]||''; }
-function rolLabel(rol) { return { admin:'Administrador', operador:'Operador', recepcion:'Recepción', caja:'Caja' }[rol]||rol; }
+function badgeEnVivo(enVivo) {
+  return enVivo
+    ? '<span class="badge rounded-pill px-3 badge-en-vivo"><i class="bi bi-circle-fill me-1"></i>En vivo</span>'
+    : '<span class="badge rounded-pill px-3 badge-en-vivo-off"><i class="bi bi-circle me-1"></i>Offline</span>';
+}
+
+// ── Presencia en vivo (Socket.IO) ────────────────────────────────────────────
+// El socket comparte la sesión de express (io.engine.use en server.js), por lo
+// que se registra automáticamente al conectar; solo escuchamos el evento.
+const _presenciaSocket = typeof io === 'function' ? io() : null;
+if (_presenciaSocket) {
+  _presenciaSocket.on('presencia:cambio', ({ usuarioId, enVivo }) => {
+    const fila = document.querySelector(`tr[data-usuario-id="${usuarioId}"]`);
+    if (!fila) return;
+    const celda = fila.children[6]; // columna "En vivo"
+    if (celda) celda.innerHTML = badgeEnVivo(enVivo);
+  });
+}
+
+function rolClass(rol) { return { admin:'rol-admin', operador:'rol-operador', recepcion:'rol-recepcion' }[rol]||''; }
+function rolLabel(rol) { return { admin:'Administrador', operador:'Operador', recepcion:'Recepción' }[rol]||rol; }
 
 // ── Modal usuario ─────────────────────────────────────────────────────────────
 const modalUsuario  = new bootstrap.Modal(document.getElementById('modalUsuario'));
@@ -365,10 +413,23 @@ function formatFecha(dt) {
   return `${d}/${m}`;
 }
 
+// Tope de carteles visibles a la vez — evita que clickear rápido y seguido un
+// botón que da el mismo error apile una fila de carteles tapando la pantalla.
+const TOAST_MAX_VISIBLES = 2;
+
 function mostrarToast(mensaje, tipo = 'success') {
+  const container = document.getElementById('toastContainer');
+
+  const visibles = Array.from(container.children);
+  while (visibles.length >= TOAST_MAX_VISIBLES) {
+    const masViejo = visibles.shift();
+    const inst = bootstrap.Toast.getInstance(masViejo);
+    if (inst) inst.hide(); else masViejo.remove();
+  }
+
   const id  = 'toast-' + Date.now();
   const col = { success:'bg-success', danger:'bg-danger', warning:'bg-warning text-dark', info:'bg-info text-dark' }[tipo];
-  document.getElementById('toastContainer').insertAdjacentHTML('beforeend', `
+  container.insertAdjacentHTML('beforeend', `
     <div id="${id}" class="toast align-items-center text-white ${col} border-0" role="alert">
       <div class="d-flex">
         <div class="toast-body fw-semibold">${mensaje}</div>

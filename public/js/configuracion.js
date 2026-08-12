@@ -38,7 +38,8 @@ document.getElementById('configMenu').addEventListener('click', e => {
   document.querySelectorAll('.config-panel').forEach(p => p.classList.add('d-none'));
   document.getElementById('panel' + btn.dataset.panel.charAt(0).toUpperCase() + btn.dataset.panel.slice(1)).classList.remove('d-none');
 
-  if (btn.dataset.panel === 'backups') inicializarPanelBackups();
+  if (btn.dataset.panel === 'backups')  inicializarPanelBackups();
+  if (btn.dataset.panel === 'servidor') cargarEstadoServidor();
 });
 
 // ── Socket.io: log serial + actualización de VIPERs ────────────────────────────
@@ -558,10 +559,23 @@ document.getElementById('btnFiltrarEventos').addEventListener('click', cargarEve
 socket.on('viper:actualizado', () => { cargarMetricasViper(); cargarEventosViper(); });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+// Tope de carteles visibles a la vez — evita que clickear rápido y seguido un
+// botón que da el mismo error apile una fila de carteles tapando la pantalla.
+const TOAST_MAX_VISIBLES = 2;
+
 function mostrarToast(mensaje, tipo = 'success') {
+  const container = document.getElementById('toastContainer');
+
+  const visibles = Array.from(container.children);
+  while (visibles.length >= TOAST_MAX_VISIBLES) {
+    const masViejo = visibles.shift();
+    const inst = bootstrap.Toast.getInstance(masViejo);
+    if (inst) inst.hide(); else masViejo.remove();
+  }
+
   const id  = 'toast-' + Date.now();
   const col = { success:'bg-success', danger:'bg-danger', warning:'bg-warning text-dark', info:'bg-info text-dark' }[tipo];
-  document.getElementById('toastContainer').insertAdjacentHTML('beforeend', `
+  container.insertAdjacentHTML('beforeend', `
     <div id="${id}" class="toast align-items-center text-white ${col} border-0" role="alert">
       <div class="d-flex">
         <div class="toast-body fw-semibold">${mensaje}</div>
@@ -606,11 +620,110 @@ let backupAEliminar     = null;
 let backupARestaurar    = null;
 
 function inicializarPanelBackups() {
+  verificarAccesoBackups();
   if (backupPanelIniciado) { cargarBackups(); return; }
   backupPanelIniciado = true;
   cargarConfigBackup();
   cargarBackups();
   verificarRestauracionPendiente();
+}
+
+// ── Acceso local-only (LAN queda bloqueada server-side; esto solo mejora la UI) ─
+async function verificarAccesoBackups() {
+  try {
+    const res = await fetch('/api/backup/acceso');
+    if (!res.ok) return;
+    const data = await res.json();
+    const aviso = document.getElementById('avisoBackupLanBloqueado');
+    const panel = document.getElementById('panelBackups');
+    if (!data.permitido) {
+      if (aviso) aviso.classList.remove('d-none');
+      if (panel) panel.querySelectorAll('.card, #alertaRestauracionPendiente').forEach(el => el.classList.add('d-none'));
+    } else if (aviso) {
+      aviso.classList.add('d-none');
+    }
+  } catch (_) {}
+}
+
+// ── Selector de carpeta/archivo nativo (solo disponible dentro de Electron) ───
+const btnExaminarCarpeta = document.getElementById('btnExaminarCarpetaDestino');
+if (window.electronAPI && btnExaminarCarpeta) {
+  btnExaminarCarpeta.addEventListener('click', async () => {
+    const carpeta = await window.electronAPI.elegirCarpetaBackup();
+    if (carpeta) document.getElementById('inputCarpetaDestino').value = carpeta;
+  });
+} else if (btnExaminarCarpeta) {
+  // Fuera de Electron (dev/headless) no hay diálogo nativo: se mantiene el
+  // campo de texto libre existente como único método de entrada.
+  btnExaminarCarpeta.classList.add('d-none');
+}
+
+// Botón "Elegir carpeta…" en Backup Manual — usa el mismo diálogo nativo y
+// guarda directo en la config compartida entre backup manual y automático.
+const btnElegirCarpetaManual = document.getElementById('btnElegirCarpetaManual');
+if (window.electronAPI && btnElegirCarpetaManual) {
+  btnElegirCarpetaManual.addEventListener('click', async () => {
+    const carpeta = await window.electronAPI.elegirCarpetaBackup();
+    if (!carpeta) return;
+
+    document.getElementById('inputCarpetaDestino').value = carpeta;
+    btnElegirCarpetaManual.disabled = true;
+    try {
+      const res = await fetch('/api/backup/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ carpeta_destino: carpeta }),
+      });
+      if (res.ok) {
+        mostrarToast('Carpeta de backups actualizada.', 'success');
+        cargarBackups();
+      } else {
+        const d = await res.json();
+        mostrarToast(d.error || 'No se pudo guardar la carpeta.', 'danger');
+      }
+    } catch (_) {
+      mostrarToast('Error de conexión al guardar la carpeta.', 'danger');
+    } finally {
+      btnElegirCarpetaManual.disabled = false;
+    }
+  });
+} else if (btnElegirCarpetaManual) {
+  // Fuera de Electron no hay diálogo nativo: se mantiene el campo de texto
+  // de "Backup Automático" como único método de entrada.
+  btnElegirCarpetaManual.classList.add('d-none');
+}
+
+const btnImportarArchivo = document.getElementById('btnImportarArchivoRestaurar');
+if (window.electronAPI && btnImportarArchivo) {
+  btnImportarArchivo.addEventListener('click', async () => {
+    const ruta = await window.electronAPI.elegirArchivoRestaurar();
+    if (!ruta) return;
+    if (!confirm(`¿Restaurar el backup desde:\n${ruta}\n\nEsto reemplazará completamente la base de datos actual (se crea un backup de seguridad automáticamente).`)) return;
+
+    btnImportarArchivo.disabled = true;
+    try {
+      const res  = await fetch('/api/backup/restaurar-archivo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ruta }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        mostrarToast(data.mensaje, 'warning');
+        verificarRestauracionPendiente();
+      } else {
+        mostrarToast(data.error || 'Error al preparar la restauración', 'danger');
+      }
+    } catch (_) {
+      mostrarToast('Error de conexión al preparar la restauración.', 'danger');
+    } finally {
+      btnImportarArchivo.disabled = false;
+    }
+  });
+} else if (btnImportarArchivo) {
+  // Fuera de Electron no hay diálogo nativo de archivo: se mantiene el flujo
+  // existente de restauración por nombre desde la carpeta configurada.
+  btnImportarArchivo.classList.add('d-none');
 }
 
 // ── Verificar si hay restauración pendiente ──────────────────────────────────
@@ -873,3 +986,219 @@ document.getElementById('btnExportarXLSX').addEventListener('click', async (e) =
   e.target.disabled = true;
   try { await ejecutarExportacion('xlsx'); } finally { e.target.disabled = false; }
 });
+
+// ── Puerto del Servidor LAN ───────────────────────────────────────────────────
+
+async function cargarEstadoServidor() {
+  try {
+    const res = await fetch('/api/config-servidor/estado');
+    if (!res.ok) return;
+    const d = await res.json();
+
+    // Badge navbar
+    const badgeNav = document.getElementById('badgeServidorLAN');
+    const puertoNav = document.getElementById('badgePuertoLAN');
+    const ipNav = document.getElementById('badgeIpLAN');
+    if (d.servidor_activo && d.puerto_activo) {
+      puertoNav.textContent = d.puerto_activo;
+      if (ipNav) ipNav.textContent = d.ip ? `${d.ip} : ` : 'Puerto ';
+      badgeNav.style.display = '';
+    } else {
+      badgeNav.style.display = 'none';
+    }
+
+    // Panel
+    const badgePan = document.getElementById('badgeEstadoServidor');
+    if (!badgePan) return;
+
+    if (d.servidor_activo) {
+      badgePan.className = 'badge rounded-pill text-bg-success';
+      badgePan.textContent = 'ACTIVO';
+    } else {
+      badgePan.className = 'badge rounded-pill text-bg-secondary';
+      badgePan.textContent = 'Sin información';
+    }
+
+    document.getElementById('txtPuertoActivo').textContent      = d.puerto_activo      ?? '–';
+    document.getElementById('txtPuertoConfigurado').textContent = d.puerto_configurado ?? '–';
+
+    const alertaDistinto = document.getElementById('alertaPuertoDistinto');
+    if (d.puerto_configurado && d.puerto_activo && d.puerto_configurado !== d.puerto_activo) {
+      alertaDistinto.classList.remove('d-none');
+    } else {
+      alertaDistinto.classList.add('d-none');
+    }
+
+    const divBtnReiniciar = document.getElementById('divBtnReiniciar');
+    if (divBtnReiniciar) {
+      if (d.puerto_configurado && d.puerto_activo && d.puerto_configurado !== d.puerto_activo) {
+        divBtnReiniciar.classList.remove('d-none');
+      } else {
+        divBtnReiniciar.classList.add('d-none');
+      }
+    }
+
+    // Cargar info LAN
+    try {
+      const resRed = await fetch('/api/config-servidor/red');
+      if (resRed.ok) {
+        const red = await resRed.json();
+        const cont = document.getElementById('infoLANContenido');
+        if (cont) {
+          let html = '<div class="row g-3">';
+          if (red.ips && red.ips.length > 0) {
+            html += `<div class="col-md-6">
+              <div class="fw-semibold mb-1"><i class="bi bi-hdd-network me-1 text-primary"></i>Dirección(es) IP del servidor</div>`;
+            red.ips.forEach(ip => {
+              const url = `http://${ip}:${red.puerto}`;
+              html += `<div class="mb-1">
+                <code class="fs-6 text-success fw-bold">${ip}</code>
+                <div class="mt-1"><span class="text-muted">URL completa: </span>
+                  <code class="text-dark">${url}</code>
+                  <button class="btn btn-outline-secondary btn-sm ms-2 py-0 px-2" style="font-size:.7rem"
+                    onclick="navigator.clipboard.writeText('${url}').then(()=>mostrarToast('URL copiada','success'))">
+                    <i class="bi bi-clipboard me-1"></i>Copiar
+                  </button>
+                </div>
+              </div>`;
+            });
+            html += '</div>';
+          }
+          if (red.hostname) {
+            html += `<div class="col-md-6">
+              <div class="fw-semibold mb-1"><i class="bi bi-pc-display me-1 text-primary"></i>Nombre del equipo (hostname)</div>
+              <code class="fs-6">${red.hostname}</code>
+              <div class="mt-1 text-muted" style="font-size:.8rem">
+                Alternativa: <code>${red.url_hostname}</code>
+                <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem">Puede no funcionar en todas las redes</span>
+              </div>
+              <div class="mt-1 text-muted" style="font-size:.75rem">
+                <i class="bi bi-info-circle me-1"></i>La IP es el método más confiable para conexión LAN.
+              </div>
+            </div>`;
+          }
+          html += '</div>';
+          html += `<div class="alert alert-info mt-3 mb-0 py-2 small">
+            <i class="bi bi-people me-1"></i>
+            Los demás equipos de la red deben acceder a: <strong>http://[IP]:${red.puerto}</strong>
+            — reemplazá [IP] por una de las IPs mostradas arriba.
+          </div>`;
+          cont.innerHTML = html;
+        }
+      }
+    } catch (_) {}
+  } catch (_) {}
+}
+
+async function reiniciarServidor() {
+  if (!confirm('¿Reiniciar el servidor? La aplicación se cerrará y volverá a abrirse automáticamente.')) return;
+  const btn = document.getElementById('btnReiniciarServidor') || document.getElementById('btnReiniciarDirecto');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Reiniciando…';
+  }
+  try {
+    await fetch('/api/config-servidor/reiniciar', { method: 'POST' });
+  } catch (_) {}
+  setTimeout(() => {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Reiniciar';
+    }
+    mostrarToast('Si la aplicación no se reinició, cerrá y volvé a abrirla manualmente.', 'warning');
+  }, 5000);
+}
+
+['btnReiniciarServidor', 'btnReiniciarDirecto'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('click', reiniciarServidor);
+});
+
+document.getElementById('btnGuardarPuerto').addEventListener('click', async () => {
+  const input = document.getElementById('inputPuertoNuevo');
+  const msg   = document.getElementById('msgGuardarPuerto');
+  const val   = input.value.trim();
+
+  msg.className = 'alert d-none mt-3 mb-0 small py-2';
+  msg.textContent = '';
+
+  if (!val) {
+    msg.className = 'alert alert-warning mt-3 mb-0 small py-2';
+    msg.textContent = 'Ingresá un número de puerto.';
+    return;
+  }
+
+  const btn = document.getElementById('btnGuardarPuerto');
+  btn.disabled = true;
+  try {
+    const res  = await fetch('/api/config-servidor/puerto', {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ puerto: val }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      msg.className = 'alert alert-success mt-3 mb-0 small py-2';
+      msg.textContent = data.mensaje;
+      input.value = '';
+      await cargarEstadoServidor();
+    } else {
+      msg.className = 'alert alert-danger mt-3 mb-0 small py-2';
+      msg.textContent = data.error || 'Error al guardar el puerto.';
+    }
+  } catch (_) {
+    msg.className = 'alert alert-danger mt-3 mb-0 small py-2';
+    msg.textContent = 'Error de conexión al guardar el puerto.';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('btnDetectarPuertos').addEventListener('click', async () => {
+  const btn  = document.getElementById('btnDetectarPuertos');
+  const card = document.getElementById('cardPuertosDisponibles');
+  const lista = document.getElementById('listaPuertosDisponibles');
+  const nota  = document.getElementById('notaPuertosDisponibles');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Detectando…';
+  card.style.removeProperty('display');
+
+  try {
+    const res  = await fetch('/api/config-servidor/puertos-disponibles');
+    const data = await res.json();
+
+    if (!res.ok || !Array.isArray(data.puertos)) {
+      lista.innerHTML = '<span class="text-danger small">Error al detectar puertos.</span>';
+      return;
+    }
+
+    if (data.puertos.length === 0) {
+      lista.innerHTML = '<span class="text-muted small">No se encontraron puertos disponibles en el rango escaneado.</span>';
+      nota.textContent = '';
+      return;
+    }
+
+    lista.innerHTML = data.puertos.map(p =>
+      `<button class="btn btn-outline-primary btn-sm port-pill" data-puerto="${p}">${p}</button>`
+    ).join('');
+    nota.textContent = `${data.puertos.length} puerto${data.puertos.length !== 1 ? 's' : ''} disponible${data.puertos.length !== 1 ? 's' : ''} detectado${data.puertos.length !== 1 ? 's' : ''}.`;
+
+    lista.querySelectorAll('.port-pill').forEach(b => {
+      b.addEventListener('click', () => {
+        document.getElementById('inputPuertoNuevo').value = b.dataset.puerto;
+        lista.querySelectorAll('.port-pill').forEach(x => x.classList.remove('active', 'btn-primary'));
+        b.classList.add('active', 'btn-primary');
+        b.classList.remove('btn-outline-primary');
+      });
+    });
+  } catch (_) {
+    lista.innerHTML = '<span class="text-danger small">Error de conexión al detectar puertos.</span>';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-search me-2"></i>Detectar puertos disponibles';
+  }
+});
+
+// Cargar estado del servidor al iniciar (badge del navbar)
+cargarEstadoServidor();
