@@ -214,6 +214,12 @@ function renderJuegoPane(j) {
              <i class="bi bi-check-lg me-1"></i>Finalizar
            </button>`
         : '';
+      const btnCancelarTurno = me?.permiso_cancelar_turno
+        ? `<button class="btn btn-outline-danger btn-sm fw-bold px-3"
+             onclick="pedirCancelarTurno(${t.id},'${esc(t.nombre_cliente||'Sin nombre')}')">
+             <i class="bi bi-x-octagon me-1"></i>Cancelar
+           </button>`
+        : '';
       // Info de etapa para recepción
       let etapaHtml = '';
       if (t.etapa_actual_nombre) {
@@ -248,6 +254,7 @@ function renderJuegoPane(j) {
             <div class="fw-semibold text-primary">${t.tiempo_restante} min restantes</div>
             <div class="text-muted small">${t.tiempo_transcurrido} min transcurridos</div>
           </div>
+          ${btnCancelarTurno}
           ${btnFinalizar}
         </div>
       </div>`;
@@ -450,6 +457,38 @@ document.getElementById('btnConfFinalizarSi').addEventListener('click', async (e
 document.getElementById('btnConfFinalizarNo').addEventListener('click', () => {
   modalConfFinalizar().hide();
   _pendingFinalizarId = _pendingFinalizarNombre = null;
+});
+
+// ── Cancelar turno (llamado/jugando) desde recepción ─────────────────────────
+let _pendingCancelarTurnoId     = null;
+let _pendingCancelarTurnoNombre = null;
+const modalConfCancelarTurno    = () => bootstrap.Modal.getOrCreateInstance(document.getElementById('modalConfCancelarTurno'));
+
+function pedirCancelarTurno(id, nombreFamilia) {
+  _pendingCancelarTurnoId     = id;
+  _pendingCancelarTurnoNombre = nombreFamilia;
+  document.getElementById('confCancelarTurnoNombre').textContent = nombreFamilia;
+  modalConfCancelarTurno().show();
+}
+
+document.getElementById('btnConfCancelarTurnoSi').addEventListener('click', async (e) => {
+  modalConfCancelarTurno().hide();
+  if (!_pendingCancelarTurnoId) return;
+  e.target.disabled = true;
+  try {
+    const res  = await fetch(`/api/turnos/${_pendingCancelarTurnoId}/cancelar-turno`, { method: 'PUT' });
+    const data = await res.json();
+    if (!res.ok) { mostrarToast(data.error || 'Error al cancelar', 'danger'); }
+    else         { mostrarToast(`Turno de ${_pendingCancelarTurnoNombre} cancelado`, 'warning'); }
+    _pendingCancelarTurnoId = _pendingCancelarTurnoNombre = null;
+    await cargarCola();
+  } finally {
+    e.target.disabled = false;
+  }
+});
+document.getElementById('btnConfCancelarTurnoNo').addEventListener('click', () => {
+  modalConfCancelarTurno().hide();
+  _pendingCancelarTurnoId = _pendingCancelarTurnoNombre = null;
 });
 
 // ── Llamar grupo desde recepción ──────────────────────────────────────────────
@@ -760,10 +799,24 @@ socket.on('recepcion:notificacion', (data) => {
 });
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
+// Tope de carteles visibles a la vez — si clickeás rápido y seguido un botón
+// que siempre da el mismo error, no queda una fila de carteles tapando la
+// pantalla: al llegar al tope, se saca el más viejo antes de mostrar el nuevo.
+const TOAST_MAX_VISIBLES = 2;
+
 function mostrarToast(mensaje, tipo = 'success') {
+  const container = document.getElementById('toastContainer');
+
+  const visibles = Array.from(container.children);
+  while (visibles.length >= TOAST_MAX_VISIBLES) {
+    const masViejo = visibles.shift();
+    const inst = bootstrap.Toast.getInstance(masViejo);
+    if (inst) inst.hide(); else masViejo.remove();
+  }
+
   const id  = 'toast-' + Date.now();
   const col = { success:'bg-success', danger:'bg-danger', warning:'bg-warning text-dark' }[tipo];
-  document.getElementById('toastContainer').insertAdjacentHTML('beforeend', `
+  container.insertAdjacentHTML('beforeend', `
     <div id="${id}" class="toast align-items-center text-white ${col} border-0" role="alert">
       <div class="d-flex">
         <div class="toast-body fw-semibold">${mensaje}</div>

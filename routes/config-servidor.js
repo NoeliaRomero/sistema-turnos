@@ -67,10 +67,12 @@ const CANDIDATOS = [
 router.get('/estado', requireAuth('admin'), (req, res) => {
   const configurado = leerPuertoGuardado();
   const activo      = global._PUERTO_ACTIVO || null;
+  const ips         = obtenerIPsLocales();
   res.json({
     puerto_configurado: configurado,
     puerto_activo:      activo,
     servidor_activo:    activo !== null,
+    ip:                 ips[0] || null,
   });
 });
 

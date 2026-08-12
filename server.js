@@ -91,7 +91,10 @@ const loginLimiter = rateLimit({
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.use(express.json());
-app.use(session({
+
+// Instancia única de sesión, compartida entre Express y Socket.IO
+// (io.engine.use más abajo) para que ambos lean/escriban la misma sesión.
+const sessionMiddleware = session({
   secret:            process.env.SESSION_SECRET || SESSION_SECRET,
   resave:            false,
   saveUninitialized: false,
@@ -101,7 +104,9 @@ app.use(session({
     secure:   false,  // false: el sistema opera sobre HTTP en LAN (sin TLS)
     maxAge:   10 * 60 * 60 * 1000, // 10 h
   },
-}));
+});
+app.use(sessionMiddleware);
+io.engine.use(sessionMiddleware);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
@@ -149,9 +154,25 @@ const configServidorModule = require('./routes/config-servidor');
 app.use('/api/config-servidor', configServidorModule.router);
 
 // ── WebSocket ─────────────────────────────────────────────────────────────────
+// Presencia "en vivo": registra sockets autenticados (sesión compartida vía
+// io.engine.use arriba) y notifica a admins solo en transiciones 0↔1.
+// Sockets sin sesión (pantalla pública, login) quedan conectados sin registrar.
+const presencia = require('./services/presencia');
+presencia.init(io);
+
 io.on('connection', socket => {
-  console.log('Cliente conectado:', socket.id);
-  socket.on('disconnect', () => console.log('Cliente desconectado:', socket.id));
+  const usuario = socket.request.session?.usuario;
+  if (usuario) {
+    socket.join(`usuario:${usuario.id}`);
+    if (usuario.rol === 'admin' || usuario.rol === 'superadmin') {
+      socket.join('admins');
+    }
+    presencia.registrar(socket, usuario.id);
+  }
+
+  socket.on('disconnect', () => {
+    presencia.desregistrar(socket);
+  });
 });
 
 // ── 404: rutas de API no encontradas ─────────────────────────────────────────

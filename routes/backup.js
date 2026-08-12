@@ -2,6 +2,7 @@ const express  = require('express');
 const router   = express.Router();
 const db       = require('../db/database');
 const { requireAuth } = require('../middleware/auth');
+const { soloLocal, esLoopback } = require('../middleware/solo-local');
 const path     = require('path');
 const fs       = require('fs');
 const os       = require('os');
@@ -200,20 +201,55 @@ function validarZip(rutaZip) {
   return { ok: true, meta };
 }
 
+// ── Escribir restauración pendiente ───────────────────────────────────────────
+// Compartido por /restaurar (nombre dentro de la carpeta configurada) y
+// /restaurar-archivo (ruta absoluta arbitraria). Crea el backup de seguridad
+// del estado actual y deja la DB del zip validado como pendiente de aplicar
+// en el próximo arranque (server.js hace el swap).
+async function prepararRestauracionPendiente(rutaZip, validacion, referenciaOrigen) {
+  const { nombre: nombreSeguridad } = await crearBackupInterno('auto');
+
+  const zip    = new AdmZip(rutaZip);
+  const dbData = zip.getEntry('turnos.db').getData();
+
+  const pendingDb   = path.join(DB_DIR_RUNTIME, 'pending_restore.db');
+  const pendingFlag = path.join(DB_DIR_RUNTIME, '.restore_pending');
+
+  fs.writeFileSync(pendingDb, dbData);
+  fs.writeFileSync(pendingFlag, JSON.stringify({
+    backup:    referenciaOrigen,
+    safety:    nombreSeguridad,
+    timestamp: new Date().toISOString(),
+    meta:      validacion.meta,
+  }));
+
+  return { nombreSeguridad };
+}
+
+function limpiarPendientesParciales() {
+  try { fs.unlinkSync(path.join(DB_DIR_RUNTIME, 'pending_restore.db')); } catch (_) {}
+  try { fs.unlinkSync(path.join(DB_DIR_RUNTIME, '.restore_pending')); } catch (_) {}
+}
+
 // ═══════════════════════════════════════════════════════════════════════════════
 // RUTAS API
 // ═══════════════════════════════════════════════════════════════════════════════
 
-router.use(requireAuth('admin', 'superadmin'));
+// ── GET /api/backup/acceso ────────────────────────────────────────────────────
+// Ungated a propósito: nunca se bloquea a sí mismo. Permite al frontend
+// mostrar/ocultar el panel de Backups sin generar una pared de 403.
+router.get('/acceso', (req, res) => {
+  res.json({ permitido: esLoopback(req) });
+});
 
 // ── GET /api/backup/config ────────────────────────────────────────────────────
-router.get('/config', (req, res) => {
+router.get('/config', soloLocal, requireAuth('admin', 'superadmin'), (req, res) => {
   const cfg = db.prepare('SELECT * FROM configuracion_backup WHERE id = 1').get();
   res.json(cfg);
 });
 
 // ── PUT /api/backup/config ────────────────────────────────────────────────────
-router.put('/config', (req, res) => {
+router.put('/config', soloLocal, requireAuth('admin', 'superadmin'), (req, res) => {
   const { habilitado, frecuencia, hora, dia_semana, dia_mes, fecha_anual, max_backups, carpeta_destino } = req.body;
 
   const frecuenciasValidas = ['manual', 'diario', 'semanal', 'mensual', 'anual'];
@@ -258,7 +294,7 @@ router.put('/config', (req, res) => {
 });
 
 // ── GET /api/backup/listar ────────────────────────────────────────────────────
-router.get('/listar', (req, res) => {
+router.get('/listar', soloLocal, requireAuth('admin', 'superadmin'), (req, res) => {
   try {
     const carpeta = getCarpeta();
     const lista   = listarBackups(carpeta);
@@ -269,7 +305,7 @@ router.get('/listar', (req, res) => {
 });
 
 // ── POST /api/backup/crear ────────────────────────────────────────────────────
-router.post('/crear', async (req, res) => {
+router.post('/crear', soloLocal, requireAuth('admin', 'superadmin'), async (req, res) => {
   try {
     const { nombre } = await crearBackupInterno('manual');
     res.json({ ok: true, nombre });
@@ -280,8 +316,9 @@ router.post('/crear', async (req, res) => {
 });
 
 // ── POST /api/backup/restaurar ────────────────────────────────────────────────
-// Valida el backup y prepara la restauración para el próximo inicio del servidor.
-router.post('/restaurar', async (req, res) => {
+// Valida el backup (por nombre, dentro de la carpeta configurada) y prepara
+// la restauración para el próximo inicio del servidor.
+router.post('/restaurar', soloLocal, requireAuth('admin', 'superadmin'), async (req, res) => {
   const { nombre } = req.body;
 
   if (!nombre || !BACKUP_REGEX.test(nombre)) {
@@ -297,24 +334,7 @@ router.post('/restaurar', async (req, res) => {
   }
 
   try {
-    // 1. Crear backup de seguridad del estado actual antes de restaurar
-    const { nombre: nombreSeguridad } = await crearBackupInterno('auto');
-
-    // 2. Extraer la DB del ZIP y guardarla como restauración pendiente
-    const zip    = new AdmZip(rutaZip);
-    const dbData = zip.getEntry('turnos.db').getData();
-
-    const pendingDb   = path.join(DB_DIR_RUNTIME, 'pending_restore.db');
-    const pendingFlag = path.join(DB_DIR_RUNTIME, '.restore_pending');
-
-    fs.writeFileSync(pendingDb, dbData);
-    fs.writeFileSync(pendingFlag, JSON.stringify({
-      backup:    nombre,
-      safety:    nombreSeguridad,
-      timestamp: new Date().toISOString(),
-      meta:      validacion.meta,
-    }));
-
+    const { nombreSeguridad } = await prepararRestauracionPendiente(rutaZip, validacion, nombre);
     res.json({
       ok: true,
       mensaje: 'La restauración quedó preparada. Reiniciá el servidor para completar el proceso. Si algo sale mal, se restaurará automáticamente el backup de seguridad creado ahora.',
@@ -322,15 +342,48 @@ router.post('/restaurar', async (req, res) => {
     });
   } catch (err) {
     console.error('[BACKUP] Error al preparar restauración:', err.message);
-    // Limpiar archivos parciales
-    try { fs.unlinkSync(path.join(DB_DIR_RUNTIME, 'pending_restore.db')); } catch (_) {}
-    try { fs.unlinkSync(path.join(DB_DIR_RUNTIME, '.restore_pending')); } catch (_) {}
+    limpiarPendientesParciales();
+    res.status(500).json({ error: 'No se pudo preparar la restauración.' });
+  }
+});
+
+// ── POST /api/backup/restaurar-archivo ────────────────────────────────────────
+// Igual a /restaurar pero la fuente es una ruta absoluta arbitraria (elegida
+// vía el diálogo nativo de Electron), no un nombre dentro de carpeta_destino.
+// Los mismos chequeos de validarZip() son la única puerta de entrada.
+router.post('/restaurar-archivo', soloLocal, requireAuth('admin', 'superadmin'), async (req, res) => {
+  const { ruta } = req.body;
+
+  if (!ruta || typeof ruta !== 'string' || !path.isAbsolute(ruta)) {
+    return res.status(400).json({ error: 'Ruta de archivo inválida.' });
+  }
+
+  const rutaZip = path.resolve(ruta);
+  if (!rutaZip.toLowerCase().endsWith('.zip')) {
+    return res.status(400).json({ error: 'El archivo debe ser un .zip de backup.' });
+  }
+
+  const validacion = validarZip(rutaZip);
+  if (!validacion.ok) {
+    return res.status(400).json({ error: validacion.error });
+  }
+
+  try {
+    const { nombreSeguridad } = await prepararRestauracionPendiente(rutaZip, validacion, rutaZip);
+    res.json({
+      ok: true,
+      mensaje: 'La restauración quedó preparada. Reiniciá el servidor para completar el proceso. Si algo sale mal, se restaurará automáticamente el backup de seguridad creado ahora.',
+      backup_seguridad: nombreSeguridad,
+    });
+  } catch (err) {
+    console.error('[BACKUP] Error al preparar restauración desde archivo:', err.message);
+    limpiarPendientesParciales();
     res.status(500).json({ error: 'No se pudo preparar la restauración.' });
   }
 });
 
 // ── DELETE /api/backup/:nombre ────────────────────────────────────────────────
-router.delete('/:nombre', (req, res) => {
+router.delete('/:nombre', soloLocal, requireAuth('admin', 'superadmin'), (req, res) => {
   const { nombre } = req.params;
   if (!BACKUP_REGEX.test(nombre)) {
     return res.status(400).json({ error: 'Nombre de backup inválido.' });
@@ -350,7 +403,7 @@ router.delete('/:nombre', (req, res) => {
 });
 
 // ── GET /api/backup/descargar/:nombre ─────────────────────────────────────────
-router.get('/descargar/:nombre', (req, res) => {
+router.get('/descargar/:nombre', soloLocal, requireAuth('admin', 'superadmin'), (req, res) => {
   const { nombre } = req.params;
   if (!BACKUP_REGEX.test(nombre)) {
     return res.status(400).json({ error: 'Nombre de archivo inválido.' });
@@ -365,7 +418,7 @@ router.get('/descargar/:nombre', (req, res) => {
 });
 
 // ── GET /api/backup/estado-restauracion ──────────────────────────────────────
-router.get('/estado-restauracion', (req, res) => {
+router.get('/estado-restauracion', soloLocal, requireAuth('admin', 'superadmin'), (req, res) => {
   const flag = path.join(DB_DIR_RUNTIME, '.restore_pending');
   if (fs.existsSync(flag)) {
     try {
@@ -381,17 +434,22 @@ router.get('/estado-restauracion', (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Función para escapar campos CSV (RFC 4180)
+// Separador ";" \u2014 Excel en configuraci\u00F3n regional es-AR espera punto y coma
+// como delimitador de CSV (usa la coma como separador decimal). Con coma,
+// Excel no reparte el contenido en columnas y todo aparece amontonado en A.
+const CSV_SEP = ';';
+
 function csvField(val) {
   if (val === null || val === undefined) return '';
   const s = String(val);
-  if (s.includes('"') || s.includes(',') || s.includes('\n') || s.includes('\r')) {
+  if (s.includes('"') || s.includes(CSV_SEP) || s.includes('\n') || s.includes('\r')) {
     return '"' + s.replace(/"/g, '""') + '"';
   }
   return s;
 }
 
 function csvRow(fields) {
-  return fields.map(csvField).join(',') + '\r\n';
+  return fields.map(csvField).join(CSV_SEP) + '\r\n';
 }
 
 // BOM UTF-8 para compatibilidad con Excel
@@ -401,11 +459,26 @@ function formatFecha(dt) {
   if (!dt) return '';
   const d = new Date(dt);
   if (isNaN(d)) return dt;
-  return d.toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour12: false });
+  // Formato sin coma interna (dd/mm/aaaa hh:mm:ss) para que no quede una
+  // celda con texto raro entre comillas cuando el separador es ";".
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+const ESTADO_LEGIBLE = {
+  esperando:  'Esperando',
+  llamado:    'Llamado',
+  jugando:    'Jugando',
+  finalizado: 'Finalizado',
+  cancelado:  'Cancelado',
+  no_llego:   'No lleg\u00F3',
+};
+function estadoLegible(e) {
+  return ESTADO_LEGIBLE[e] || e || '';
 }
 
 // ── POST /api/backup/exportar/csv ─────────────────────────────────────────────
-router.post('/exportar/csv', async (req, res) => {
+router.post('/exportar/csv', requireAuth('admin', 'superadmin'), async (req, res) => {
   const { tipo = 'turnos', desde, hasta, atraccion_id, estado } = req.body;
 
   try {
@@ -453,7 +526,7 @@ router.post('/exportar/csv', async (req, res) => {
         r.id, formatFecha(r.created_at), formatFecha(r.called_at),
         formatFecha(r.jugando_desde), formatFecha(r.finished_at),
         r.juego, r.subcategoria, r.familia, r.cantidad_miembros,
-        r.biper_numero, r.viper, r.estado, r.creado_por, r.finalizado_por,
+        r.biper_numero, r.viper, estadoLegible(r.estado), r.creado_por, r.finalizado_por,
       ]));
 
     } else if (tipo === 'usuarios') {
@@ -533,7 +606,7 @@ router.post('/exportar/csv', async (req, res) => {
 });
 
 // ── POST /api/backup/exportar/xlsx ────────────────────────────────────────────
-router.post('/exportar/xlsx', async (req, res) => {
+router.post('/exportar/xlsx', requireAuth('admin', 'superadmin'), async (req, res) => {
   const { desde, hasta } = req.body;
 
   try {
@@ -547,18 +620,48 @@ router.post('/exportar/xlsx', async (req, res) => {
     if (hasta) { condTurnos.push("DATE(t.created_at) <= DATE(?)"); paramsTurnos.push(hasta); }
     const whereTurnos = condTurnos.length ? condTurnos.join(' AND ') : '1=1';
 
-    function agregarHoja(nombre, headers, filas) {
+    const BORDE_FINO = { style: 'thin', color: { argb: 'FFD1D5DB' } };
+
+    // dateCols: índices (0-based) de columnas con valores Date reales, para
+    // aplicarles formato de fecha nativo de Excel (ordenables/filtrables).
+    function agregarHoja(nombre, headers, filas, dateCols = []) {
       const ws = wb.addWorksheet(nombre);
       ws.addRow(headers);
-      ws.getRow(1).font = { bold: true };
-      ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E1B4B' } };
       ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
-      filas.forEach(f => ws.addRow(f));
+      ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E1B4B' } };
+      ws.getRow(1).alignment = { vertical: 'middle' };
+      ws.views = [{ state: 'frozen', ySplit: 1 }];
+      ws.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: headers.length } };
+
+      filas.forEach((f, i) => {
+        const row = ws.addRow(f);
+        if ((i % 2) === 1) {
+          row.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }; });
+        }
+        dateCols.forEach(idx => {
+          const cell = row.getCell(idx + 1);
+          if (cell.value instanceof Date) cell.numFmt = 'dd/mm/yyyy hh:mm';
+        });
+      });
+
+      ws.eachRow(row => {
+        row.eachCell(c => {
+          c.border = { top: BORDE_FINO, left: BORDE_FINO, bottom: BORDE_FINO, right: BORDE_FINO };
+        });
+      });
+
       ws.columns.forEach(col => {
         let maxLen = 10;
         col.eachCell(c => { if (c.value) maxLen = Math.max(maxLen, String(c.value).length + 2); });
         col.width = Math.min(maxLen, 50);
       });
+    }
+
+    // Convierte a Date real (o null) para las columnas de fecha de las hojas XLSX.
+    function fechaCelda(dt) {
+      if (!dt) return null;
+      const d = new Date(dt);
+      return isNaN(d) ? null : d;
     }
 
     // Hoja: Turnos
@@ -579,7 +682,8 @@ router.post('/exportar/xlsx', async (req, res) => {
 
     agregarHoja('Turnos',
       ['ID','Fecha','Llamado','Inicio','Finalización','Juego','Subcategoría','Familia','Miembros','Biper','VIPER','Estado','Creado por','Finalizado por'],
-      turnos.map(r => [r.id, formatFecha(r.created_at), formatFecha(r.called_at), formatFecha(r.jugando_desde), formatFecha(r.finished_at), r.juego, r.subcategoria, r.nombre_cliente, r.cantidad_miembros, r.biper_numero, r.codigo_viper, r.estado, r.creado_por, r.finalizado_por])
+      turnos.map(r => [r.id, fechaCelda(r.created_at), fechaCelda(r.called_at), fechaCelda(r.jugando_desde), fechaCelda(r.finished_at), r.juego, r.subcategoria, r.nombre_cliente, r.cantidad_miembros, r.biper_numero, r.codigo_viper, estadoLegible(r.estado), r.creado_por, r.finalizado_por]),
+      [1, 2, 3, 4]
     );
 
     // Hoja: Juegos
@@ -600,7 +704,8 @@ router.post('/exportar/xlsx', async (req, res) => {
     `).all();
     agregarHoja('Usuarios',
       ['ID','Nombre','Usuario','Rol','Atracción','Activo','Fecha Creación'],
-      usuarios.map(r => [r.id, r.nombre, r.username, r.rol, r.atraccion, r.activo ? 'Sí' : 'No', formatFecha(r.created_at)])
+      usuarios.map(r => [r.id, r.nombre, r.username, r.rol, r.atraccion, r.activo ? 'Sí' : 'No', fechaCelda(r.created_at)]),
+      [6]
     );
 
     // Hoja: VIPERs
@@ -610,7 +715,8 @@ router.post('/exportar/xlsx', async (req, res) => {
     `).all();
     agregarHoja('VIPERs',
       ['ID','Código VIPER','Estado','Canal','Fecha Creación','Última Activación','Último Test'],
-      vipers.map(r => [r.id, r.codigo_viper, r.estado, r.canal, formatFecha(r.fecha_creacion), formatFecha(r.ultima_activacion), formatFecha(r.ultimo_test)])
+      vipers.map(r => [r.id, r.codigo_viper, r.estado, r.canal, fechaCelda(r.fecha_creacion), fechaCelda(r.ultima_activacion), fechaCelda(r.ultimo_test)]),
+      [4, 5, 6]
     );
 
     // Hoja: Estadísticas
@@ -622,16 +728,36 @@ router.post('/exportar/xlsx', async (req, res) => {
         SUM(CASE WHEN estado IN ('cancelado','no_llego') THEN 1 ELSE 0 END) AS cancelados
       FROM turnos
     `).get();
-    estHoja.addRow(['RESUMEN GENERAL']).font = { bold: true };
-    estHoja.addRow(['Total Turnos', 'Finalizados', 'En Espera', 'Cancelados']);
+    function tituloSeccion(fila) {
+      const row = estHoja.addRow(fila);
+      row.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      row.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF1E1B4B' } }; });
+      return row;
+    }
+    function filaEncabezado(fila) {
+      const row = estHoja.addRow(fila);
+      row.font = { bold: true };
+      return row;
+    }
+
+    tituloSeccion(['RESUMEN GENERAL']);
+    filaEncabezado(['Total Turnos', 'Finalizados', 'En Espera', 'Cancelados']);
     estHoja.addRow([resumen.total, resumen.finalizados, resumen.en_espera, resumen.cancelados]);
     estHoja.addRow([]);
-    estHoja.addRow(['TURNOS POR JUEGO']).font = { bold: true };
-    estHoja.addRow(['Juego', 'Total', 'Finalizados']);
+    tituloSeccion(['TURNOS POR JUEGO']);
+    filaEncabezado(['Juego', 'Total', 'Finalizados']);
     db.prepare(`
       SELECT a.nombre, COUNT(*) AS total, SUM(CASE WHEN t.estado='finalizado' THEN 1 ELSE 0 END) AS fin
       FROM turnos t JOIN atracciones a ON t.atraccion_id = a.id GROUP BY a.id ORDER BY total DESC
-    `).all().forEach(r => estHoja.addRow([r.nombre, r.total, r.fin]));
+    `).all().forEach((r, i) => {
+      const row = estHoja.addRow([r.nombre, r.total, r.fin]);
+      if ((i % 2) === 1) row.eachCell(c => { c.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF3F4F6' } }; });
+    });
+    estHoja.eachRow(row => {
+      row.eachCell(c => {
+        c.border = { top: BORDE_FINO, left: BORDE_FINO, bottom: BORDE_FINO, right: BORDE_FINO };
+      });
+    });
     estHoja.columns.forEach(c => { c.width = 25; });
 
     const nombreArchivo = `SistemaUniversal_Exportacion_${timestamp().replace('_', '-')}.xlsx`;

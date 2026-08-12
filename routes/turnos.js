@@ -61,6 +61,30 @@ function _hermanosCombinados(turno) {
   ).all(turno.atraccion_id, turno.id);
 }
 
+// ── Cierre de turno (finalizado / no_llego / cancelado) ──────────────────────
+// Cierra TODAS las filas abiertas de turno_etapas_historial para el turno dado
+// y deja el turno en el estado final indicado. No decide por sí mismo si hay
+// que replicar la acción a los hermanos combinados: eso queda a cargo del
+// llamador (que ya sabe, según getSincronizar()/_hermanosCombinados, si debe
+// invocar este helper también para cada hermano), preservando exactamente el
+// comportamiento previo de cada endpoint.
+function _cerrarTurno(turnoId, estadoFinal, usuarioId) {
+  db.prepare(`
+    UPDATE turno_etapas_historial
+    SET finalizada_at = datetime('now','localtime'), finalizada_por = ?
+    WHERE turno_id = ? AND finalizada_at IS NULL
+  `).run(usuarioId, turnoId);
+
+  db.prepare(`
+    UPDATE turnos
+    SET estado = ?, finished_at = datetime('now','localtime'),
+        finalizado_por = ?, etapa_actual_id = NULL
+    WHERE id = ?
+  `).run(estadoFinal, usuarioId, turnoId);
+
+  return db.prepare(SELECT_TURNO).get(turnoId);
+}
+
 module.exports = (io) => {
   const router = express.Router();
 
@@ -382,7 +406,7 @@ module.exports = (io) => {
   });
 
   // ── Llamar turno (manual, con subcategorías, Combinar y VIPER) ───────────────
-  router.put('/:id/llamar', requirePermission('permiso_llamar_turno'), (req, res) => {
+  router.put('/:id/llamar', requireAuth('admin','recepcion'), requirePermission('permiso_llamar_turno'), (req, res) => {
     const { id } = req.params;
     const force = req.body?.force === true;
 
@@ -584,7 +608,7 @@ module.exports = (io) => {
   });
 
   // ── Avanzar / finalizar etapa (operador) ──────────────────────────────────────
-  router.put('/:id/finalizar', requirePermission('permiso_llamar_turno'), (req, res) => {
+  router.put('/:id/finalizar', requireAuth('admin','operador','recepcion'), (req, res) => {
     const { id } = req.params;
     const usuario = req.session.usuario;
 
@@ -619,24 +643,14 @@ module.exports = (io) => {
     }
 
     if (!turnoActual.etapa_actual_id) {
-      db.prepare(`
-        UPDATE turnos
-        SET estado='finalizado', finished_at=datetime('now','localtime'), finalizado_por=?
-        WHERE id=?
-      `).run(usuario.id, id);
-
-      const turno = db.prepare(SELECT_TURNO).get(Number(id));
+      const turno = _cerrarTurno(Number(id), 'finalizado', usuario.id);
       io.emit('turno:finalizado', turno);
       _notificarRecepcion(io, usuario, turno);
 
       if (getSincronizar()) {
         _hermanosCombinados(turnoActual).forEach(h => {
           if (timerLlamado.has(h.id)) { clearTimeout(timerLlamado.get(h.id)); timerLlamado.delete(h.id); }
-          if (h.etapa_actual_id) {
-            db.prepare("UPDATE turno_etapas_historial SET finalizada_at=datetime('now','localtime'), finalizada_por=? WHERE turno_id=? AND finalizada_at IS NULL").run(usuario.id, h.id);
-          }
-          db.prepare("UPDATE turnos SET estado='finalizado', finished_at=datetime('now','localtime'), finalizado_por=?, etapa_actual_id=NULL WHERE id=?").run(usuario.id, h.id);
-          const tH = db.prepare(SELECT_TURNO).get(h.id);
+          const tH = _cerrarTurno(h.id, 'finalizado', usuario.id);
           io.emit('turno:finalizado', tH);
           _notificarRecepcion(io, usuario, tH);
         });
@@ -687,27 +701,95 @@ module.exports = (io) => {
       return res.json(turno);
     }
 
-    db.prepare(`
-      UPDATE turnos
-      SET estado='finalizado', finished_at=datetime('now','localtime'),
-          finalizado_por=?, etapa_actual_id=NULL
-      WHERE id=?
-    `).run(usuario.id, id);
-
-    const turno = db.prepare(SELECT_TURNO).get(Number(id));
+    const turno = _cerrarTurno(Number(id), 'finalizado', usuario.id);
     io.emit('turno:finalizado', turno);
     _notificarRecepcion(io, usuario, turno);
 
     if (getSincronizar()) {
       _hermanosCombinados(turnoActual).forEach(h => {
         if (timerLlamado.has(h.id)) { clearTimeout(timerLlamado.get(h.id)); timerLlamado.delete(h.id); }
-        if (h.etapa_actual_id) {
-          db.prepare("UPDATE turno_etapas_historial SET finalizada_at=datetime('now','localtime'), finalizada_por=? WHERE turno_id=? AND finalizada_at IS NULL").run(usuario.id, h.id);
-        }
-        db.prepare("UPDATE turnos SET estado='finalizado', finished_at=datetime('now','localtime'), finalizado_por=?, etapa_actual_id=NULL WHERE id=?").run(usuario.id, h.id);
-        const tH = db.prepare(SELECT_TURNO).get(h.id);
+        const tH = _cerrarTurno(h.id, 'finalizado', usuario.id);
         io.emit('turno:finalizado', tH);
         _notificarRecepcion(io, usuario, tH);
+      });
+    }
+
+    res.json(turno);
+  });
+
+  // ── Llegó (operador confirma llegada, llamado → jugando) ─────────────────────
+  router.put('/:id/llegar', requireAuth('admin','operador'), (req, res) => {
+    const { id } = req.params;
+    const usuario = req.session.usuario;
+
+    const turnoActual = db.prepare(
+      "SELECT * FROM turnos WHERE id=? AND estado='llamado'"
+    ).get(Number(id));
+
+    if (!turnoActual) {
+      return res.status(409).json({ error: 'Solo se puede marcar "Llegó" a grupos en estado llamado' });
+    }
+
+    if (usuario.rol === 'operador' && usuario.atraccion_id &&
+        usuario.atraccion_id !== turnoActual.atraccion_id) {
+      return res.status(403).json({ error: 'Solo el operador asignado puede marcar "Llegó"' });
+    }
+
+    // Cancelar el timer de llamado→jugando: la transición ocurre ahora manualmente
+    if (timerLlamado.has(Number(id))) {
+      clearTimeout(timerLlamado.get(Number(id)));
+      timerLlamado.delete(Number(id));
+    }
+
+    db.prepare(
+      "UPDATE turnos SET estado='jugando', jugando_desde=datetime('now','localtime') WHERE id=? AND estado='llamado'"
+    ).run(Number(id));
+
+    const turno = conEtapaSig(db.prepare(SELECT_TURNO).get(Number(id)));
+    io.emit('turno:jugando', turno);
+
+    if (getSincronizar()) {
+      _hermanosCombinados(turnoActual).filter(h => h.estado === 'llamado').forEach(h => {
+        if (timerLlamado.has(h.id)) { clearTimeout(timerLlamado.get(h.id)); timerLlamado.delete(h.id); }
+        db.prepare(
+          "UPDATE turnos SET estado='jugando', jugando_desde=datetime('now','localtime') WHERE id=? AND estado='llamado'"
+        ).run(h.id);
+        const tH = conEtapaSig(db.prepare(SELECT_TURNO).get(h.id));
+        if (tH) io.emit('turno:jugando', tH);
+      });
+    }
+
+    res.json(turno);
+  });
+
+  // ── Cancelar turno completo (recepción, desde llamado o jugando) ─────────────
+  router.put('/:id/cancelar-turno', requireAuth('admin','recepcion'), requirePermission('permiso_cancelar_turno'), (req, res) => {
+    const { id } = req.params;
+    const usuario = req.session.usuario;
+
+    const turnoActual = db.prepare(
+      "SELECT * FROM turnos WHERE id=? AND estado IN ('llamado','jugando')"
+    ).get(Number(id));
+
+    if (!turnoActual) {
+      return res.status(409).json({
+        error: 'Solo se puede cancelar un turno en estado llamado o jugando'
+      });
+    }
+
+    if (timerLlamado.has(Number(id))) {
+      clearTimeout(timerLlamado.get(Number(id)));
+      timerLlamado.delete(Number(id));
+    }
+
+    const turno = _cerrarTurno(Number(id), 'cancelado', usuario.id);
+    io.emit('turno:finalizado', turno);
+
+    if (getSincronizar()) {
+      _hermanosCombinados(turnoActual).forEach(h => {
+        if (timerLlamado.has(h.id)) { clearTimeout(timerLlamado.get(h.id)); timerLlamado.delete(h.id); }
+        const tH = _cerrarTurno(h.id, 'cancelado', usuario.id);
+        io.emit('turno:finalizado', tH);
       });
     }
 
@@ -883,22 +965,7 @@ module.exports = (io) => {
       timerLlamado.delete(Number(id));
     }
 
-    if (turnoActual.etapa_actual_id) {
-      db.prepare(`
-        UPDATE turno_etapas_historial
-        SET finalizada_at = datetime('now','localtime'), finalizada_por = ?
-        WHERE turno_id = ? AND finalizada_at IS NULL
-      `).run(usuario.id, id);
-    }
-
-    db.prepare(`
-      UPDATE turnos
-      SET estado='no_llego', finished_at=datetime('now','localtime'),
-          finalizado_por=?, etapa_actual_id=NULL
-      WHERE id=?
-    `).run(usuario.id, id);
-
-    const turno = db.prepare(SELECT_TURNO).get(Number(id));
+    const turno = _cerrarTurno(Number(id), 'no_llego', usuario.id);
     io.emit('turno:finalizado', turno);
     res.json(turno);
   });

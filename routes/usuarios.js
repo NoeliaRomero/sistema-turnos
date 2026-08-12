@@ -3,6 +3,7 @@ const router  = express.Router();
 const bcrypt  = require('bcryptjs');
 const db      = require('../db/database');
 const { requireAuth } = require('../middleware/auth');
+const presencia = require('../services/presencia');
 
 router.use(requireAuth('admin'));
 
@@ -17,7 +18,7 @@ router.get('/', (req, res) => {
     WHERE u.rol != 'superadmin'
     ORDER BY u.rol, u.nombre
   `).all();
-  res.json(usuarios);
+  res.json(usuarios.map(u => ({ ...u, en_vivo: presencia.estaEnVivo(u.id) })));
 });
 
 const ROLES_VALIDOS = ['admin','operador','recepcion'];

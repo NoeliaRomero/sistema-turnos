@@ -39,7 +39,7 @@
   <span class="navbar-brand fw-bold fs-5"><i class="bi bi-gear me-2"></i>Configuraciones del Sistema</span>
   <div class="d-flex align-items-center gap-2">
     <span class="badge rounded-pill text-bg-success small" id="badgeServidorLAN" style="font-size:.72rem; display:none">
-      <i class="bi bi-wifi me-1"></i>LAN: ACTIVO &bull; Puerto <span id="badgePuertoLAN">…</span>
+      <i class="bi bi-wifi me-1"></i>LAN: ACTIVO &bull; <span id="badgeIpLAN"></span><span id="badgePuertoLAN">…</span>
     </span>
     <span class="text-white-50 small" id="usuarioNombre"></span>
     <button class="btn btn-outline-light btn-sm" id="btnVolver">
@@ -347,12 +347,24 @@
           <strong>Hay una restauración pendiente.</strong> Reiniciá el servidor para completar el proceso.
         </div>
 
+        <!-- Aviso: backups bloqueados fuera de la app local -->
+        <div class="alert alert-secondary d-none mb-4" id="avisoBackupLanBloqueado">
+          <i class="bi bi-shield-lock-fill me-2"></i>
+          La gestión de backups solo está disponible desde la aplicación instalada en esta máquina, no desde la red.
+        </div>
+
         <!-- Backup manual -->
         <div class="card p-4 mb-3">
           <h6 class="fw-bold mb-3"><i class="bi bi-save me-2 text-primary"></i>Backup Manual</h6>
           <div class="d-flex align-items-center gap-3 flex-wrap">
             <button class="btn btn-primary px-4" id="btnCrearBackup">
               <i class="bi bi-database-add me-2"></i>Crear backup ahora
+            </button>
+            <button class="btn btn-outline-primary px-4" id="btnImportarArchivoRestaurar">
+              <i class="bi bi-file-earmark-arrow-up me-2"></i>Importar backup desde archivo…
+            </button>
+            <button class="btn btn-outline-secondary px-4" id="btnElegirCarpetaManual">
+              <i class="bi bi-folder2-open me-2"></i>Elegir carpeta…
             </button>
             <span class="text-muted small" id="carpetaBackupLabel"></span>
           </div>
@@ -413,7 +425,12 @@
             </div>
             <div class="col-md-4">
               <label class="form-label fw-semibold small" for="inputCarpetaDestino">Carpeta de destino</label>
-              <input type="text" class="form-control" id="inputCarpetaDestino" placeholder="Vacío = carpeta backups/ del sistema">
+              <div class="input-group">
+                <input type="text" class="form-control" id="inputCarpetaDestino" placeholder="Vacío = carpeta backups/ del sistema">
+                <button class="btn btn-outline-secondary" type="button" id="btnExaminarCarpetaDestino" title="Examinar…">
+                  <i class="bi bi-folder2-open"></i>
+                </button>
+              </div>
             </div>
             <div class="col-12">
               <button class="btn btn-success px-4" id="btnGuardarConfigBackup">

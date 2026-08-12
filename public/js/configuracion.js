@@ -559,10 +559,23 @@ document.getElementById('btnFiltrarEventos').addEventListener('click', cargarEve
 socket.on('viper:actualizado', () => { cargarMetricasViper(); cargarEventosViper(); });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+// Tope de carteles visibles a la vez — evita que clickear rápido y seguido un
+// botón que da el mismo error apile una fila de carteles tapando la pantalla.
+const TOAST_MAX_VISIBLES = 2;
+
 function mostrarToast(mensaje, tipo = 'success') {
+  const container = document.getElementById('toastContainer');
+
+  const visibles = Array.from(container.children);
+  while (visibles.length >= TOAST_MAX_VISIBLES) {
+    const masViejo = visibles.shift();
+    const inst = bootstrap.Toast.getInstance(masViejo);
+    if (inst) inst.hide(); else masViejo.remove();
+  }
+
   const id  = 'toast-' + Date.now();
   const col = { success:'bg-success', danger:'bg-danger', warning:'bg-warning text-dark', info:'bg-info text-dark' }[tipo];
-  document.getElementById('toastContainer').insertAdjacentHTML('beforeend', `
+  container.insertAdjacentHTML('beforeend', `
     <div id="${id}" class="toast align-items-center text-white ${col} border-0" role="alert">
       <div class="d-flex">
         <div class="toast-body fw-semibold">${mensaje}</div>
@@ -607,11 +620,110 @@ let backupAEliminar     = null;
 let backupARestaurar    = null;
 
 function inicializarPanelBackups() {
+  verificarAccesoBackups();
   if (backupPanelIniciado) { cargarBackups(); return; }
   backupPanelIniciado = true;
   cargarConfigBackup();
   cargarBackups();
   verificarRestauracionPendiente();
+}
+
+// ── Acceso local-only (LAN queda bloqueada server-side; esto solo mejora la UI) ─
+async function verificarAccesoBackups() {
+  try {
+    const res = await fetch('/api/backup/acceso');
+    if (!res.ok) return;
+    const data = await res.json();
+    const aviso = document.getElementById('avisoBackupLanBloqueado');
+    const panel = document.getElementById('panelBackups');
+    if (!data.permitido) {
+      if (aviso) aviso.classList.remove('d-none');
+      if (panel) panel.querySelectorAll('.card, #alertaRestauracionPendiente').forEach(el => el.classList.add('d-none'));
+    } else if (aviso) {
+      aviso.classList.add('d-none');
+    }
+  } catch (_) {}
+}
+
+// ── Selector de carpeta/archivo nativo (solo disponible dentro de Electron) ───
+const btnExaminarCarpeta = document.getElementById('btnExaminarCarpetaDestino');
+if (window.electronAPI && btnExaminarCarpeta) {
+  btnExaminarCarpeta.addEventListener('click', async () => {
+    const carpeta = await window.electronAPI.elegirCarpetaBackup();
+    if (carpeta) document.getElementById('inputCarpetaDestino').value = carpeta;
+  });
+} else if (btnExaminarCarpeta) {
+  // Fuera de Electron (dev/headless) no hay diálogo nativo: se mantiene el
+  // campo de texto libre existente como único método de entrada.
+  btnExaminarCarpeta.classList.add('d-none');
+}
+
+// Botón "Elegir carpeta…" en Backup Manual — usa el mismo diálogo nativo y
+// guarda directo en la config compartida entre backup manual y automático.
+const btnElegirCarpetaManual = document.getElementById('btnElegirCarpetaManual');
+if (window.electronAPI && btnElegirCarpetaManual) {
+  btnElegirCarpetaManual.addEventListener('click', async () => {
+    const carpeta = await window.electronAPI.elegirCarpetaBackup();
+    if (!carpeta) return;
+
+    document.getElementById('inputCarpetaDestino').value = carpeta;
+    btnElegirCarpetaManual.disabled = true;
+    try {
+      const res = await fetch('/api/backup/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ carpeta_destino: carpeta }),
+      });
+      if (res.ok) {
+        mostrarToast('Carpeta de backups actualizada.', 'success');
+        cargarBackups();
+      } else {
+        const d = await res.json();
+        mostrarToast(d.error || 'No se pudo guardar la carpeta.', 'danger');
+      }
+    } catch (_) {
+      mostrarToast('Error de conexión al guardar la carpeta.', 'danger');
+    } finally {
+      btnElegirCarpetaManual.disabled = false;
+    }
+  });
+} else if (btnElegirCarpetaManual) {
+  // Fuera de Electron no hay diálogo nativo: se mantiene el campo de texto
+  // de "Backup Automático" como único método de entrada.
+  btnElegirCarpetaManual.classList.add('d-none');
+}
+
+const btnImportarArchivo = document.getElementById('btnImportarArchivoRestaurar');
+if (window.electronAPI && btnImportarArchivo) {
+  btnImportarArchivo.addEventListener('click', async () => {
+    const ruta = await window.electronAPI.elegirArchivoRestaurar();
+    if (!ruta) return;
+    if (!confirm(`¿Restaurar el backup desde:\n${ruta}\n\nEsto reemplazará completamente la base de datos actual (se crea un backup de seguridad automáticamente).`)) return;
+
+    btnImportarArchivo.disabled = true;
+    try {
+      const res  = await fetch('/api/backup/restaurar-archivo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ruta }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        mostrarToast(data.mensaje, 'warning');
+        verificarRestauracionPendiente();
+      } else {
+        mostrarToast(data.error || 'Error al preparar la restauración', 'danger');
+      }
+    } catch (_) {
+      mostrarToast('Error de conexión al preparar la restauración.', 'danger');
+    } finally {
+      btnImportarArchivo.disabled = false;
+    }
+  });
+} else if (btnImportarArchivo) {
+  // Fuera de Electron no hay diálogo nativo de archivo: se mantiene el flujo
+  // existente de restauración por nombre desde la carpeta configurada.
+  btnImportarArchivo.classList.add('d-none');
 }
 
 // ── Verificar si hay restauración pendiente ──────────────────────────────────
@@ -886,8 +998,10 @@ async function cargarEstadoServidor() {
     // Badge navbar
     const badgeNav = document.getElementById('badgeServidorLAN');
     const puertoNav = document.getElementById('badgePuertoLAN');
+    const ipNav = document.getElementById('badgeIpLAN');
     if (d.servidor_activo && d.puerto_activo) {
       puertoNav.textContent = d.puerto_activo;
+      if (ipNav) ipNav.textContent = d.ip ? `${d.ip} : ` : 'Puerto ';
       badgeNav.style.display = '';
     } else {
       badgeNav.style.display = 'none';

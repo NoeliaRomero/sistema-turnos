@@ -13,7 +13,7 @@
  *  7. Cerrar el proceso limpiamente al cerrar la ventana.
  */
 
-const { app, BrowserWindow, dialog, shell } = require('electron');
+const { app, BrowserWindow, dialog, shell, Menu, ipcMain } = require('electron');
 const path = require('path');
 const fs   = require('fs');
 const net  = require('net');
@@ -154,6 +154,7 @@ async function crearVentana() {
       nodeIntegration:  false,  // El renderer NO tiene acceso a Node
       contextIsolation: true,   // Contexto aislado (buena práctica de seguridad)
       sandbox:          true,   // Renderer sandboxeado
+      preload:          path.join(__dirname, 'preload.js'),
     },
     show: false, // No mostrar hasta que cargue para evitar flash blanco
   });
@@ -175,6 +176,65 @@ async function crearVentana() {
 
   mainWindow.on('closed', () => { mainWindow = null; });
 }
+
+// ── IPC: diálogos nativos para selección de carpeta/archivo de backup ────────
+// Solo se atienden pedidos que provengan de la ventana principal (evita que
+// una ventana hija o un webContents ajeno pueda invocar el diálogo).
+function esSenderValido(event) {
+  return !!mainWindow && event.sender === mainWindow.webContents;
+}
+
+ipcMain.handle('backup:elegir-carpeta', async (event) => {
+  if (!esSenderValido(event)) return null;
+  const resultado = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: 'Elegir carpeta de destino para backups',
+  });
+  if (resultado.canceled || !resultado.filePaths.length) return null;
+  return resultado.filePaths[0];
+});
+
+ipcMain.handle('backup:elegir-archivo', async (event) => {
+  if (!esSenderValido(event)) return null;
+  const resultado = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openFile'],
+    filters: [{ name: 'Backup', extensions: ['zip'] }],
+    title: 'Elegir archivo de backup para restaurar',
+  });
+  if (resultado.canceled || !resultado.filePaths.length) return null;
+  return resultado.filePaths[0];
+});
+
+// ── Hardening del shell de Electron (solo en builds empaquetados) ────────────
+// En desarrollo (app.isPackaged === false) esta función es un no-op: el menú
+// por defecto y las DevTools deben seguir funcionando normalmente.
+function aplicarHardening(win) {
+  if (!app.isPackaged) return;
+
+  win.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+
+    const key = (input.key || '').toLowerCase();
+    const esF12 = key === 'f12';
+    const esAtajoDevTools =
+      input.control && input.shift && (key === 'i' || key === 'c' || key === 'j');
+
+    if (esF12 || esAtajoDevTools) {
+      event.preventDefault();
+    }
+  });
+
+  win.webContents.on('context-menu', (e) => e.preventDefault());
+
+  // Defensa en profundidad: si las DevTools se abren por cualquier otra vía,
+  // se cierran inmediatamente.
+  win.webContents.on('devtools-opened', () => win.webContents.closeDevTools());
+}
+
+// Se registra a nivel de app (no dentro de crearVentana) para cubrir
+// cualquier ventana futura, incluidas las que pudiera crear Chromium via
+// setWindowOpenHandler con acción 'allow'.
+app.on('browser-window-created', (_event, win) => aplicarHardening(win));
 
 // ── Ciclo de vida de la app ───────────────────────────────────────────────────
 app.whenReady().then(crearVentana);

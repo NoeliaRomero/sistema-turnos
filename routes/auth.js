@@ -1,7 +1,8 @@
-const express = require('express');
-const router  = express.Router();
-const bcrypt  = require('bcryptjs');
-const db      = require('../db/database');
+const express   = require('express');
+const router    = express.Router();
+const bcrypt    = require('bcryptjs');
+const db        = require('../db/database');
+const presencia = require('../services/presencia');
 
 router.post('/login', (req, res) => {
   const { username, password } = req.body;
@@ -18,7 +19,6 @@ router.post('/login', (req, res) => {
   }
 
   const esAdmin      = user.rol === 'admin';
-  const esOperador   = user.rol === 'operador';
   const esSuperadmin = user.rol === 'superadmin';
 
   req.session.usuario = {
@@ -29,7 +29,7 @@ router.post('/login', (req, res) => {
     atraccion_id:            user.atraccion_id,
     permiso_gestionar_juegos: esAdmin || esSuperadmin ? 1 : (user.permiso_gestionar_juegos || 0),
     permiso_cancelar_turno:   esAdmin || esSuperadmin ? 1 : (user.permiso_cancelar_turno   || 0),
-    permiso_llamar_turno:     esAdmin || esOperador || esSuperadmin ? 1 : (user.permiso_llamar_turno || 0),
+    permiso_llamar_turno:     esAdmin || esSuperadmin ? 1 : (user.permiso_llamar_turno || 0),
     // Features controladas por superadmin (solo aplican a rol admin)
     feature_graficos:        esAdmin ? (user.feature_graficos        ?? 1) : 1,
     feature_juegos:          esAdmin ? (user.feature_juegos          ?? 1) : 1,
@@ -48,6 +48,10 @@ router.post('/login', (req, res) => {
 });
 
 router.post('/logout', (req, res) => {
+  const usuarioId = req.session?.usuario?.id;
+  if (usuarioId != null) {
+    presencia.forzarOffline(usuarioId);
+  }
   req.session.destroy(() => res.json({ ok: true }));
 });
 

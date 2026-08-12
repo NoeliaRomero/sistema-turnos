@@ -211,6 +211,27 @@
   </div>
 </div>
 
+<!-- Modal confirmación: cancelar turno -->
+<div class="modal fade" id="modalConfCancelarTurno" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4 text-center p-4">
+      <div class="fs-1 mb-2">⚠️</div>
+      <h6 class="fw-bold mb-2">¿Cancelar turno?</h6>
+      <p class="text-muted small mb-3">
+        El turno de <strong id="confCancelarTurnoNombre"></strong> quedará cancelado y no podrá revertirse.
+      </p>
+      <div class="d-flex gap-2">
+        <button class="btn btn-secondary flex-fill" id="btnConfCancelarTurnoNo">
+          <i class="bi bi-x-circle me-1"></i>No
+        </button>
+        <button class="btn btn-danger flex-fill fw-bold" id="btnConfCancelarTurnoSi">
+          <i class="bi bi-check-lg me-1"></i>Sí, cancelar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal confirmación: llamar con juego ocupado -->
 <div class="modal fade" id="modalConfLlamar" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
   <div class="modal-dialog modal-sm modal-dialog-centered">

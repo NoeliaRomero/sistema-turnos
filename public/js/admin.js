@@ -20,9 +20,13 @@ async function cargarBadgeServidorLAN() {
     const d = await res.json();
     const badge  = document.getElementById('badgeServidorLAN');
     const puerto = document.getElementById('badgePuertoLAN');
+    const ipSpan = document.getElementById('badgeIpLAN');
     if (d.servidor_activo && d.puerto_activo) {
       puerto.textContent = d.puerto_activo;
+      if (ipSpan) ipSpan.textContent = d.ip ? `${d.ip} : ` : 'Puerto ';
       badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
     }
   } catch (_) {}
 }
@@ -189,7 +193,7 @@ async function cargarUsuarios() {
   const tbody    = document.getElementById('tablaUsuarios');
 
   if (!usuarios.length) {
-    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Sin usuarios</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Sin usuarios</td></tr>';
     return;
   }
 
@@ -207,7 +211,7 @@ async function cargarUsuarios() {
       if (u.permiso_gestionar_juegos && adminMe?.feature_juegos)         perms.push('<span class="perm-badge"><i class="bi bi-controller"></i> Juegos</span>');
     }
     return `
-    <tr>
+    <tr data-usuario-id="${u.id}">
       <td class="ps-4 fw-semibold">${escapeHtml(u.nombre)}</td>
       <td class="text-muted">@${escapeHtml(u.username)}</td>
       <td><span class="rol-badge ${rolClass(u.rol)}">${rolLabel(u.rol)}</span></td>
@@ -218,6 +222,7 @@ async function cargarUsuarios() {
           ${u.activo ? 'Activo' : 'Inactivo'}
         </span>
       </td>
+      <td class="text-center">${badgeEnVivo(u.en_vivo)}</td>
       <td class="text-end pe-4">
         <button class="btn btn-sm btn-outline-primary me-1" onclick="editarUsuario(${u.id})">
           <i class="bi bi-pencil"></i>
@@ -228,6 +233,25 @@ async function cargarUsuarios() {
       </td>
     </tr>`;
   }).join('');
+}
+
+function badgeEnVivo(enVivo) {
+  return enVivo
+    ? '<span class="badge rounded-pill px-3 badge-en-vivo"><i class="bi bi-circle-fill me-1"></i>En vivo</span>'
+    : '<span class="badge rounded-pill px-3 badge-en-vivo-off"><i class="bi bi-circle me-1"></i>Offline</span>';
+}
+
+// ── Presencia en vivo (Socket.IO) ────────────────────────────────────────────
+// El socket comparte la sesión de express (io.engine.use en server.js), por lo
+// que se registra automáticamente al conectar; solo escuchamos el evento.
+const _presenciaSocket = typeof io === 'function' ? io() : null;
+if (_presenciaSocket) {
+  _presenciaSocket.on('presencia:cambio', ({ usuarioId, enVivo }) => {
+    const fila = document.querySelector(`tr[data-usuario-id="${usuarioId}"]`);
+    if (!fila) return;
+    const celda = fila.children[6]; // columna "En vivo"
+    if (celda) celda.innerHTML = badgeEnVivo(enVivo);
+  });
 }
 
 function rolClass(rol) { return { admin:'rol-admin', operador:'rol-operador', recepcion:'rol-recepcion' }[rol]||''; }
@@ -380,10 +404,23 @@ function formatFecha(dt) {
   return `${d}/${m}`;
 }
 
+// Tope de carteles visibles a la vez — evita que clickear rápido y seguido un
+// botón que da el mismo error apile una fila de carteles tapando la pantalla.
+const TOAST_MAX_VISIBLES = 2;
+
 function mostrarToast(mensaje, tipo = 'success') {
+  const container = document.getElementById('toastContainer');
+
+  const visibles = Array.from(container.children);
+  while (visibles.length >= TOAST_MAX_VISIBLES) {
+    const masViejo = visibles.shift();
+    const inst = bootstrap.Toast.getInstance(masViejo);
+    if (inst) inst.hide(); else masViejo.remove();
+  }
+
   const id  = 'toast-' + Date.now();
   const col = { success:'bg-success', danger:'bg-danger', warning:'bg-warning text-dark', info:'bg-info text-dark' }[tipo];
-  document.getElementById('toastContainer').insertAdjacentHTML('beforeend', `
+  container.insertAdjacentHTML('beforeend', `
     <div id="${id}" class="toast align-items-center text-white ${col} border-0" role="alert">
       <div class="d-flex">
         <div class="toast-body fw-semibold">${mensaje}</div>
