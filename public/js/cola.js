@@ -34,12 +34,18 @@ const PALETA_JUEGOS = [
   { accent: '#eab308', bg: 'rgba(234,179,8,0.12)',   bgStrong: '#eab308', border: 'rgba(234,179,8,0.35)',   text: '#fde047' }, // amarillo
   { accent: '#ef4444', bg: 'rgba(239,68,68,0.12)',   bgStrong: '#ef4444', border: 'rgba(239,68,68,0.35)',   text: '#fca5a5' }, // rojo
 ];
-// Íconos genéricos que rotan junto con el color — no dependen del nombre del
-// juego (que es libre / lo define el admin), así funciona para cualquier
-// juego futuro sin necesidad de mapear nombre → ícono a mano.
-const ICONOS_JUEGOS = [
-  'bi-speedometer2', 'bi-bullseye', 'bi-trophy-fill', 'bi-lightning-charge-fill',
-  'bi-joystick', 'bi-stars', 'bi-gem', 'bi-fire',
+// Ícono a medida para los juegos conocidos (mismo criterio que las fotos:
+// palabra clave en el nombre, no id). Un juego sin match usa la rotación
+// genérica de abajo, indexada por id para que sea estable.
+const ICONOS_POR_NOMBRE = [
+  { match: /kart/i,          icono: 'bi-speedometer2' },
+  { match: /paintball/i,     icono: 'bi-bullseye' },
+  { match: /escape\s*room/i, icono: 'bi-key-fill' },
+  { match: /atraco/i,        icono: 'bi-bank2' },
+];
+const ICONOS_FALLBACK = [
+  'bi-joystick', 'bi-trophy-fill', 'bi-lightning-charge-fill', 'bi-stars',
+  'bi-gem', 'bi-fire', 'bi-controller', 'bi-dice-5-fill',
 ];
 
 // Se indexa por el ID del juego (fijo en la base), no por su posición en la
@@ -51,7 +57,9 @@ function colorDeJuego(juegoId) {
   return PALETA_JUEGOS[juegoId % PALETA_JUEGOS.length];
 }
 function iconoDeJuego(juegoId) {
-  return ICONOS_JUEGOS[juegoId % ICONOS_JUEGOS.length];
+  const juego    = colaData.find(j => j.id === juegoId);
+  const conocido = ICONOS_POR_NOMBRE.find(e => e.match.test(juego?.nombre || ''));
+  return conocido ? conocido.icono : ICONOS_FALLBACK[juegoId % ICONOS_FALLBACK.length];
 }
 // Fondo ilustrado por juego: se matchea por palabra clave en el nombre, no por
 // id — así el mismo archivo sirve para "Karting", "Karting Indoor", etc., y un
@@ -171,7 +179,7 @@ function renderJugando(juegos) {
 
     return `
     <div class="card-jugando nuevo" id="jugando-${t.id}" style="${estiloJuego(t.juego.id)}">
-      ${tieneImg ? '<div class="foto-fondo"></div>' : `<i class="bi ${icono} icono-fondo"></i>`}
+      ${tieneImg ? '' : `<i class="bi ${icono} icono-fondo"></i>`}
       <div class="juego-label"><i class="bi ${icono}"></i>${escapeHtml(t.juego.nombre)}</div>
       <div class="biper-grande">${escapeHtml(t.biper_numero)}</div>
       <div class="familia-nombre">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>

@@ -187,21 +187,16 @@
       align-items: center;
       gap: 16px;
     }
-    /* Con foto del juego (--jc-img heredada de .juego-card): recuadro acotado
-       en la esquina, no toda la fila — más chico y sin mostrar el logo/texto
-       que la propia imagen ya trae dibujado arriba. */
-    .turno-activo.con-imagen .foto-fondo {
-      position: absolute;
-      right: 0; bottom: 0;
-      width: 30%;
-      height: 100%;
-      background: var(--jc-img, none) center 55% / cover no-repeat;
-      -webkit-mask-image: radial-gradient(140% 160% at 100% 100%, black 30%, transparent 75%);
-              mask-image: radial-gradient(140% 160% at 100% 100%, black 30%, transparent 75%);
-      pointer-events: none;
-      z-index: 0;
+    /* Con foto del juego (--jc-img heredada de .juego-card): cubre la fila
+       entera con "cover" (mismo criterio que cola.html), degradado un toque
+       más cubierto para que se vea algo más chica sin perder el recorte que
+       esconde el logo/texto que la propia imagen trae dibujado arriba. */
+    .turno-activo.con-imagen {
+      background:
+        linear-gradient(100deg, rgba(6,10,28,.95) 0%, rgba(6,10,28,.9) 50%, rgba(6,10,28,.5) 78%, rgba(6,10,28,.2) 100%),
+        var(--jc-img, none) center right / cover no-repeat,
+        var(--jc-bg, rgba(59,130,246,0.1));
     }
-    .turno-activo.con-imagen > *:not(.foto-fondo) { position: relative; z-index: 1; }
     .turno-activo.estado-llamado {
       background: rgba(245,158,11,0.1);
       border-color: rgba(245,158,11,0.3);

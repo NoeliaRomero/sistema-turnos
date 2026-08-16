@@ -179,11 +179,18 @@
       gap: 18px;
     }
 
-    /* Tarjeta jugando — coloreada según --jc-* seteadas inline por juego */
+    /* Tarjeta jugando — coloreada según --jc-* seteadas inline por juego.
+       La foto del juego (--jc-img) cubre la card entera con "cover", pero el
+       degradado oscuro tapa un poco más que antes (48%/74% en vez de 40%/68%)
+       para que se vea un toque más chica sin perder el recorte que esconde el
+       logo/texto que la propia imagen trae dibujado arriba. */
     .card-jugando {
       position: relative;
       overflow: hidden;
-      background: var(--jc-bg, rgba(59,130,246,0.1));
+      background:
+        linear-gradient(100deg, rgba(6,10,28,.95) 0%, rgba(6,10,28,.9) 48%, rgba(6,10,28,.5) 74%, rgba(6,10,28,.2) 100%),
+        var(--jc-img, none) center right / cover no-repeat,
+        var(--jc-bg, rgba(59,130,246,0.1));
       border: 1.5px solid var(--jc-border, rgba(59,130,246,0.3));
       border-radius: 18px;
       padding: 20px 22px;
@@ -193,21 +200,6 @@
       display: flex;
       flex-direction: column;
     }
-    /* Foto del juego: recuadro acotado en la esquina (no toda la card), con
-       máscara radial que la desvanece hacia el fondo — más chica y prolija,
-       y esconde el logo/texto que la propia imagen ya trae dibujado arriba. */
-    .card-jugando .foto-fondo {
-      position: absolute;
-      right: 0; bottom: 0;
-      width: 42%;
-      height: 62%;
-      background: var(--jc-img, none) center 20% / cover no-repeat;
-      -webkit-mask-image: radial-gradient(120% 130% at 100% 100%, black 35%, transparent 78%);
-              mask-image: radial-gradient(120% 130% at 100% 100%, black 35%, transparent 78%);
-      pointer-events: none;
-      z-index: 0;
-    }
-    .card-jugando > *:not(.foto-fondo) { position: relative; z-index: 1; }
     .restante-wrap { margin-top: auto; }
     .card-jugando .icono-fondo {
       position: absolute;

@@ -25,12 +25,18 @@ const PALETA_JUEGOS = [
   { accent: '#eab308', bg: 'rgba(234,179,8,0.10)',  border: 'rgba(234,179,8,0.3)',   text: '#fde047' },
   { accent: '#ef4444', bg: 'rgba(239,68,68,0.10)',  border: 'rgba(239,68,68,0.3)',   text: '#fca5a5' },
 ];
-// Íconos genéricos que rotan junto con el color — no dependen del nombre del
-// juego (lo define el admin libremente), así funciona para cualquier juego
-// futuro sin necesidad de mapear nombre → ícono a mano.
-const ICONOS_JUEGOS = [
-  'bi-speedometer2', 'bi-bullseye', 'bi-trophy-fill', 'bi-lightning-charge-fill',
-  'bi-joystick', 'bi-stars', 'bi-gem', 'bi-fire',
+// Ícono a medida para los juegos conocidos (mismo criterio que las fotos:
+// palabra clave en el nombre, no id). Un juego sin match usa la rotación
+// genérica de abajo, indexada por id para que sea estable.
+const ICONOS_POR_NOMBRE = [
+  { match: /kart/i,          icono: 'bi-speedometer2' },
+  { match: /paintball/i,     icono: 'bi-bullseye' },
+  { match: /escape\s*room/i, icono: 'bi-key-fill' },
+  { match: /atraco/i,        icono: 'bi-bank2' },
+];
+const ICONOS_FALLBACK = [
+  'bi-joystick', 'bi-trophy-fill', 'bi-lightning-charge-fill', 'bi-stars',
+  'bi-gem', 'bi-fire', 'bi-controller', 'bi-dice-5-fill',
 ];
 // Se indexa por el ID del juego (fijo en la base), no por su posición en la
 // lista: ver la misma nota en cola.js — así el color de cada juego no se
@@ -39,7 +45,9 @@ function colorDeJuego(juegoId) {
   return PALETA_JUEGOS[juegoId % PALETA_JUEGOS.length];
 }
 function iconoDeJuego(juegoId) {
-  return ICONOS_JUEGOS[juegoId % ICONOS_JUEGOS.length];
+  const juego    = estadoJuegos.find(j => j.id === juegoId);
+  const conocido = ICONOS_POR_NOMBRE.find(e => e.match.test(juego?.nombre || ''));
+  return conocido ? conocido.icono : ICONOS_FALLBACK[juegoId % ICONOS_FALLBACK.length];
 }
 // Fondo ilustrado por juego (mismo criterio que cola.js): se matchea por
 // palabra clave en el nombre, no por id, y si no hay imagen conocida para ese
@@ -158,7 +166,7 @@ function renderJuegoCard(j) {
           ? `<span class="meta-chip chip-etapa"><i class="bi bi-layers me-1"></i>${escapeHtml(t.etapa_actual_nombre)}</span>` : '';
         return `
           <div class="turno-activo ${esLlamado ? 'estado-llamado' : ''} ${tieneImg ? 'con-imagen' : ''} nuevo">
-            ${tieneImg ? '<div class="foto-fondo"></div>' : `<i class="bi ${icono} icono-fondo"></i>`}
+            ${tieneImg ? '' : `<i class="bi ${icono} icono-fondo"></i>`}
             <div class="biper-tv">${escapeHtml(t.biper_numero)}</div>
             <div class="turno-info">
               <div class="turno-cliente">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>
