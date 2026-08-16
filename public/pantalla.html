@@ -195,9 +195,14 @@
       display: flex;
       align-items: center;
       gap: 10px;
+      min-width: 0;
+      flex-shrink: 1;
+      overflow: hidden;
     }
-    .juego-contadores { display: flex; gap: 8px; }
-    .contador-badge { font-size: .8rem; font-weight: 700; padding: 4px 12px; border-radius: 20px; }
+    .juego-nombre i { flex-shrink: 0; }
+    .juego-nombre-txt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+    .juego-contadores { display: flex; gap: 8px; flex-shrink: 0; }
+    .contador-badge { font-size: .8rem; font-weight: 700; padding: 4px 12px; border-radius: 20px; white-space: nowrap; }
     .badge-activo  { background: rgba(59,130,246,0.35); color: #93c5fd; border: 1px solid rgba(59,130,246,0.5); }
     .badge-espera  { background: rgba(245,158,11,0.25); color: #fcd34d; border: 1px solid rgba(245,158,11,0.4); }
 
@@ -331,6 +336,26 @@
     ::-webkit-scrollbar { width:6px; }
     ::-webkit-scrollbar-track { background:transparent; }
     ::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.15); border-radius:4px; }
+
+    /* ── Responsive — vista previa desde admin en monitores de PC más chicos.
+       La base de arriba (html:19px) queda intacta para la TV real de 55",
+       ya validada en hardware. Estos breakpoints solo entran en pantallas
+       angostas donde el header se pisaría y las cards no entrarían. ── */
+    @media (max-width: 1600px) {
+      html { font-size: 16px; }
+      .juegos-grid { grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); }
+    }
+    @media (max-width: 1100px) {
+      html { font-size: 14px; }
+      .juegos-grid { grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); }
+      header { flex-wrap: wrap; row-gap: 10px; padding: 16px 20px; }
+      .titulo-central { order: 3; flex-basis: 100%; }
+    }
+    @media (max-width: 700px) {
+      html { font-size: 12px; }
+      .juegos-grid { grid-template-columns: 1fr; }
+      main { padding: 16px; }
+    }
   </style>
 </head>
 <body>
@@ -393,6 +418,6 @@
 
 <link href="/vendor/bootstrap-icons.min.css" rel="stylesheet">
 <script src="/socket.io/socket.io.js"></script>
-<script src="/js/pantalla.js"></script>
+<script src="/js/pantalla.js?v=20260816c"></script>
 </body>
 </html>

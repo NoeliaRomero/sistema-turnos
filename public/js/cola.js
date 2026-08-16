@@ -118,7 +118,7 @@ function estiloJuego(juegoId) {
 // ── Reloj ─────────────────────────────────────────────────────────────────────
 function tickReloj() {
   document.getElementById('clock').textContent =
-    new Date().toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    new Date().toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12: false });
 }
 tickReloj();
 setInterval(tickReloj, 1000);

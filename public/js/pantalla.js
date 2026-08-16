@@ -98,7 +98,7 @@ function estiloJuego(juegoId) {
 // ── Reloj ─────────────────────────────────────────────────────────────────────
 function tickReloj() {
   document.getElementById('clock').textContent =
-    new Date().toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    new Date().toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12: false });
 }
 tickReloj();
 setInterval(tickReloj, 1000);
@@ -243,7 +243,7 @@ function renderJuegoCard(j) {
   return `
     <div class="juego-card" id="juego-${j.id}" style="${estiloJuego(j.id)}">
       <div class="juego-header">
-        <span class="juego-nombre"><i class="bi ${icono}"></i>${escapeHtml(j.nombre)}</span>
+        <span class="juego-nombre"><i class="bi ${icono}"></i><span class="juego-nombre-txt">${escapeHtml(j.nombre)}</span></span>
         <div class="juego-contadores">
           <span class="contador-badge badge-activo"><i class="bi bi-play-fill"></i> ${totalActivos} activo${totalActivos !== 1 ? 's' : ''}</span>
           <span class="contador-badge badge-espera"><i class="bi bi-hourglass-split"></i> ${totalCola} en cola</span>
