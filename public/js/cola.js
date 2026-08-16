@@ -11,7 +11,11 @@ let timerTick  = null;
 // etc. — ver cargarCola) vuelve siempre a la página 1 para que lo urgente se
 // vea ya; el recálculo local de tiempos cada 30s no toca la página actual.
 const ROTACION_MS = 6000;
-const POR_PAGINA_JUGANDO = 4;
+// 2 y no 4: las cards de "jugando ahora" son altas y en un TV real de 55"
+// (confirmado por el usuario) solo entran 2 completas antes de necesitar
+// scroll — con 3 o más ya se cortaba la última sin que el paginado la rotara,
+// porque 3 caben "en teoría" en una sola página de 4 pero no en la pantalla.
+const POR_PAGINA_JUGANDO = 2;
 const POR_PAGINA_ESPERA  = 6;
 
 let _pagJugando = 0, _timerJugando = null;

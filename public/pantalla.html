@@ -21,7 +21,7 @@
 
     /* ── Fondo decorativo animado (Speed Park bg-fx) ──────────────────────── */
     .bg-fx { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
-    header, main, footer { position: relative; z-index: 1; }
+    header, main { position: relative; z-index: 1; }
 
     .energy-orb { position: absolute; border-radius: 50%; filter: blur(80px); opacity: .4; animation: pulse-glow 4s ease-in-out infinite; }
     .energy-left-1  { width:600px; height:600px; left:-200px; top:100px; background: radial-gradient(circle, rgba(255,45,0,.8) 0%, rgba(255,107,53,.3) 100%); animation-delay: 0s; }
@@ -170,6 +170,9 @@
 
     /* ── Tarjeta de juego — coloreada según --jc-* seteadas inline por juego ── */
     .juego-card {
+      /* max-width: con una sola card en el grid (ej. un solo juego activo)
+         la grilla la estira a lo ancho del contenedor entero — esto la tapa. */
+      max-width: 560px;
       background: rgba(255,255,255,0.04);
       border: 1.5px solid var(--jc-border, rgba(255,255,255,0.15));
       border-top: 6px solid var(--jc-accent, rgba(255,255,255,0.3));
@@ -288,31 +291,6 @@
     .sin-cola { color: rgba(255,255,255,0.22); font-size: .95rem; padding: 4px 0; }
     .sin-activo { color: rgba(255,255,255,0.22); font-size: .95rem; padding: 4px 0; }
 
-    /* ── Footer informativo ── */
-    footer {
-      flex-shrink: 0;
-      border-top: 1px solid rgba(255,255,255,0.08);
-      background: rgba(255,255,255,0.02);
-      padding: 16px 36px;
-      display: flex;
-      justify-content: space-around;
-      gap: 20px;
-      flex-wrap: wrap;
-    }
-    .footer-item { display:flex; align-items:center; gap:14px; }
-    .footer-item .icono {
-      width: 40px; height: 40px; border-radius: 50%;
-      display:flex; align-items:center; justify-content:center;
-      font-size: 1.15rem;
-      flex-shrink: 0;
-    }
-    .footer-item:nth-child(1) .icono { background: rgba(59,130,246,.15); color:#60a5fa; }
-    .footer-item:nth-child(2) .icono { background: rgba(250,204,21,.15); color:#facc15; }
-    .footer-item:nth-child(3) .icono { background: rgba(249,115,22,.15); color:#fb923c; }
-    .footer-item .texto .linea1 { font-size:.78rem; font-weight:700; letter-spacing:.5px; color: rgba(255,255,255,.6); text-transform:uppercase; }
-    .footer-item .texto .linea2 { font-size:.95rem; font-weight:800; color: rgba(255,255,255,.95); }
-    .footer-item:nth-child(1) .texto .linea2 { color:#93c5fd; }
-    .footer-item:nth-child(3) .texto .linea2 { color:#fdba74; }
 
     /* Flash overlay */
     #flash {
@@ -412,30 +390,6 @@
   <div class="juegos-grid" id="juegosGrid" style="display:none"></div>
   <div class="paginador" id="dotsJuegos"></div>
 </main>
-
-<footer>
-  <div class="footer-item">
-    <div class="icono"><i class="bi bi-info-circle-fill"></i></div>
-    <div class="texto">
-      <div class="linea1">Los tiempos son</div>
-      <div class="linea2">Estimados</div>
-    </div>
-  </div>
-  <div class="footer-item">
-    <div class="icono"><i class="bi bi-star-fill"></i></div>
-    <div class="texto">
-      <div class="linea1">¡Gracias por elegirnos!</div>
-      <div class="linea2">Que te diviertas</div>
-    </div>
-  </div>
-  <div class="footer-item">
-    <div class="icono"><i class="bi bi-ticket-perforated-fill"></i></div>
-    <div class="texto">
-      <div class="linea1">¿Ya tenés tu turno?</div>
-      <div class="linea2">Preparate y que comience la diversión</div>
-    </div>
-  </div>
-</footer>
 
 <link href="/vendor/bootstrap-icons.min.css" rel="stylesheet">
 <script src="/socket.io/socket.io.js"></script>
