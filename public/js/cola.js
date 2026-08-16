@@ -42,13 +42,16 @@ const ICONOS_JUEGOS = [
   'bi-joystick', 'bi-stars', 'bi-gem', 'bi-fire',
 ];
 
+// Se indexa por el ID del juego (fijo en la base), no por su posición en la
+// lista: el backend ordena por nombre, así que renombrar o agregar un juego
+// corre el orden alfabético — si indexáramos por posición, TODOS los colores
+// se reacomodarían en cascada cada vez que eso pasa. Con el id, el color de
+// cada juego queda fijo para siempre, sin importar cómo se reordene la lista.
 function colorDeJuego(juegoId) {
-  const idx = colaData.findIndex(j => j.id === juegoId);
-  return PALETA_JUEGOS[(idx >= 0 ? idx : 0) % PALETA_JUEGOS.length];
+  return PALETA_JUEGOS[juegoId % PALETA_JUEGOS.length];
 }
 function iconoDeJuego(juegoId) {
-  const idx = colaData.findIndex(j => j.id === juegoId);
-  return ICONOS_JUEGOS[(idx >= 0 ? idx : 0) % ICONOS_JUEGOS.length];
+  return ICONOS_JUEGOS[juegoId % ICONOS_JUEGOS.length];
 }
 // Fondo ilustrado por juego: se matchea por palabra clave en el nombre, no por
 // id — así el mismo archivo sirve para "Karting", "Karting Indoor", etc., y un
@@ -168,7 +171,7 @@ function renderJugando(juegos) {
 
     return `
     <div class="card-jugando nuevo" id="jugando-${t.id}" style="${estiloJuego(t.juego.id)}">
-      ${tieneImg ? '' : `<i class="bi ${icono} icono-fondo"></i>`}
+      ${tieneImg ? '<div class="foto-fondo"></div>' : `<i class="bi ${icono} icono-fondo"></i>`}
       <div class="juego-label"><i class="bi ${icono}"></i>${escapeHtml(t.juego.nombre)}</div>
       <div class="biper-grande">${escapeHtml(t.biper_numero)}</div>
       <div class="familia-nombre">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>

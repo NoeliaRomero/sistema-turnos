@@ -32,13 +32,14 @@ const ICONOS_JUEGOS = [
   'bi-speedometer2', 'bi-bullseye', 'bi-trophy-fill', 'bi-lightning-charge-fill',
   'bi-joystick', 'bi-stars', 'bi-gem', 'bi-fire',
 ];
+// Se indexa por el ID del juego (fijo en la base), no por su posición en la
+// lista: ver la misma nota en cola.js — así el color de cada juego no se
+// reacomoda en cascada cuando se renombra o agrega otro juego.
 function colorDeJuego(juegoId) {
-  const idx = estadoJuegos.findIndex(j => j.id === juegoId);
-  return PALETA_JUEGOS[(idx >= 0 ? idx : 0) % PALETA_JUEGOS.length];
+  return PALETA_JUEGOS[juegoId % PALETA_JUEGOS.length];
 }
 function iconoDeJuego(juegoId) {
-  const idx = estadoJuegos.findIndex(j => j.id === juegoId);
-  return ICONOS_JUEGOS[(idx >= 0 ? idx : 0) % ICONOS_JUEGOS.length];
+  return ICONOS_JUEGOS[juegoId % ICONOS_JUEGOS.length];
 }
 // Fondo ilustrado por juego (mismo criterio que cola.js): se matchea por
 // palabra clave en el nombre, no por id, y si no hay imagen conocida para ese
@@ -157,7 +158,7 @@ function renderJuegoCard(j) {
           ? `<span class="meta-chip chip-etapa"><i class="bi bi-layers me-1"></i>${escapeHtml(t.etapa_actual_nombre)}</span>` : '';
         return `
           <div class="turno-activo ${esLlamado ? 'estado-llamado' : ''} ${tieneImg ? 'con-imagen' : ''} nuevo">
-            ${tieneImg ? '' : `<i class="bi ${icono} icono-fondo"></i>`}
+            ${tieneImg ? '<div class="foto-fondo"></div>' : `<i class="bi ${icono} icono-fondo"></i>`}
             <div class="biper-tv">${escapeHtml(t.biper_numero)}</div>
             <div class="turno-info">
               <div class="turno-cliente">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>

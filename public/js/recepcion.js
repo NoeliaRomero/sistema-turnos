@@ -798,7 +798,7 @@ socket.on('turno:finalizado',    () => cargarCola());
 socket.on('turno:reordenado',    () => cargarCola());
 socket.on('turno:editado',       () => cargarCola());
 socket.on('turno:eliminado',     () => cargarCola());
-socket.on('juego:actualizado',   () => cargarCola());
+socket.on('juego:actualizado',   () => { cargarCola(); cargarAtracciones(); });
 
 // ── Notificación de turno finalizado (enviada por operador) ───────────────────
 socket.on('recepcion:notificacion', (data) => {
