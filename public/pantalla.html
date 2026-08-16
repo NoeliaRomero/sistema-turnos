@@ -161,6 +161,14 @@
       align-items: center;
       gap: 16px;
     }
+    /* Con foto del juego (--jc-img heredada de .juego-card): degradado oscuro
+       encima para que el texto siga siendo legible. */
+    .turno-activo.con-imagen {
+      background:
+        linear-gradient(100deg, rgba(6,10,28,.95) 0%, rgba(6,10,28,.88) 45%, rgba(6,10,28,.4) 75%, rgba(6,10,28,.1) 100%),
+        var(--jc-img, none) center right / cover no-repeat,
+        var(--jc-bg, rgba(59,130,246,0.1));
+    }
     .turno-activo.estado-llamado {
       background: rgba(245,158,11,0.1);
       border-color: rgba(245,158,11,0.3);

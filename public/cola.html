@@ -84,30 +84,30 @@
 
     /* ── Filtro juegos ── */
     .filtros {
-      padding: 14px 36px;
+      padding: 8px 36px;
       display: flex;
-      gap: 12px;
+      gap: 8px;
       align-items: center;
       flex-wrap: wrap;
       flex-shrink: 0;
       border-bottom: 1px solid rgba(255,255,255,0.06);
     }
-    .filtros .etiqueta { color:rgba(255,255,255,.4); font-size:.85rem; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; }
+    .filtros .etiqueta { color:rgba(255,255,255,.4); font-size:.72rem; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; }
     .filtro-btn {
       background: rgba(255,255,255,0.05);
       border: 1.5px solid rgba(255,255,255,0.15);
       color: rgba(255,255,255,0.8);
-      padding: 9px 22px;
-      border-radius: 26px;
-      font-size: 1rem;
+      padding: 5px 16px;
+      border-radius: 20px;
+      font-size: .8rem;
       font-weight: 700;
       cursor: pointer;
       transition: all .2s;
       display: inline-flex;
       align-items: center;
-      gap: 10px;
+      gap: 7px;
     }
-    .filtro-btn i { font-size: 1.1rem; }
+    .filtro-btn i { font-size: .9rem; }
     .filtro-btn.activo {
       background: var(--jc-accent, #3b82f6);
       border-color: var(--jc-accent, #3b82f6);
@@ -124,7 +124,7 @@
       overflow: hidden;
     }
 
-    .col-jugando, .col-cola { overflow-y: auto; padding: 26px 32px; }
+    .col-jugando, .col-cola { overflow-y: auto; padding: 18px 32px 26px; }
     .col-jugando { border-right: 1px solid rgba(255,255,255,0.08); }
 
     .col-title {
@@ -132,7 +132,7 @@
       font-weight: 800;
       letter-spacing: 2px;
       text-transform: uppercase;
-      margin-bottom: 20px;
+      margin-bottom: 16px;
       display: flex;
       align-items: center;
       gap: 12px;
@@ -157,7 +157,13 @@
     .card-jugando {
       position: relative;
       overflow: hidden;
-      background: var(--jc-bg, rgba(59,130,246,0.1));
+      /* Degradado oscuro por encima de la foto del juego (--jc-img) para que
+         el texto siga siendo legible; si el juego no tiene foto asociada,
+         --jc-img queda en "none" y solo se ve el color de fondo del juego. */
+      background:
+        linear-gradient(100deg, rgba(6,10,28,.95) 0%, rgba(6,10,28,.88) 40%, rgba(6,10,28,.45) 68%, rgba(6,10,28,.15) 100%),
+        var(--jc-img, none) center right / cover no-repeat,
+        var(--jc-bg, rgba(59,130,246,0.1));
       border: 1.5px solid var(--jc-border, rgba(59,130,246,0.3));
       border-radius: 18px;
       padding: 20px 22px;

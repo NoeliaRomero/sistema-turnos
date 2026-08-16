@@ -50,9 +50,27 @@ function iconoDeJuego(juegoId) {
   const idx = colaData.findIndex(j => j.id === juegoId);
   return ICONOS_JUEGOS[(idx >= 0 ? idx : 0) % ICONOS_JUEGOS.length];
 }
+// Fondo ilustrado por juego: se matchea por palabra clave en el nombre, no por
+// id — así el mismo archivo sirve para "Karting", "Karting Indoor", etc., y un
+// juego sin imagen conocida (ej. "Tiro al Blanco") simplemente no lleva foto,
+// sin romper nada.
+const IMAGENES_JUEGOS = [
+  { match: /kart/i,               archivo: 'karting.png' },
+  { match: /paintball/i,          archivo: 'paintball.png' },
+  { match: /escape\s*room/i,      archivo: 'escaperoom.png' },
+  { match: /atraco/i,             archivo: 'atraco.png' },
+];
+function imagenDeJuego(nombre) {
+  const encontrado = IMAGENES_JUEGOS.find(e => e.match.test(nombre || ''));
+  return encontrado ? `/assets/juegos/${encontrado.archivo}` : null;
+}
+
 function estiloJuego(juegoId) {
   const c = colorDeJuego(juegoId);
-  return `--jc-accent:${c.accent}; --jc-bg:${c.bg}; --jc-bg-strong:${c.bgStrong}; --jc-border:${c.border}; --jc-text:${c.text};`;
+  const juego = colaData.find(j => j.id === juegoId);
+  const img   = imagenDeJuego(juego?.nombre);
+  const imgCss = img ? `url('${img}')` : 'none';
+  return `--jc-accent:${c.accent}; --jc-bg:${c.bg}; --jc-bg-strong:${c.bgStrong}; --jc-border:${c.border}; --jc-text:${c.text}; --jc-img:${imgCss};`;
 }
 
 // ── Reloj ─────────────────────────────────────────────────────────────────────
@@ -124,6 +142,7 @@ function renderJugando(juegos) {
       ? Math.min(100, Math.round((t.tiempo_transcurrido / t.juego.duracion_minutos) * 100)) : 0;
     const vencido = t.tiempo_transcurrido > t.juego.duracion_minutos;
     const icono   = iconoDeJuego(t.juego.id);
+    const tieneImg = !!imagenDeJuego(t.juego.nombre);
 
     const etapaHtml = t.etapa_actual_nombre
       ? `<div class="etapa-tv">
@@ -149,7 +168,7 @@ function renderJugando(juegos) {
 
     return `
     <div class="card-jugando nuevo" id="jugando-${t.id}" style="${estiloJuego(t.juego.id)}">
-      <i class="bi ${icono} icono-fondo"></i>
+      ${tieneImg ? '' : `<i class="bi ${icono} icono-fondo"></i>`}
       <div class="juego-label"><i class="bi ${icono}"></i>${escapeHtml(t.juego.nombre)}</div>
       <div class="biper-grande">${escapeHtml(t.biper_numero)}</div>
       <div class="familia-nombre">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>

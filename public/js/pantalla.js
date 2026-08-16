@@ -40,9 +40,26 @@ function iconoDeJuego(juegoId) {
   const idx = estadoJuegos.findIndex(j => j.id === juegoId);
   return ICONOS_JUEGOS[(idx >= 0 ? idx : 0) % ICONOS_JUEGOS.length];
 }
+// Fondo ilustrado por juego (mismo criterio que cola.js): se matchea por
+// palabra clave en el nombre, no por id, y si no hay imagen conocida para ese
+// juego (ej. "Tiro al Blanco") simplemente no lleva foto.
+const IMAGENES_JUEGOS = [
+  { match: /kart/i,          archivo: 'karting.png' },
+  { match: /paintball/i,     archivo: 'paintball.png' },
+  { match: /escape\s*room/i, archivo: 'escaperoom.png' },
+  { match: /atraco/i,        archivo: 'atraco.png' },
+];
+function imagenDeJuego(nombre) {
+  const encontrado = IMAGENES_JUEGOS.find(e => e.match.test(nombre || ''));
+  return encontrado ? `/assets/juegos/${encontrado.archivo}` : null;
+}
+
 function estiloJuego(juegoId) {
   const c = colorDeJuego(juegoId);
-  return `--jc-accent:${c.accent}; --jc-bg:${c.bg}; --jc-border:${c.border}; --jc-text:${c.text};`;
+  const juego = estadoJuegos.find(j => j.id === juegoId);
+  const img   = imagenDeJuego(juego?.nombre);
+  const imgCss = img ? `url('${img}')` : 'none';
+  return `--jc-accent:${c.accent}; --jc-bg:${c.bg}; --jc-border:${c.border}; --jc-text:${c.text}; --jc-img:${imgCss};`;
 }
 
 // ── Reloj ─────────────────────────────────────────────────────────────────────
@@ -127,6 +144,7 @@ function renderJuegoCard(j) {
   const totalActivos = j.activos.length;
   const totalCola    = j.cola.length;
   const icono        = iconoDeJuego(j.id);
+  const tieneImg     = !!imagenDeJuego(j.nombre);
 
   const activosHtml = totalActivos
     ? j.activos.map(t => {
@@ -138,8 +156,8 @@ function renderJuegoCard(j) {
         const chipEtapa  = t.etapa_actual_nombre
           ? `<span class="meta-chip chip-etapa"><i class="bi bi-layers me-1"></i>${escapeHtml(t.etapa_actual_nombre)}</span>` : '';
         return `
-          <div class="turno-activo ${esLlamado ? 'estado-llamado' : ''} nuevo">
-            <i class="bi ${icono} icono-fondo"></i>
+          <div class="turno-activo ${esLlamado ? 'estado-llamado' : ''} ${tieneImg ? 'con-imagen' : ''} nuevo">
+            ${tieneImg ? '' : `<i class="bi ${icono} icono-fondo"></i>`}
             <div class="biper-tv">${escapeHtml(t.biper_numero)}</div>
             <div class="turno-info">
               <div class="turno-cliente">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>
