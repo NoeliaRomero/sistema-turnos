@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cola de Turnos – Pantalla Pública</title>
+  <style>
+    /* Base pensada para un TV de 55" visto a varios metros: partimos de un
+       tamaño de fuente raíz más grande y todo lo demás escala en rem. */
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html { font-size: 20px; }
+    body {
+      background: #05091f;
+      color: white;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    header {
+      background: rgba(255,255,255,0.05);
+      border-bottom: 1px solid rgba(255,255,255,0.08);
+      padding: 18px 36px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-shrink: 0;
+    }
+    .brand { font-size:1.5rem; font-weight:800; color:rgba(255,255,255,0.92); letter-spacing:2px; text-transform:uppercase; }
+    .clock { font-size:1.7rem; font-weight:600; color:rgba(255,255,255,0.6); font-variant-numeric:tabular-nums; }
+
+    /* ── Filtro juegos ── */
+    .filtros {
+      background: rgba(255,255,255,0.03);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding: 12px 36px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      flex-wrap: wrap;
+      flex-shrink: 0;
+    }
+    .filtro-btn {
+      background: rgba(255,255,255,0.08);
+      border: 1px solid rgba(255,255,255,0.12);
+      color: rgba(255,255,255,0.75);
+      padding: 8px 20px;
+      border-radius: 24px;
+      font-size: 1.05rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all .2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+    }
+    .filtro-btn .dot-juego { width:11px; height:11px; border-radius:50%; flex-shrink:0; }
+    .filtro-btn.activo {
+      background: var(--jc-bg-strong, #3b82f6);
+      border-color: var(--jc-accent, #3b82f6);
+      color: white;
+      box-shadow: 0 0 0 2px var(--jc-accent, #3b82f6) inset;
+    }
+
+    /* ── Contenido principal ── */
+    main {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 0;
+      overflow: hidden;
+    }
+
+    /* ── Columna JUGANDO ── */
+    .col-jugando {
+      border-right: 1px solid rgba(255,255,255,0.07);
+      overflow-y: auto;
+      padding: 28px 32px;
+    }
+    .col-title {
+      font-size: 1.2rem;
+      font-weight: 800;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      margin-bottom: 22px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+    .col-title .dot {
+      width: 12px; height: 12px;
+      border-radius: 50%;
+      animation: blink-dot 1.2s ease infinite;
+    }
+    .dot-azul  { background: #3b82f6; }
+    .dot-verde { background: #10b981; }
+    @keyframes blink-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
+
+    /* Tarjeta jugando — el color de cada juego se aplica vía variables CSS
+       inline (--jc-accent, --jc-bg, --jc-border, --jc-text) para que cada
+       juego se distinga de un vistazo, incluso mezclados en la misma vista. */
+    .card-jugando {
+      background: var(--jc-bg, rgba(59,130,246,0.12));
+      border: 1px solid var(--jc-border, rgba(59,130,246,0.3));
+      border-left: 8px solid var(--jc-accent, #3b82f6);
+      border-radius: 16px;
+      padding: 20px 24px;
+      margin-bottom: 18px;
+    }
+    .juego-label-row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+    .juego-label {
+      font-size: .95rem;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: var(--jc-text, #93c5fd);
+      font-weight: 800;
+    }
+    .estado-chip {
+      font-size: .8rem;
+      font-weight: 800;
+      letter-spacing: .5px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      text-transform: uppercase;
+    }
+    .estado-chip.jugando { background: rgba(59,130,246,0.3); color: #bfdbfe; }
+    .estado-chip.llamado { background: rgba(245,158,11,0.3); color: #fde68a; }
+
+    .biper-grande { font-size: 4.6rem; font-weight: 900; line-height: 1; color: var(--jc-accent, #60a5fa); }
+    .familia-nombre { font-size: 1.9rem; font-weight: 700; margin: 8px 0 6px; }
+    .info-row { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-top:10px; }
+    .tag-miembros { font-size:1rem; background:rgba(255,255,255,0.1); color:rgba(255,255,255,0.85); padding:4px 14px; border-radius:20px; font-weight:600; }
+    .etapa-tv { display:flex; align-items:center; gap:10px; margin: 8px 0 6px; flex-wrap:wrap; }
+    .etapa-tv-actual { font-size:1rem; font-weight:700; background:rgba(99,179,237,0.25); color:#90cdf4; padding:4px 14px; border-radius:20px; }
+    .etapa-tv-sig    { font-size:.92rem; color:rgba(255,255,255,.5); }
+    .progreso-wrap { margin-top: 14px; }
+    .progreso-label { font-size:.95rem; color:rgba(255,255,255,.6); margin-bottom:6px; display:flex; justify-content:space-between; font-weight:600; }
+    .progreso-bar { background: rgba(255,255,255,0.1); border-radius:10px; height:12px; overflow:hidden; }
+    .progreso-fill { background: var(--jc-accent, #3b82f6); height:100%; border-radius:10px; transition: width 1s; }
+    .progreso-fill.vencido { background: #ef4444; }
+
+    /* ── Columna COLA ── */
+    .col-cola {
+      overflow-y: auto;
+      padding: 28px 32px;
+    }
+
+    /* Fila de cola */
+    .card-cola {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-left: 6px solid var(--jc-accent, rgba(255,255,255,0.15));
+      border-radius: 14px;
+      padding: 18px 22px;
+      margin-bottom: 14px;
+      transition: background .2s;
+    }
+    .card-cola:hover { background: rgba(255,255,255,0.07); }
+    .card-cola.proximo {
+      background: rgba(16,185,129,0.12);
+      border-color: rgba(16,185,129,0.3);
+      border-left: 6px solid #10b981;
+    }
+    .posicion { font-size:1.6rem; font-weight:900; color:rgba(255,255,255,0.35); min-width:36px; }
+    .card-cola.proximo .posicion { color: #34d399; }
+    .biper-col { font-size:2.1rem; font-weight:900; color:rgba(255,255,255,0.92); min-width:68px; text-align:center; }
+    .familia-col { flex:1; margin: 0 18px; }
+    .familia-col .nombre { font-size:1.35rem; font-weight:700; }
+    .familia-col .sub    { font-size:.95rem; color:rgba(255,255,255,.55); margin-top:3px; }
+    .espera-col { text-align:right; }
+    .espera-num {
+      font-size:1.7rem; font-weight:900;
+      color: #fbbf24;
+    }
+    .espera-col.proximo .espera-num { color: #34d399; font-size:1.35rem; }
+    .espera-label { font-size:.78rem; color:rgba(255,255,255,.45); text-transform:uppercase; letter-spacing:1px; }
+
+    /* Juego separador en cola */
+    .juego-sep {
+      font-size:.9rem; font-weight:800; letter-spacing:3px; text-transform:uppercase;
+      color: var(--jc-text, rgba(255,255,255,0.3));
+      padding: 16px 0 8px;
+      border-top: 1px solid rgba(255,255,255,0.06);
+      margin-top: 10px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .juego-sep .dot-juego { width:10px; height:10px; border-radius:50%; background: var(--jc-accent, currentColor); }
+    .juego-sep:first-child { border-top:none; margin-top:0; padding-top:0; }
+
+    /* Sin datos */
+    .sin-datos {
+      text-align: center;
+      color: rgba(255,255,255,0.2);
+      padding: 60px 20px;
+      font-size: 1.1rem;
+    }
+    .sin-datos i { font-size: 4.5rem; display:block; margin-bottom:16px; }
+
+    /* Flash */
+    #flash {
+      pointer-events:none; position:fixed; inset:0;
+      background:rgba(59,130,246,0.15); opacity:0;
+      transition:opacity .2s; z-index:999;
+    }
+    #flash.show { opacity:1; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width:6px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.15); border-radius:4px; }
+  </style>
+</head>
+<body>
+<div id="flash"></div>
+
+<header>
+  <div class="brand"><i class="bi bi-controller"></i> Cola de Turnos</div>
+  <div class="clock" id="clock">--:--:--</div>
+</header>
+
+<div class="filtros" id="filtros">
+  <span style="color:rgba(255,255,255,.4); font-size:.8rem; text-transform:uppercase; letter-spacing:1px;">Filtrar:</span>
+  <button class="filtro-btn activo" data-id="">Todos los juegos</button>
+</div>
+
+<main>
+  <div class="col-jugando">
+    <div class="col-title">
+      <span class="dot dot-azul"></span>
+      Jugando ahora
+    </div>
+    <div id="listaJugando">
+      <div class="sin-datos"><i>🎮</i>Sin grupos jugando</div>
+    </div>
+  </div>
+
+  <div class="col-cola">
+    <div class="col-title">
+      <span class="dot dot-verde"></span>
+      En espera
+    </div>
+    <div id="listaCola">
+      <div class="sin-datos"><i>⏳</i>Sin grupos en espera</div>
+    </div>
+  </div>
+</main>
+
+<link href="/vendor/bootstrap-icons.min.css" rel="stylesheet">
+<script src="/socket.io/socket.io.js"></script>
+<script src="/js/cola.js"></script>
+</body>
+</html>

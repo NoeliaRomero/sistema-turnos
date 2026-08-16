@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Sistema de Turnos</title>
+  <script>
+    // Verificar sesión y redirigir al panel correcto
+    (async () => {
+      try {
+        const res = await fetch('/api/auth/me');
+        if (!res.ok) { window.location.href = '/login.html'; return; }
+        const me = await res.json();
+        const destinos = { superadmin: '/superadmin.html', admin: '/admin.html', operador: '/operador.html', recepcion: '/recepcion.html' };
+        window.location.href = destinos[me.rol] || '/login.html';
+      } catch (_) {
+        window.location.href = '/login.html';
+      }
+    })();
+  </script>
+</head>
+<body></body>
+</html>

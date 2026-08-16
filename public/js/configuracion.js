@@ -1,0 +1,1204 @@
+// ── Auth ──────────────────────────────────────────────────────────────────────
+let me = null;
+const socket = io();
+
+(async () => {
+  const res = await fetch('/api/auth/me');
+  if (!res.ok) { window.location.href = '/login.html'; return; }
+  me = await res.json();
+  if (me.rol !== 'admin') { window.location.href = '/login.html'; return; }
+  document.getElementById('usuarioNombre').textContent = me.nombre;
+  cargarConfigGeneral();
+  cargarVipers();
+  cargarSerialConfig();
+  cargarEstadoArduino();
+  cargarRfConfig();
+  cargarMetricasViper();
+  cargarEventosViper();
+  setInterval(cargarEstadoArduino, 15000);
+})();
+
+document.getElementById('btnVolver').addEventListener('click', () => {
+  window.location.href = '/admin.html';
+});
+
+document.getElementById('btnLogout').addEventListener('click', async () => {
+  await fetch('/api/auth/logout', { method: 'POST' });
+  window.location.href = '/login.html';
+});
+
+// ── Menú lateral / paneles dinámicos ───────────────────────────────────────────
+document.getElementById('configMenu').addEventListener('click', e => {
+  const btn = e.target.closest('[data-panel]');
+  if (!btn) return;
+
+  document.querySelectorAll('#configMenu .list-group-item').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+
+  document.querySelectorAll('.config-panel').forEach(p => p.classList.add('d-none'));
+  document.getElementById('panel' + btn.dataset.panel.charAt(0).toUpperCase() + btn.dataset.panel.slice(1)).classList.remove('d-none');
+
+  if (btn.dataset.panel === 'backups')  inicializarPanelBackups();
+  if (btn.dataset.panel === 'servidor') cargarEstadoServidor();
+});
+
+// ── Socket.io: log serial + actualización de VIPERs ────────────────────────────
+socket.on('serial:log', data => {
+  const log = document.getElementById('serialLog');
+  if (!log) return;
+  const hora = new Date(data?.ts || Date.now()).toLocaleTimeString();
+  log.insertAdjacentHTML('beforeend', `[${hora}] ${escapeHtml(data?.mensaje ?? data)}\n`);
+  log.scrollTop = log.scrollHeight;
+});
+
+socket.on('viper:actualizado', () => cargarVipers());
+
+// ── VIPER ─────────────────────────────────────────────────────────────────────
+const ESTADO_BADGE = {
+  PENDIENTE: '<span class="estado-badge estado-PENDIENTE">Pendiente</span>',
+  VALIDANDO: '<span class="estado-badge estado-VALIDANDO">Validando…</span>',
+  ACTIVO:    '<span class="estado-badge estado-ACTIVO">Activo</span>',
+  ERROR:     '<span class="estado-badge estado-ERROR">Error</span>',
+};
+
+let vipersCache = [];
+
+async function cargarVipers() {
+  const res = await fetch('/api/vipers');
+  if (!res.ok) return;
+  const vipers = await res.json();
+  vipersCache = vipers;
+  const tbody = document.getElementById('tablaVipers');
+  if (!tbody) return;
+  tbody.innerHTML = vipers.length === 0
+    ? '<tr><td colspan="5" class="text-center text-muted py-4">No hay VIPERs registrados</td></tr>'
+    : vipers.map(v => `
+      <tr>
+        <td class="ps-4 fw-semibold">${v.id}</td>
+        <td>${escapeHtml(v.codigo_viper)}</td>
+        <td class="text-center">${ESTADO_BADGE[v.estado] || ESTADO_BADGE.PENDIENTE}</td>
+        <td class="text-center">${v.tiene_codigo ? 'Sí' : 'No'}</td>
+        <td class="text-end pe-4">${renderAccion(v)}</td>
+      </tr>`).join('');
+}
+
+function renderAccion(v) {
+  const botones = [];
+  if (v.estado === 'PENDIENTE') {
+    botones.push(`<button class="btn btn-sm btn-outline-primary" onclick="abrirEnviarSenal(${v.id})">Enviar señal</button>`);
+  } else if (v.estado === 'VALIDANDO') {
+    botones.push('<span class="text-muted small fst-italic">Esperando dispositivo…</span>');
+  } else if (v.estado === 'ERROR') {
+    botones.push(`<button class="btn btn-sm btn-outline-warning" onclick="abrirEnviarSenal(${v.id})">Reintentar</button>`);
+  } else if (v.estado === 'ACTIVO') {
+    botones.push('<span class="text-muted small fst-italic me-2">Activado</span>');
+  }
+  if (v.tiene_codigo) {
+    botones.push(`<button class="btn btn-sm btn-outline-secondary" onclick="verCodigo(${v.id})">Ver código</button>`);
+  }
+  botones.push(`<button class="btn btn-sm btn-outline-dark" onclick="abrirEditarViper(${v.id})">Editar</button>`);
+  botones.push(`<button class="btn btn-sm btn-outline-danger" onclick="abrirEliminarViper(${v.id})">Eliminar</button>`);
+  return botones.join(' ');
+}
+
+function escapeHtml(str) {
+  return String(str).replace(/[&<>"']/g, c =>
+    ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
+}
+
+// ── Enviar señal ────────────────────────────────────────────────────────────────
+let viperSeleccionado = null;
+const modalEnviarSenalInst = new bootstrap.Modal(document.getElementById('modalEnviarSenal'));
+
+function abrirEnviarSenal(id) {
+  viperSeleccionado = id;
+  document.getElementById('senalMensaje').value = 'READY_PARA_TEST_DE_CABLE';
+  document.getElementById('senalError').classList.add('d-none');
+  modalEnviarSenalInst.show();
+}
+
+document.getElementById('btnConfirmarEnviarSenal').addEventListener('click', async () => {
+  const mensaje = document.getElementById('senalMensaje').value.trim();
+  const errEl   = document.getElementById('senalError');
+  errEl.classList.add('d-none');
+
+  if (!mensaje) {
+    errEl.textContent = 'El mensaje a enviar es obligatorio.';
+    errEl.classList.remove('d-none');
+    return;
+  }
+
+  const res = await fetch(`/api/vipers/${viperSeleccionado}/enviar-senal`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ mensaje }),
+  });
+
+  if (res.ok) {
+    modalEnviarSenalInst.hide();
+    mostrarToast('Señal enviada, esperando respuesta del dispositivo', 'success');
+    cargarVipers();
+  } else {
+    const data = await res.json();
+    errEl.textContent = data.error || 'Error al enviar la señal.';
+    errEl.classList.remove('d-none');
+  }
+});
+
+// ── Ver código ──────────────────────────────────────────────────────────────────
+const modalVerCodigoInst = new bootstrap.Modal(document.getElementById('modalVerCodigo'));
+
+async function verCodigo(id) {
+  const res = await fetch(`/api/vipers/${id}/codigo`);
+  if (!res.ok) {
+    mostrarToast('Error al obtener el código', 'danger');
+    return;
+  }
+  const data = await res.json();
+  document.getElementById('codigoRawTexto').value = data.codigo_raw || '';
+  modalVerCodigoInst.show();
+}
+
+// ── Agregar VIPER ────────────────────────────────────────────────────────────────
+const modalViperInst = new bootstrap.Modal(document.getElementById('modalViper'));
+
+document.getElementById('btnNuevoViper').addEventListener('click', () => {
+  document.getElementById('vCodigoViper').value = '';
+  document.getElementById('viperError').classList.add('d-none');
+  modalViperInst.show();
+});
+
+document.getElementById('modalViper').addEventListener('shown.bs.modal', () => {
+  document.getElementById('vCodigoViper').focus();
+});
+
+document.getElementById('btnGuardarViper').addEventListener('click', async () => {
+  const codigo = document.getElementById('vCodigoViper').value.trim();
+  const errEl  = document.getElementById('viperError');
+  errEl.classList.add('d-none');
+
+  if (!codigo) {
+    errEl.textContent = 'El código VIPER es obligatorio.';
+    errEl.classList.remove('d-none');
+    return;
+  }
+
+  const res = await fetch('/api/vipers', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ codigo_viper: codigo }),
+  });
+
+  if (res.ok) {
+    modalViperInst.hide();
+    mostrarToast('VIPER agregado correctamente', 'success');
+    cargarVipers();
+  } else {
+    const data = await res.json();
+    errEl.textContent = data.error || 'Error al guardar el VIPER.';
+    errEl.classList.remove('d-none');
+  }
+});
+
+// ── Editar VIPER ───────────────────────────────────────────────────────────────
+const modalEditarViperInst = new bootstrap.Modal(document.getElementById('modalEditarViper'));
+let viperEditando = null;
+
+function abrirEditarViper(id) {
+  const v = vipersCache.find(x => x.id === id);
+  if (!v) return;
+  viperEditando = id;
+  document.getElementById('eCodigoViper').value = v.codigo_viper || '';
+  document.getElementById('eCodigoRf').value = v.codigo_rf || '';
+  document.getElementById('eCanal').value = v.canal || 1;
+  document.getElementById('eEstado').value = v.estado || 'PENDIENTE';
+  document.getElementById('editarViperError').classList.add('d-none');
+  modalEditarViperInst.show();
+}
+
+document.getElementById('btnGuardarEdicionViper').addEventListener('click', async () => {
+  const codigo = document.getElementById('eCodigoViper').value.trim();
+  const errEl  = document.getElementById('editarViperError');
+  errEl.classList.add('d-none');
+
+  if (!codigo) {
+    errEl.textContent = 'El código VIPER es obligatorio.';
+    errEl.classList.remove('d-none');
+    return;
+  }
+
+  const res = await fetch(`/api/vipers/${viperEditando}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      codigo_viper: codigo,
+      codigo_rf: document.getElementById('eCodigoRf').value.trim(),
+      canal: document.getElementById('eCanal').value,
+      estado: document.getElementById('eEstado').value,
+    }),
+  });
+
+  if (res.ok) {
+    modalEditarViperInst.hide();
+    mostrarToast('VIPER actualizado correctamente', 'success');
+    cargarVipers();
+  } else {
+    const data = await res.json();
+    errEl.textContent = data.error || 'Error al actualizar el VIPER.';
+    errEl.classList.remove('d-none');
+  }
+});
+
+// ── Eliminar VIPER ─────────────────────────────────────────────────────────────
+const modalEliminarViperInst = new bootstrap.Modal(document.getElementById('modalEliminarViper'));
+let viperEliminando = null;
+
+function abrirEliminarViper(id) {
+  viperEliminando = id;
+  modalEliminarViperInst.show();
+}
+
+document.getElementById('btnConfirmarEliminarViper').addEventListener('click', async () => {
+  const res = await fetch(`/api/vipers/${viperEliminando}`, { method: 'DELETE' });
+  if (res.ok) {
+    modalEliminarViperInst.hide();
+    mostrarToast('VIPER eliminado correctamente', 'success');
+    cargarVipers();
+  } else {
+    const data = await res.json();
+    modalEliminarViperInst.hide();
+    mostrarToast(data.error || 'Error al eliminar el VIPER.', 'danger');
+  }
+});
+
+// ── Configuración Serial ─────────────────────────────────────────────────────────
+async function cargarSerialConfig() {
+  try {
+    const [cfgRes, puertosRes] = await Promise.all([
+      fetch('/api/serial/config'),
+      fetch('/api/serial/puertos'),
+    ]);
+    const cfg     = cfgRes.ok ? await cfgRes.json() : {};
+    const puertos = puertosRes.ok ? await puertosRes.json() : [];
+
+    const sel = document.getElementById('selectPuertoCom');
+    const lista = puertos.length ? puertos.map(p => p.path) : ['COM1','COM2','COM3','COM4'];
+    sel.innerHTML = lista.map(p => `<option value="${p}">${p}</option>`).join('');
+    if (cfg.puerto && !lista.includes(cfg.puerto)) {
+      sel.insertAdjacentHTML('afterbegin', `<option value="${cfg.puerto}">${cfg.puerto}</option>`);
+    }
+    if (cfg.puerto) sel.value = cfg.puerto;
+
+    if (cfg.baudios) document.getElementById('selectBaudios').value = String(cfg.baudios);
+
+    const badge = document.getElementById('badgeConexionSerial');
+    if (cfg.conectado) {
+      badge.textContent = 'Conectado';
+      badge.className = 'estado-badge estado-ACTIVO';
+    } else {
+      badge.textContent = 'Desconectado';
+      badge.className = 'estado-badge estado-ERROR';
+    }
+  } catch (_) { /* el panel serial es informativo, no debe romper la pantalla */ }
+}
+
+document.getElementById('formSerialConfig').addEventListener('submit', async e => {
+  e.preventDefault();
+  const puerto  = document.getElementById('selectPuertoCom').value;
+  const baudios = document.getElementById('selectBaudios').value;
+
+  const res = await fetch('/api/serial/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ puerto, baudios }),
+  });
+
+  if (res.ok) {
+    mostrarToast('Configuración serial guardada', 'success');
+    cargarSerialConfig();
+  } else {
+    const data = await res.json();
+    mostrarToast(data.error || 'Error al guardar la configuración', 'danger');
+  }
+});
+
+// ── Configuración Serial (dentro del panel VIPER) ────────────────────────────
+document.getElementById('formSerialConfigViper').addEventListener('submit', async e => {
+  e.preventDefault();
+  const puerto  = document.getElementById('vSerialPuerto').value.trim();
+  const baudios = document.getElementById('vSerialBaudios').value;
+
+  const res = await fetch('/api/serial/config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ puerto, baudios }),
+  });
+
+  if (res.ok) {
+    mostrarToast('Configuración guardada', 'success');
+    cargarSerialConfig();
+    cargarEstadoArduino();
+  } else {
+    const data = await res.json();
+    mostrarToast(data.error || 'Error al guardar la configuración', 'danger');
+  }
+});
+
+// ── Estado del Arduino ────────────────────────────────────────────────────────
+function formatearDuracion(ms) {
+  if (!ms) return '00:00:00';
+  const totalSeg = Math.floor(ms / 1000);
+  const h = String(Math.floor(totalSeg / 3600)).padStart(2, '0');
+  const m = String(Math.floor((totalSeg % 3600) / 60)).padStart(2, '0');
+  const s = String(totalSeg % 60).padStart(2, '0');
+  return `${h}:${m}:${s}`;
+}
+
+async function cargarEstadoArduino() {
+  const res = await fetch('/api/vipers/estado-arduino');
+  if (!res.ok) return;
+  const data = await res.json();
+
+  const badge = document.getElementById('arduinoEstado');
+  badge.textContent = data.estado;
+  badge.className = 'estado-badge ' + (data.estado === 'Conectado' ? 'estado-ACTIVO' : 'estado-ERROR');
+
+  document.getElementById('arduinoFirmware').textContent = data.firmware || '–';
+  document.getElementById('arduinoPuerto').textContent = data.puerto || '–';
+  document.getElementById('arduinoUltimaConexion').textContent = data.ultima_conexion
+    ? new Date(data.ultima_conexion).toLocaleTimeString() : '–';
+  document.getElementById('arduinoTiempoActivo').textContent = formatearDuracion(data.tiempo_activo_ms);
+
+  const diag = data.diagnostico || {};
+  document.getElementById('diagPuertoConfigurado').textContent = diag.puerto_configurado || '–';
+  document.getElementById('diagPuertoConectado').textContent = diag.puerto_conectado || '–';
+  document.getElementById('diagUltimaPrueba').textContent = diag.ultima_prueba_resultado || '–';
+  document.getElementById('diagUltimaComunicacion').textContent = diag.ultima_comunicacion_exitosa
+    ? new Date(diag.ultima_comunicacion_exitosa).toLocaleString() : '–';
+}
+
+// ── Configuración RF ──────────────────────────────────────────────────────────
+async function cargarRfConfig() {
+  const res = await fetch('/api/vipers/rf-config');
+  if (!res.ok) return;
+  const cfg = await res.json();
+  if (cfg.frecuencia) document.getElementById('rfFrecuencia').value = cfg.frecuencia;
+  if (cfg.canal) document.getElementById('rfCanal').value = String(cfg.canal);
+  document.getElementById('rfRetransmisiones').value = cfg.retransmisiones ?? 3;
+  document.getElementById('rfIntervalo').value = cfg.intervalo_ms ?? 100;
+}
+
+document.getElementById('formRfConfig').addEventListener('submit', async e => {
+  e.preventDefault();
+  const body = {
+    frecuencia: document.getElementById('rfFrecuencia').value,
+    canal: document.getElementById('rfCanal').value,
+    retransmisiones: document.getElementById('rfRetransmisiones').value,
+    intervalo_ms: document.getElementById('rfIntervalo').value,
+  };
+  const res = await fetch('/api/vipers/rf-config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (res.ok) {
+    mostrarToast('Configuración RF guardada', 'success');
+  } else {
+    const data = await res.json();
+    mostrarToast(data.error || 'Error al guardar la configuración RF', 'danger');
+  }
+});
+
+// ── Herramientas de Diagnóstico ───────────────────────────────────────────────
+function mostrarResultadoDiagnostico(texto, tipo = 'info') {
+  const el = document.getElementById('diagnosticoResultado');
+  el.className = `alert alert-${tipo} small mb-0`;
+  el.style.fontFamily = 'monospace';
+  el.style.whiteSpace = 'pre-wrap';
+  el.textContent = texto;
+  el.classList.remove('d-none');
+}
+
+document.getElementById('btnProbarConexion').addEventListener('click', async () => {
+  mostrarResultadoDiagnostico('Probando conexión...', 'info');
+  const res = await fetch('/api/vipers/ping', { method: 'POST' });
+  if (res.ok) {
+    mostrarResultadoDiagnostico('✓ Conexión correcta', 'success');
+  } else {
+    const data = await res.json();
+    mostrarResultadoDiagnostico(`✗ Error de comunicación\n${data.detalle || data.error || ''}`, 'danger');
+  }
+  cargarEstadoArduino();
+});
+
+document.getElementById('btnReiniciarArduino').addEventListener('click', async () => {
+  if (!confirm('¿Reiniciar el Arduino de forma remota?')) return;
+  mostrarResultadoDiagnostico('Reiniciando Arduino...', 'info');
+  const res = await fetch('/api/vipers/reiniciar-arduino', { method: 'POST' });
+  if (res.ok) {
+    mostrarResultadoDiagnostico('✓ Comando de reinicio enviado', 'success');
+  } else {
+    const data = await res.json();
+    mostrarResultadoDiagnostico(`✗ Error al reiniciar\n${data.error || ''}`, 'danger');
+  }
+  cargarEstadoArduino();
+});
+
+document.getElementById('btnLeerConfig').addEventListener('click', async () => {
+  mostrarResultadoDiagnostico('Consultando configuración del Arduino...', 'info');
+  const res = await fetch('/api/vipers/leer-configuracion');
+  if (res.ok) {
+    const data = await res.json();
+    mostrarResultadoDiagnostico(data.configuracion || '(sin datos)', 'secondary');
+  } else {
+    const data = await res.json();
+    mostrarResultadoDiagnostico(`✗ Error\n${data.error || ''}`, 'danger');
+  }
+});
+
+// ── Aprendizaje de Código VIPER ───────────────────────────────────────────────
+const modalAsociarRfInst = new bootstrap.Modal(document.getElementById('modalAsociarRf'));
+
+document.getElementById('btnAprenderViper').addEventListener('click', async () => {
+  mostrarResultadoDiagnostico('Arduino en modo escucha, esperando código RF...', 'info');
+  const res = await fetch('/api/vipers/aprender', { method: 'POST' });
+  if (!res.ok) {
+    const data = await res.json();
+    mostrarResultadoDiagnostico(`✗ Error\n${data.error || ''}`, 'danger');
+    return;
+  }
+  const data = await res.json();
+  mostrarResultadoDiagnostico(`Código detectado:\n${data.codigo}`, 'success');
+
+  const vipersRes = await fetch('/api/vipers');
+  const vipers = vipersRes.ok ? await vipersRes.json() : [];
+  const select = document.getElementById('rfAsociarViperId');
+  select.innerHTML = vipers.map(v => `<option value="${v.id}">${escapeHtml(v.codigo_viper)}</option>`).join('');
+
+  document.getElementById('rfCodigoDetectado').value = data.codigo;
+  document.getElementById('rfAsociarError').classList.add('d-none');
+  modalAsociarRfInst.show();
+});
+
+document.getElementById('btnConfirmarAsociarRf').addEventListener('click', async () => {
+  const viperId = document.getElementById('rfAsociarViperId').value;
+  const codigo  = document.getElementById('rfCodigoDetectado').value;
+  const errEl   = document.getElementById('rfAsociarError');
+  errEl.classList.add('d-none');
+
+  if (!viperId) {
+    errEl.textContent = 'Seleccioná un VIPER para asociar el código.';
+    errEl.classList.remove('d-none');
+    return;
+  }
+
+  const res = await fetch(`/api/vipers/${viperId}/codigo-rf`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ codigo_rf: codigo }),
+  });
+
+  if (res.ok) {
+    modalAsociarRfInst.hide();
+    mostrarToast('Código RF asociado correctamente', 'success');
+  } else {
+    const data = await res.json();
+    errEl.textContent = data.error || 'Error al asociar el código.';
+    errEl.classList.remove('d-none');
+  }
+});
+
+// ── Métricas del sistema ──────────────────────────────────────────────────────
+async function cargarMetricasViper() {
+  const res = await fetch('/api/vipers/metricas');
+  if (!res.ok) return;
+  const m = await res.json();
+  document.getElementById('metRegistrados').textContent = m.vipers_registrados;
+  document.getElementById('metActivos').textContent = m.vipers_activos;
+  document.getElementById('metLlamadasHoy').textContent = m.llamadas_hoy;
+  document.getElementById('metLlamadasMes').textContent = m.llamadas_mes;
+  document.getElementById('metUltimoActivado').textContent = m.ultimo_viper_activado || '–';
+  document.getElementById('metTasaExito').textContent = m.tasa_exito != null ? `${m.tasa_exito}%` : '–';
+}
+
+// ── Historial de Eventos ──────────────────────────────────────────────────────
+const ACK_LABEL = {
+  ENTREGADO: '✓ Señal entregada',
+  ERROR: '⚠ Error',
+};
+
+async function cargarEventosViper() {
+  const params = new URLSearchParams();
+  const fecha   = document.getElementById('filtroEventoFecha').value;
+  const usuario = document.getElementById('filtroEventoUsuario').value.trim();
+  const estado  = document.getElementById('filtroEventoEstado').value;
+  if (fecha)   params.set('fecha', fecha);
+  if (usuario) params.set('usuario', usuario);
+  if (estado)  params.set('estado', estado);
+
+  const res = await fetch(`/api/vipers/eventos?${params.toString()}`);
+  if (!res.ok) return;
+  const eventos = await res.json();
+  const tbody = document.getElementById('tablaEventosViper');
+
+  tbody.innerHTML = eventos.length === 0
+    ? '<tr><td colspan="5" class="text-center text-muted py-3">Sin eventos registrados</td></tr>'
+    : eventos.map(ev => `
+      <tr>
+        <td class="small">${new Date(ev.created_at).toLocaleString()}</td>
+        <td class="small">${escapeHtml(ev.usuario_nombre || '–')}</td>
+        <td class="small">${escapeHtml(ev.accion)}</td>
+        <td class="small">${escapeHtml(ev.codigo_viper || '–')}</td>
+        <td class="small">${ev.ack_estado ? (ACK_LABEL[ev.ack_estado] || ev.ack_estado) : (ev.resultado || '–')}</td>
+      </tr>`).join('');
+}
+
+document.getElementById('btnFiltrarEventos').addEventListener('click', cargarEventosViper);
+
+// Refrescar métricas y eventos cuando cambia el estado de un VIPER
+socket.on('viper:actualizado', () => { cargarMetricasViper(); cargarEventosViper(); });
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+// Tope de carteles visibles a la vez — evita que clickear rápido y seguido un
+// botón que da el mismo error apile una fila de carteles tapando la pantalla.
+const TOAST_MAX_VISIBLES = 2;
+
+function mostrarToast(mensaje, tipo = 'success') {
+  const container = document.getElementById('toastContainer');
+
+  const visibles = Array.from(container.children);
+  while (visibles.length >= TOAST_MAX_VISIBLES) {
+    const masViejo = visibles.shift();
+    const inst = bootstrap.Toast.getInstance(masViejo);
+    if (inst) inst.hide(); else masViejo.remove();
+  }
+
+  const id  = 'toast-' + Date.now();
+  const col = { success:'bg-success', danger:'bg-danger', warning:'bg-warning text-dark', info:'bg-info text-dark' }[tipo];
+  container.insertAdjacentHTML('beforeend', `
+    <div id="${id}" class="toast align-items-center text-white ${col} border-0" role="alert">
+      <div class="d-flex">
+        <div class="toast-body fw-semibold">${mensaje}</div>
+        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+      </div>
+    </div>`);
+  const el = document.getElementById(id);
+  new bootstrap.Toast(el, { delay: 3500 }).show();
+  el.addEventListener('hidden.bs.toast', () => el.remove());
+}
+
+// ── Configuración General ─────────────────────────────────────────────────────
+async function cargarConfigGeneral() {
+  const res = await fetch('/api/config-general');
+  if (!res.ok) return;
+  const cfg = await res.json();
+  document.getElementById('switchSincronizarGrupos').checked = !!cfg.sincronizar_grupos_combinados;
+}
+
+document.getElementById('switchSincronizarGrupos').addEventListener('change', async function () {
+  const res = await fetch('/api/config-general', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sincronizar_grupos_combinados: this.checked ? 1 : 0 }),
+  });
+  const msg = document.getElementById('sincronizarGuardadoMsg');
+  if (res.ok) {
+    msg.classList.remove('d-none');
+    setTimeout(() => msg.classList.add('d-none'), 3000);
+  } else {
+    mostrarToast('Error al guardar la configuración', 'danger');
+    this.checked = !this.checked;
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// PANEL BACKUPS
+// ═══════════════════════════════════════════════════════════════════════════════
+
+let backupPanelIniciado = false;
+let backupAEliminar     = null;
+let backupARestaurar    = null;
+
+function inicializarPanelBackups() {
+  verificarAccesoBackups();
+  if (backupPanelIniciado) { cargarBackups(); return; }
+  backupPanelIniciado = true;
+  cargarConfigBackup();
+  cargarBackups();
+  verificarRestauracionPendiente();
+}
+
+// ── Acceso local-only (LAN queda bloqueada server-side; esto solo mejora la UI) ─
+async function verificarAccesoBackups() {
+  try {
+    const res = await fetch('/api/backup/acceso');
+    if (!res.ok) return;
+    const data = await res.json();
+    const aviso = document.getElementById('avisoBackupLanBloqueado');
+    const panel = document.getElementById('panelBackups');
+    if (!data.permitido) {
+      if (aviso) aviso.classList.remove('d-none');
+      if (panel) panel.querySelectorAll('.card, #alertaRestauracionPendiente').forEach(el => el.classList.add('d-none'));
+    } else if (aviso) {
+      aviso.classList.add('d-none');
+    }
+  } catch (_) {}
+}
+
+// ── Selector de carpeta/archivo nativo (solo disponible dentro de Electron) ───
+const btnExaminarCarpeta = document.getElementById('btnExaminarCarpetaDestino');
+if (window.electronAPI && btnExaminarCarpeta) {
+  btnExaminarCarpeta.addEventListener('click', async () => {
+    const carpeta = await window.electronAPI.elegirCarpetaBackup();
+    if (carpeta) document.getElementById('inputCarpetaDestino').value = carpeta;
+  });
+} else if (btnExaminarCarpeta) {
+  // Fuera de Electron (dev/headless) no hay diálogo nativo: se mantiene el
+  // campo de texto libre existente como único método de entrada.
+  btnExaminarCarpeta.classList.add('d-none');
+}
+
+// Botón "Elegir carpeta…" en Backup Manual — usa el mismo diálogo nativo y
+// guarda directo en la config compartida entre backup manual y automático.
+const btnElegirCarpetaManual = document.getElementById('btnElegirCarpetaManual');
+if (window.electronAPI && btnElegirCarpetaManual) {
+  btnElegirCarpetaManual.addEventListener('click', async () => {
+    const carpeta = await window.electronAPI.elegirCarpetaBackup();
+    if (!carpeta) return;
+
+    document.getElementById('inputCarpetaDestino').value = carpeta;
+    btnElegirCarpetaManual.disabled = true;
+    try {
+      const res = await fetch('/api/backup/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ carpeta_destino: carpeta }),
+      });
+      if (res.ok) {
+        mostrarToast('Carpeta de backups actualizada.', 'success');
+        cargarBackups();
+      } else {
+        const d = await res.json();
+        mostrarToast(d.error || 'No se pudo guardar la carpeta.', 'danger');
+      }
+    } catch (_) {
+      mostrarToast('Error de conexión al guardar la carpeta.', 'danger');
+    } finally {
+      btnElegirCarpetaManual.disabled = false;
+    }
+  });
+} else if (btnElegirCarpetaManual) {
+  // Fuera de Electron no hay diálogo nativo: se mantiene el campo de texto
+  // de "Backup Automático" como único método de entrada.
+  btnElegirCarpetaManual.classList.add('d-none');
+}
+
+const btnImportarArchivo = document.getElementById('btnImportarArchivoRestaurar');
+if (window.electronAPI && btnImportarArchivo) {
+  btnImportarArchivo.addEventListener('click', async () => {
+    const ruta = await window.electronAPI.elegirArchivoRestaurar();
+    if (!ruta) return;
+    if (!confirm(`¿Restaurar el backup desde:\n${ruta}\n\nEsto reemplazará completamente la base de datos actual (se crea un backup de seguridad automáticamente).`)) return;
+
+    btnImportarArchivo.disabled = true;
+    try {
+      const res  = await fetch('/api/backup/restaurar-archivo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ruta }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        mostrarToast(data.mensaje, 'warning');
+        verificarRestauracionPendiente();
+      } else {
+        mostrarToast(data.error || 'Error al preparar la restauración', 'danger');
+      }
+    } catch (_) {
+      mostrarToast('Error de conexión al preparar la restauración.', 'danger');
+    } finally {
+      btnImportarArchivo.disabled = false;
+    }
+  });
+} else if (btnImportarArchivo) {
+  // Fuera de Electron no hay diálogo nativo de archivo: se mantiene el flujo
+  // existente de restauración por nombre desde la carpeta configurada.
+  btnImportarArchivo.classList.add('d-none');
+}
+
+// ── Verificar si hay restauración pendiente ──────────────────────────────────
+async function verificarRestauracionPendiente() {
+  try {
+    const res = await fetch('/api/backup/estado-restauracion');
+    if (!res.ok) return;
+    const data = await res.json();
+    const alerta = document.getElementById('alertaRestauracionPendiente');
+    if (data.pendiente && alerta) alerta.classList.remove('d-none');
+    else if (alerta) alerta.classList.add('d-none');
+  } catch (_) {}
+}
+
+// ── Cargar configuración de backup ───────────────────────────────────────────
+async function cargarConfigBackup() {
+  const res = await fetch('/api/backup/config');
+  if (!res.ok) return;
+  const cfg = await res.json();
+
+  document.getElementById('switchBackupAuto').checked      = !!cfg.habilitado;
+  document.getElementById('labelBackupAuto').textContent   = cfg.habilitado ? 'Activado' : 'Desactivado';
+  document.getElementById('selectFrecuencia').value        = cfg.frecuencia || 'manual';
+  document.getElementById('inputHoraBackup').value         = cfg.hora || '02:00';
+  document.getElementById('selectDiaSemana').value         = String(cfg.dia_semana ?? 0);
+  document.getElementById('inputDiaMes').value             = cfg.dia_mes ?? 1;
+  document.getElementById('inputFechaAnual').value         = cfg.fecha_anual || '01-01';
+  document.getElementById('inputMaxBackups').value         = cfg.max_backups ?? 10;
+  document.getElementById('inputCarpetaDestino').value     = cfg.carpeta_destino || '';
+
+  actualizarCamposFrecuencia(cfg.frecuencia || 'manual');
+}
+
+function actualizarCamposFrecuencia(frec) {
+  document.getElementById('camposDiaSemana').style.display  = frec === 'semanal'  ? '' : 'none';
+  document.getElementById('camposDiaMes').style.display     = frec === 'mensual'  ? '' : 'none';
+  document.getElementById('camposFechaAnual').style.display = frec === 'anual'    ? '' : 'none';
+}
+
+document.getElementById('selectFrecuencia').addEventListener('change', function () {
+  actualizarCamposFrecuencia(this.value);
+});
+
+document.getElementById('switchBackupAuto').addEventListener('change', function () {
+  document.getElementById('labelBackupAuto').textContent = this.checked ? 'Activado' : 'Desactivado';
+});
+
+// ── Guardar configuración ────────────────────────────────────────────────────
+document.getElementById('btnGuardarConfigBackup').addEventListener('click', async () => {
+  const btn = document.getElementById('btnGuardarConfigBackup');
+  btn.disabled = true;
+  try {
+    const body = {
+      habilitado:      document.getElementById('switchBackupAuto').checked ? 1 : 0,
+      frecuencia:      document.getElementById('selectFrecuencia').value,
+      hora:            document.getElementById('inputHoraBackup').value,
+      dia_semana:      Number(document.getElementById('selectDiaSemana').value),
+      dia_mes:         Number(document.getElementById('inputDiaMes').value),
+      fecha_anual:     document.getElementById('inputFechaAnual').value,
+      max_backups:     Number(document.getElementById('inputMaxBackups').value),
+      carpeta_destino: document.getElementById('inputCarpetaDestino').value.trim() || null,
+    };
+    const res = await fetch('/api/backup/config', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (res.ok) {
+      const msg = document.getElementById('configGuardadaMsg');
+      msg.classList.remove('d-none');
+      setTimeout(() => msg.classList.add('d-none'), 3000);
+    } else {
+      const d = await res.json();
+      mostrarToast(d.error || 'Error al guardar la configuración', 'danger');
+    }
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// ── Crear backup manual ──────────────────────────────────────────────────────
+document.getElementById('btnCrearBackup').addEventListener('click', async () => {
+  const btn = document.getElementById('btnCrearBackup');
+  const msg = document.getElementById('backupMsgInline');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Creando backup…';
+  msg.classList.add('d-none');
+
+  try {
+    const res  = await fetch('/api/backup/crear', { method: 'POST' });
+    const data = await res.json();
+    if (res.ok) {
+      msg.className = 'mt-3 alert alert-success';
+      msg.innerHTML = `<i class="bi bi-check-circle me-2"></i>Backup creado correctamente: <strong>${escapeHtml(data.nombre)}</strong>`;
+      msg.classList.remove('d-none');
+      cargarBackups();
+    } else {
+      msg.className = 'mt-3 alert alert-danger';
+      msg.innerHTML = `<i class="bi bi-x-circle me-2"></i>${escapeHtml(data.error || 'Error desconocido')}`;
+      msg.classList.remove('d-none');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-database-add me-2"></i>Crear backup ahora';
+  }
+});
+
+// ── Cargar lista de backups ──────────────────────────────────────────────────
+async function cargarBackups() {
+  const tbody = document.getElementById('tablaBackups');
+  try {
+    const res  = await fetch('/api/backup/listar');
+    if (!res.ok) { tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">Error al cargar backups</td></tr>'; return; }
+    const data = await res.json();
+
+    const label = document.getElementById('carpetaBackupLabel');
+    if (label) label.textContent = `Carpeta: ${data.carpeta}`;
+
+    if (!data.lista.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No hay backups disponibles</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = data.lista.map(b => {
+      const tipo = b.nombre.includes('_auto.zip') ? '<span class="badge bg-secondary">Automático</span>' : '<span class="badge bg-primary">Manual</span>';
+      const fecha = new Date(b.fecha).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', year:'numeric', hour:'2-digit', minute:'2-digit' });
+      return `<tr>
+        <td class="ps-4 small text-break fw-semibold" style="max-width:260px">${escapeHtml(b.nombre)}</td>
+        <td class="text-center">${tipo}</td>
+        <td class="text-center small">${escapeHtml(b.tamano)}</td>
+        <td class="text-center small">${fecha}</td>
+        <td class="text-end pe-4">
+          <a href="/api/backup/descargar/${encodeURIComponent(b.nombre)}" class="btn btn-sm btn-outline-success me-1" title="Descargar"><i class="bi bi-download"></i></a>
+          <button class="btn btn-sm btn-outline-warning me-1" onclick="abrirRestaurar('${escapeHtml(b.nombre).replace(/'/g,"&#39;")}')" title="Restaurar"><i class="bi bi-arrow-counterclockwise"></i></button>
+          <button class="btn btn-sm btn-outline-danger" onclick="abrirEliminarBackup('${escapeHtml(b.nombre).replace(/'/g,"&#39;")}')" title="Eliminar"><i class="bi bi-trash3"></i></button>
+        </td>
+      </tr>`;
+    }).join('');
+  } catch (_) {
+    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-3">Error de conexión</td></tr>';
+  }
+}
+
+document.getElementById('btnRefrescarBackups').addEventListener('click', () => cargarBackups());
+
+// ── Restaurar backup ─────────────────────────────────────────────────────────
+const modalRestaurarInst = new bootstrap.Modal(document.getElementById('modalRestaurar'));
+
+function abrirRestaurar(nombre) {
+  backupARestaurar = nombre;
+  document.getElementById('modalRestaurarNombre').textContent = nombre;
+  modalRestaurarInst.show();
+}
+
+document.getElementById('btnConfirmarRestaurar').addEventListener('click', async () => {
+  const btn = document.getElementById('btnConfirmarRestaurar');
+  btn.disabled = true;
+  btn.textContent = 'Procesando…';
+
+  try {
+    const res  = await fetch('/api/backup/restaurar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre: backupARestaurar }),
+    });
+    const data = await res.json();
+    modalRestaurarInst.hide();
+
+    if (res.ok) {
+      mostrarToast(data.mensaje, 'warning');
+      verificarRestauracionPendiente();
+    } else {
+      mostrarToast(data.error || 'Error al preparar la restauración', 'danger');
+    }
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-arrow-counterclockwise me-2"></i>Sí, restaurar';
+  }
+});
+
+// ── Eliminar backup ──────────────────────────────────────────────────────────
+const modalEliminarBackupInst = new bootstrap.Modal(document.getElementById('modalEliminarBackup'));
+
+function abrirEliminarBackup(nombre) {
+  backupAEliminar = nombre;
+  document.getElementById('modalEliminarBackupNombre').textContent = nombre;
+  modalEliminarBackupInst.show();
+}
+
+document.getElementById('btnConfirmarEliminarBackup').addEventListener('click', async () => {
+  const btn = document.getElementById('btnConfirmarEliminarBackup');
+  btn.disabled = true;
+  try {
+    const res = await fetch(`/api/backup/${encodeURIComponent(backupAEliminar)}`, { method: 'DELETE' });
+    modalEliminarBackupInst.hide();
+    if (res.ok) {
+      mostrarToast('Backup eliminado.', 'success');
+      cargarBackups();
+    } else {
+      const d = await res.json();
+      mostrarToast(d.error || 'Error al eliminar', 'danger');
+    }
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// ── Exportación CSV ──────────────────────────────────────────────────────────
+document.getElementById('selectTipoExport').addEventListener('change', function () {
+  const conFecha = ['turnos'].includes(this.value);
+  document.getElementById('filtroDesde').style.display = conFecha ? '' : 'none';
+  document.getElementById('filtroHasta').style.display = conFecha ? '' : 'none';
+});
+
+async function ejecutarExportacion(formato) {
+  const tipo   = document.getElementById('selectTipoExport').value;
+  const desde  = document.getElementById('inputDesde').value;
+  const hasta  = document.getElementById('inputHasta').value;
+
+  const body = { tipo, desde: desde || undefined, hasta: hasta || undefined };
+
+  const endpoint = formato === 'xlsx' ? '/api/backup/exportar/xlsx' : '/api/backup/exportar/csv';
+  const bodyXlsx = formato === 'xlsx' ? { desde: desde || undefined, hasta: hasta || undefined } : body;
+
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(bodyXlsx),
+    });
+
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      mostrarToast(d.error || 'Error al exportar', 'danger');
+      return;
+    }
+
+    const cd       = res.headers.get('content-disposition') || '';
+    const match    = cd.match(/filename="([^"]+)"/);
+    const filename = match ? match[1] : `exportacion.${formato}`;
+    const blob     = await res.blob();
+    const url      = URL.createObjectURL(blob);
+    const a        = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    mostrarToast(`Exportación "${filename}" descargada.`, 'success');
+  } catch (_) {
+    mostrarToast('Error al exportar los datos.', 'danger');
+  }
+}
+
+document.getElementById('btnExportarCSV').addEventListener('click', async (e) => {
+  e.target.disabled = true;
+  try { await ejecutarExportacion('csv'); } finally { e.target.disabled = false; }
+});
+
+document.getElementById('btnExportarXLSX').addEventListener('click', async (e) => {
+  e.target.disabled = true;
+  try { await ejecutarExportacion('xlsx'); } finally { e.target.disabled = false; }
+});
+
+// ── Puerto del Servidor LAN ───────────────────────────────────────────────────
+
+async function cargarEstadoServidor() {
+  try {
+    const res = await fetch('/api/config-servidor/estado');
+    if (!res.ok) return;
+    const d = await res.json();
+
+    // Badge navbar
+    const badgeNav = document.getElementById('badgeServidorLAN');
+    const puertoNav = document.getElementById('badgePuertoLAN');
+    const ipNav = document.getElementById('badgeIpLAN');
+    if (d.servidor_activo && d.puerto_activo) {
+      puertoNav.textContent = d.puerto_activo;
+      if (ipNav) ipNav.textContent = d.ip ? `${d.ip} : ` : 'Puerto ';
+      badgeNav.style.display = '';
+    } else {
+      badgeNav.style.display = 'none';
+    }
+
+    // Panel
+    const badgePan = document.getElementById('badgeEstadoServidor');
+    if (!badgePan) return;
+
+    if (d.servidor_activo) {
+      badgePan.className = 'badge rounded-pill text-bg-success';
+      badgePan.textContent = 'ACTIVO';
+    } else {
+      badgePan.className = 'badge rounded-pill text-bg-secondary';
+      badgePan.textContent = 'Sin información';
+    }
+
+    document.getElementById('txtPuertoActivo').textContent      = d.puerto_activo      ?? '–';
+    document.getElementById('txtPuertoConfigurado').textContent = d.puerto_configurado ?? '–';
+
+    const alertaDistinto = document.getElementById('alertaPuertoDistinto');
+    if (d.puerto_configurado && d.puerto_activo && d.puerto_configurado !== d.puerto_activo) {
+      alertaDistinto.classList.remove('d-none');
+    } else {
+      alertaDistinto.classList.add('d-none');
+    }
+
+    const divBtnReiniciar = document.getElementById('divBtnReiniciar');
+    if (divBtnReiniciar) {
+      if (d.puerto_configurado && d.puerto_activo && d.puerto_configurado !== d.puerto_activo) {
+        divBtnReiniciar.classList.remove('d-none');
+      } else {
+        divBtnReiniciar.classList.add('d-none');
+      }
+    }
+
+    // Cargar info LAN
+    try {
+      const resRed = await fetch('/api/config-servidor/red');
+      if (resRed.ok) {
+        const red = await resRed.json();
+        const cont = document.getElementById('infoLANContenido');
+        if (cont) {
+          let html = '<div class="row g-3">';
+          if (red.ips && red.ips.length > 0) {
+            html += `<div class="col-md-6">
+              <div class="fw-semibold mb-1"><i class="bi bi-hdd-network me-1 text-primary"></i>Dirección(es) IP del servidor</div>`;
+            red.ips.forEach(ip => {
+              const url = `http://${ip}:${red.puerto}`;
+              html += `<div class="mb-1">
+                <code class="fs-6 text-success fw-bold">${ip}</code>
+                <div class="mt-1"><span class="text-muted">URL completa: </span>
+                  <code class="text-dark">${url}</code>
+                  <button class="btn btn-outline-secondary btn-sm ms-2 py-0 px-2" style="font-size:.7rem"
+                    onclick="navigator.clipboard.writeText('${url}').then(()=>mostrarToast('URL copiada','success'))">
+                    <i class="bi bi-clipboard me-1"></i>Copiar
+                  </button>
+                </div>
+              </div>`;
+            });
+            html += '</div>';
+          }
+          if (red.hostname) {
+            html += `<div class="col-md-6">
+              <div class="fw-semibold mb-1"><i class="bi bi-pc-display me-1 text-primary"></i>Nombre del equipo (hostname)</div>
+              <code class="fs-6">${red.hostname}</code>
+              <div class="mt-1 text-muted" style="font-size:.8rem">
+                Alternativa: <code>${red.url_hostname}</code>
+                <span class="badge bg-warning text-dark ms-1" style="font-size:.65rem">Puede no funcionar en todas las redes</span>
+              </div>
+              <div class="mt-1 text-muted" style="font-size:.75rem">
+                <i class="bi bi-info-circle me-1"></i>La IP es el método más confiable para conexión LAN.
+              </div>
+            </div>`;
+          }
+          html += '</div>';
+          html += `<div class="alert alert-info mt-3 mb-0 py-2 small">
+            <i class="bi bi-people me-1"></i>
+            Los demás equipos de la red deben acceder a: <strong>http://[IP]:${red.puerto}</strong>
+            — reemplazá [IP] por una de las IPs mostradas arriba.
+          </div>`;
+          cont.innerHTML = html;
+        }
+      }
+    } catch (_) {}
+  } catch (_) {}
+}
+
+async function reiniciarServidor() {
+  if (!confirm('¿Reiniciar el servidor? La aplicación se cerrará y volverá a abrirse automáticamente.')) return;
+  const btn = document.getElementById('btnReiniciarServidor') || document.getElementById('btnReiniciarDirecto');
+  if (btn) {
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Reiniciando…';
+  }
+  try {
+    await fetch('/api/config-servidor/reiniciar', { method: 'POST' });
+  } catch (_) {}
+  setTimeout(() => {
+    if (btn) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Reiniciar';
+    }
+    mostrarToast('Si la aplicación no se reinició, cerrá y volvé a abrirla manualmente.', 'warning');
+  }, 5000);
+}
+
+['btnReiniciarServidor', 'btnReiniciarDirecto'].forEach(id => {
+  const el = document.getElementById(id);
+  if (el) el.addEventListener('click', reiniciarServidor);
+});
+
+document.getElementById('btnGuardarPuerto').addEventListener('click', async () => {
+  const input = document.getElementById('inputPuertoNuevo');
+  const msg   = document.getElementById('msgGuardarPuerto');
+  const val   = input.value.trim();
+
+  msg.className = 'alert d-none mt-3 mb-0 small py-2';
+  msg.textContent = '';
+
+  if (!val) {
+    msg.className = 'alert alert-warning mt-3 mb-0 small py-2';
+    msg.textContent = 'Ingresá un número de puerto.';
+    return;
+  }
+
+  const btn = document.getElementById('btnGuardarPuerto');
+  btn.disabled = true;
+  try {
+    const res  = await fetch('/api/config-servidor/puerto', {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ puerto: val }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      msg.className = 'alert alert-success mt-3 mb-0 small py-2';
+      msg.textContent = data.mensaje;
+      input.value = '';
+      await cargarEstadoServidor();
+    } else {
+      msg.className = 'alert alert-danger mt-3 mb-0 small py-2';
+      msg.textContent = data.error || 'Error al guardar el puerto.';
+    }
+  } catch (_) {
+    msg.className = 'alert alert-danger mt-3 mb-0 small py-2';
+    msg.textContent = 'Error de conexión al guardar el puerto.';
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+document.getElementById('btnDetectarPuertos').addEventListener('click', async () => {
+  const btn  = document.getElementById('btnDetectarPuertos');
+  const card = document.getElementById('cardPuertosDisponibles');
+  const lista = document.getElementById('listaPuertosDisponibles');
+  const nota  = document.getElementById('notaPuertosDisponibles');
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Detectando…';
+  card.style.removeProperty('display');
+
+  try {
+    const res  = await fetch('/api/config-servidor/puertos-disponibles');
+    const data = await res.json();
+
+    if (!res.ok || !Array.isArray(data.puertos)) {
+      lista.innerHTML = '<span class="text-danger small">Error al detectar puertos.</span>';
+      return;
+    }
+
+    if (data.puertos.length === 0) {
+      lista.innerHTML = '<span class="text-muted small">No se encontraron puertos disponibles en el rango escaneado.</span>';
+      nota.textContent = '';
+      return;
+    }
+
+    lista.innerHTML = data.puertos.map(p =>
+      `<button class="btn btn-outline-primary btn-sm port-pill" data-puerto="${p}">${p}</button>`
+    ).join('');
+    nota.textContent = `${data.puertos.length} puerto${data.puertos.length !== 1 ? 's' : ''} disponible${data.puertos.length !== 1 ? 's' : ''} detectado${data.puertos.length !== 1 ? 's' : ''}.`;
+
+    lista.querySelectorAll('.port-pill').forEach(b => {
+      b.addEventListener('click', () => {
+        document.getElementById('inputPuertoNuevo').value = b.dataset.puerto;
+        lista.querySelectorAll('.port-pill').forEach(x => x.classList.remove('active', 'btn-primary'));
+        b.classList.add('active', 'btn-primary');
+        b.classList.remove('btn-outline-primary');
+      });
+    });
+  } catch (_) {
+    lista.innerHTML = '<span class="text-danger small">Error de conexión al detectar puertos.</span>';
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-search me-2"></i>Detectar puertos disponibles';
+  }
+});
+
+// Cargar estado del servidor al iniciar (badge del navbar)
+cargarEstadoServidor();

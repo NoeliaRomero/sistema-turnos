@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Panel Desarrollador – Sistema de Turnos</title>
+  <link href="/vendor/bootstrap.min.css" rel="stylesheet">
+  <link href="/vendor/bootstrap-icons.min.css" rel="stylesheet">
+  <style>
+    * { box-sizing: border-box; }
+    body { background: #0f172a; min-height: 100vh; color: white; font-family: 'Segoe UI', system-ui, sans-serif; margin: 0; }
+
+    /* ── Navbar ── */
+    .navbar-dev { background: #020617; border-bottom: 1px solid rgba(99,102,241,.35); padding: 14px 32px; display:flex; align-items:center; justify-content:space-between; }
+    .brand-dev  { font-size: .95rem; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; color: #818cf8; }
+
+    /* ── Hero ── */
+    .hero { background: linear-gradient(135deg,#1e1b4b 0%,#0f172a 100%); border-bottom: 1px solid rgba(99,102,241,.2); padding: 28px 36px 22px; }
+    .hero h1 { font-size: 1.5rem; font-weight: 800; color: #f1f5f9; margin-bottom: 4px; }
+    .hero p  { color: #64748b; font-size: .88rem; margin: 0; }
+
+    /* ── Contenido ── */
+    .content { max-width: 860px; margin: 0 auto; padding: 32px 20px; }
+
+    /* ── Tarjeta admin ── */
+    .admin-card { background: #1e293b; border: 1px solid rgba(255,255,255,.07); border-radius: 18px; overflow: hidden; transition: border-color .2s; }
+    .admin-card:hover { border-color: rgba(99,102,241,.3); }
+
+    .admin-card-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 20px 24px 16px; border-bottom: 1px solid rgba(255,255,255,.06);
+    }
+    .admin-name     { font-size: 1.05rem; font-weight: 700; color: #f1f5f9; display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+    .admin-username { font-size: .8rem; color: #475569; }
+
+    .badge-estado       { font-size: .75rem; font-weight: 700; padding: 4px 12px; border-radius: 20px; }
+    .badge-estado.activo   { background: rgba(16,185,129,.15); color: #34d399; }
+    .badge-estado.inactivo { background: rgba(239,68,68,.12);  color: #f87171; }
+
+    .admin-card-body { padding: 0 24px 18px; }
+
+    /* ── Grupo de features ── */
+    .grupo-label {
+      font-size: .68rem; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase;
+      color: #334155; padding: 18px 0 8px; border-bottom: 1px solid rgba(255,255,255,.04); margin-bottom: 4px;
+    }
+
+    /* ── Feature row ── */
+    .feature-row {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 13px 12px; border-radius: 10px; margin-top: 4px;
+      transition: background .15s;
+    }
+    .feature-row:hover { background: rgba(255,255,255,.03); }
+    .feature-icon  { font-size: 1.25rem; flex-shrink: 0; }
+    .feature-label { font-size: .88rem; font-weight: 600; color: #cbd5e1; }
+    .feature-desc  { font-size: .75rem; color: #475569; margin-top: 2px; line-height: 1.4; }
+
+    /* ── Switch ── */
+    .form-check-input { width: 2.5em; height: 1.3em; cursor: pointer; background-color: #334155; border-color: #475569; }
+    .form-check-input:checked { background-color: #6366f1; border-color: #6366f1; }
+    .form-check-input:focus { box-shadow: 0 0 0 .2rem rgba(99,102,241,.3); border-color: #6366f1; }
+
+    /* ── Plan pill ── */
+    .plan-pill { font-size: .68rem; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; padding: 3px 10px; border-radius: 20px; }
+    .plan-full    { background: rgba(99,102,241,.2);  color: #a5b4fc; }
+    .plan-basic   { background: rgba(251,191,36,.15); color: #fbbf24; }
+    .plan-limited { background: rgba(239,68,68,.15);  color: #f87171; }
+
+    /* ── Licencia ── */
+    .lic-card { background: #1e293b; border: 1px solid rgba(255,255,255,.07); border-radius: 18px; overflow: hidden; margin-bottom: 32px; }
+    .lic-card-header { padding: 20px 24px 16px; border-bottom: 1px solid rgba(255,255,255,.06); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; }
+    .lic-card-body   { padding: 20px 24px; }
+    .lic-badge-ok      { background: rgba(16,185,129,.15); color: #34d399; font-size:.75rem; font-weight:700; padding:4px 14px; border-radius:20px; }
+    .lic-badge-warn    { background: rgba(251,191,36,.15);  color: #fbbf24; font-size:.75rem; font-weight:700; padding:4px 14px; border-radius:20px; }
+    .lic-badge-error   { background: rgba(239,68,68,.12);   color: #f87171; font-size:.75rem; font-weight:700; padding:4px 14px; border-radius:20px; }
+    .lic-field { margin-bottom: 14px; }
+    .lic-label { font-size:.7rem; font-weight:700; letter-spacing:2px; text-transform:uppercase; color:#475569; margin-bottom:4px; }
+    .lic-value { font-size:.9rem; color:#e2e8f0; font-family: 'Courier New', monospace; word-break:break-all; }
+    .lic-id-box { background:#0f172a; border:1px solid rgba(99,102,241,.3); border-radius:10px; padding:12px 16px; font-family:'Courier New',monospace; font-size:.82rem; color:#a5b4fc; word-break:break-all; user-select:all; }
+    .lic-textarea { background:#0f172a; border:1px solid rgba(255,255,255,.1); border-radius:10px; color:#e2e8f0; font-family:'Courier New',monospace; font-size:.78rem; resize:vertical; width:100%; padding:12px; }
+    .lic-textarea:focus { border-color:#6366f1; outline:none; box-shadow:0 0 0 .2rem rgba(99,102,241,.3); }
+    .lic-divider { border:none; border-top:1px solid rgba(255,255,255,.06); margin:20px 0; }
+
+    /* ── Toasts ── */
+    .toast-ok   { background: #14532d; color: white; }
+    .toast-warn { background: #78350f; color: white; }
+
+    /* ── Empty ── */
+    .empty { color: #334155; text-align:center; padding: 60px 20px; }
+    .empty i { font-size: 3rem; display:block; margin-bottom: 12px; }
+
+    /* ── Toolbar ── */
+    .toolbar { display:flex; align-items:center; justify-content:space-between; margin-bottom: 24px; }
+    .toolbar h5 { font-weight: 700; color: #e2e8f0; margin: 0; font-size: 1rem; }
+    .toolbar p  { color: #475569; font-size: .8rem; margin: 3px 0 0; }
+  </style>
+</head>
+<body>
+
+<nav class="navbar-dev">
+  <span class="brand-dev"><i class="bi bi-terminal me-2"></i>Dev Panel</span>
+  <div style="display:flex; align-items:center; gap:16px;">
+    <span style="color:#475569; font-size:.85rem;" id="devNombre"></span>
+    <button class="btn btn-sm btn-outline-secondary" id="btnLogout">
+      <i class="bi bi-box-arrow-right me-1"></i>Salir
+    </button>
+  </div>
+</nav>
+
+<div class="hero">
+  <h1><i class="bi bi-toggles me-2" style="color:#818cf8"></i>Control de Módulos por Cliente</h1>
+  <p>Activá o desactivá cada módulo para cada cuenta de administrador según su plan de suscripción. Los cambios se aplican en tiempo real.</p>
+</div>
+
+<div class="content">
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SECCIÓN: LICENCIA DEL SISTEMA                                          -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="toolbar" style="margin-bottom:16px;">
+    <div>
+      <h5><i class="bi bi-shield-lock me-2" style="color:#818cf8"></i>Licencia del Sistema</h5>
+      <p>Activación, estado y gestión de la licencia de esta instalación</p>
+    </div>
+  </div>
+
+  <!-- Estado de licencia -->
+  <div class="lic-card">
+    <div class="lic-card-header">
+      <span style="font-weight:700; color:#f1f5f9; font-size:.95rem;">Estado de la licencia</span>
+      <span id="licEstadoBadge" class="lic-badge-warn">Cargando...</span>
+    </div>
+    <div class="lic-card-body">
+      <div id="licEstadoDetalle">
+        <div style="color:#475569; font-size:.85rem;">Cargando información de licencia...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Installation ID -->
+  <div class="lic-card">
+    <div class="lic-card-header">
+      <span style="font-weight:700; color:#f1f5f9; font-size:.95rem;">
+        <i class="bi bi-fingerprint me-2" style="color:#818cf8"></i>Identificador de instalación
+      </span>
+      <button class="btn btn-outline-secondary btn-sm" onclick="copiarInstallId()">
+        <i class="bi bi-clipboard me-1"></i>Copiar
+      </button>
+    </div>
+    <div class="lic-card-body">
+      <p style="color:#64748b; font-size:.82rem; margin-bottom:12px;">
+        Este código identifica de forma única esta instalación. Enviarlo al desarrollador para solicitar una licencia.
+      </p>
+      <div class="lic-id-box" id="licInstallId">—</div>
+    </div>
+  </div>
+
+  <!-- Activar licencia -->
+  <div class="lic-card">
+    <div class="lic-card-header">
+      <span style="font-weight:700; color:#f1f5f9; font-size:.95rem;">
+        <i class="bi bi-key me-2" style="color:#818cf8"></i>Activar licencia
+      </span>
+    </div>
+    <div class="lic-card-body">
+      <p style="color:#64748b; font-size:.82rem; margin-bottom:12px;">
+        Pegá la cadena de licencia provista por el desarrollador y presioná <strong style="color:#a5b4fc">Activar</strong>.
+      </p>
+      <textarea id="licCadena" class="lic-textarea" rows="4"
+        placeholder="Pegar aquí la cadena de licencia..."></textarea>
+      <div id="licActivarMsg" class="mt-2 small d-none"></div>
+      <div class="mt-3 d-flex gap-2">
+        <button class="btn btn-sm" id="btnActivarLicencia"
+          style="background:#6366f1; color:white; border:none;">
+          <i class="bi bi-check-circle me-1"></i>Activar licencia
+        </button>
+        <button class="btn btn-sm btn-outline-danger" id="btnRevocarLicencia">
+          <i class="bi bi-x-circle me-1"></i>Revocar licencia
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Divider -->
+  <hr class="lic-divider" style="margin:28px 0 24px">
+
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <!-- SECCIÓN: CONTROL DE MÓDULOS POR CLIENTE                                -->
+  <!-- ═══════════════════════════════════════════════════════════════════════ -->
+  <div class="toolbar">
+    <div>
+      <h5>Cuentas de Administrador</h5>
+      <p>Cada toggle activa o desactiva un módulo al instante</p>
+    </div>
+    <button class="btn btn-outline-secondary btn-sm" id="btnRefresh">
+      <i class="bi bi-arrow-clockwise me-1"></i>Actualizar
+    </button>
+  </div>
+
+  <div id="listaAdmins">
+    <div class="empty"><i class="bi bi-inbox"></i>Cargando...</div>
+  </div>
+
+  <!-- Permiso de configuración de red para Admin -->
+  <div class="card mb-4 shadow-sm" style="background:#1e293b;border:1px solid rgba(255,255,255,.07);border-radius:18px;overflow:hidden;margin-top:2rem">
+    <div class="card-header fw-bold" style="background:#0f172a;border-bottom:1px solid rgba(255,255,255,.06);padding:16px 24px"><i class="bi bi-hdd-network me-2 text-primary"></i>Permiso de Configuración de Red</div>
+    <div class="card-body" style="padding:20px 24px">
+      <p class="text-muted small mb-3">Controlá si el Administrador puede modificar la configuración del servidor LAN (puerto, etc.).</p>
+      <div class="form-check form-switch">
+        <input class="form-check-input" type="checkbox" id="switchPermisoRedAdmin">
+        <label class="form-check-label fw-semibold" for="switchPermisoRedAdmin" style="color:#f1f5f9">
+          Permitir al Administrador modificar configuración del servidor
+        </label>
+      </div>
+      <div id="msgPermisoRed" class="alert d-none mt-3 mb-0 small py-2"></div>
+    </div>
+  </div>
+
+</div>
+
+<div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer"></div>
+
+<script src="/vendor/bootstrap.bundle.min.js"></script>
+<script src="/js/superadmin.js"></script>
+</body>
+</html>
