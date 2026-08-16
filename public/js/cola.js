@@ -175,9 +175,11 @@ function renderJugando(juegos) {
       ${estadoPill}
       ${etapaHtml}
       <div class="tag-miembros"><i class="bi bi-people-fill"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</div>
-      <div class="restante-label">${vencido ? '⚠️ Tiempo excedido' : 'Tiempo restante'}</div>
-      <div class="restante-num ${vencido ? 'vencido' : ''}">${t.tiempo_restante}<span class="u">MIN</span></div>
-      <div class="segmentos">${segmentosHtml}</div>
+      <div class="restante-wrap">
+        <div class="restante-label">${vencido ? '⚠️ Tiempo excedido' : 'Tiempo restante'}</div>
+        <div class="restante-num ${vencido ? 'vencido' : ''}">${t.tiempo_restante}<span class="u">MIN</span></div>
+        <div class="segmentos">${segmentosHtml}</div>
+      </div>
     </div>`;
   }).join('');
 }

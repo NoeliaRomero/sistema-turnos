@@ -193,7 +193,13 @@
       border: 1.5px solid var(--jc-border, rgba(59,130,246,0.3));
       border-radius: 18px;
       padding: 20px 22px;
+      /* Columna con el bloque de tiempo anclado abajo (.restante-wrap con
+         margin-top:auto) — así todas las cards alinean el tiempo restante al
+         mismo borde inferior, tengan o no etapas/otro contenido variable. */
+      display: flex;
+      flex-direction: column;
     }
+    .restante-wrap { margin-top: auto; }
     .card-jugando .icono-fondo {
       position: absolute;
       right: -14px; bottom: -18px;
@@ -217,6 +223,7 @@
     .familia-nombre { font-size: 1.3rem; font-weight: 700; margin: 4px 0 12px; color: rgba(255,255,255,.85); }
 
     .estado-pill {
+      align-self: flex-start;
       display: inline-flex; align-items:center; gap:8px;
       font-size: .82rem; font-weight: 800; letter-spacing:.5px;
       padding: 5px 14px; border-radius: 20px;
