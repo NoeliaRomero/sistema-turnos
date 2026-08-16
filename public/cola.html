@@ -326,6 +326,12 @@
     }
     .sin-datos i { font-size: 4rem; display:block; margin-bottom:16px; opacity:.6; }
 
+    /* Puntitos del paginado automático — solo aparecen cuando hay más de una
+       página (ver ROTACION_MS en cola.js). Vacío = no se ve nada. */
+    .paginador { display:flex; justify-content:center; gap:9px; margin-top:16px; }
+    .dot-pag { width:9px; height:9px; border-radius:50%; background:rgba(255,255,255,.15); transition: all .3s; }
+    .dot-pag.activo { background:rgba(255,255,255,.85); transform: scale(1.3); }
+
     /* ── Footer informativo ── */
     footer {
       flex-shrink: 0;
@@ -431,6 +437,7 @@
     <div class="grid-jugando" id="listaJugando">
       <div class="sin-datos"><i class="bi bi-controller"></i>Sin grupos jugando</div>
     </div>
+    <div class="paginador" id="dotsJugando"></div>
   </div>
 
   <div class="col-cola">
@@ -441,6 +448,7 @@
     <div class="lista-cola" id="listaCola">
       <div class="sin-datos"><i class="bi bi-hourglass-split"></i>Sin grupos en espera</div>
     </div>
+    <div class="paginador" id="dotsCola"></div>
   </div>
 </main>
 

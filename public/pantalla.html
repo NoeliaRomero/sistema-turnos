@@ -156,6 +156,12 @@
     }
     .sin-datos .icon { font-size: 5rem; }
 
+    /* Puntitos del paginado automático — solo aparecen cuando hay más de una
+       página (ver ROTACION_MS en pantalla.js). Vacío = no se ve nada. */
+    .paginador { display:flex; justify-content:center; gap:9px; margin-top:20px; }
+    .dot-pag { width:9px; height:9px; border-radius:50%; background:rgba(255,255,255,.15); transition: all .3s; }
+    .dot-pag.activo { background:rgba(255,255,255,.85); transform: scale(1.3); }
+
     .juegos-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(430px, 1fr));
@@ -404,6 +410,7 @@
     <span>Sin actividad en este momento</span>
   </div>
   <div class="juegos-grid" id="juegosGrid" style="display:none"></div>
+  <div class="paginador" id="dotsJuegos"></div>
 </main>
 
 <footer>

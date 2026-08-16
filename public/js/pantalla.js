@@ -1,5 +1,29 @@
 const socket = io();
 
+// ── Paginado automático ───────────────────────────────────────────────────────
+// En un TV nadie puede scrollear: si hay más juegos con actividad de los que
+// entran cómodos en pantalla, se dividen en páginas que rotan solas en vez de
+// desbordar (invisible) o achicar todo. Un cambio real de datos (ver
+// cargarCola) vuelve siempre a la página 1; el recálculo local de tiempos
+// cada 30s no toca la página actual.
+const ROTACION_MS = 6000;
+const POR_PAGINA_JUEGOS = 4;
+let _pagJuegos = 0, _timerJuegos = null;
+
+function paginar(items, porPagina) {
+  const paginas = [];
+  for (let i = 0; i < items.length; i += porPagina) paginas.push(items.slice(i, i + porPagina));
+  return paginas;
+}
+
+function renderDots(contId, paginas, paginaActual) {
+  const el = document.getElementById(contId);
+  if (!el) return;
+  el.innerHTML = paginas.length > 1
+    ? paginas.map((_, i) => `<span class="dot-pag ${i === paginaActual ? 'activo' : ''}"></span>`).join('')
+    : '';
+}
+
 function escapeHtml(str) {
   return String(str == null ? '' : str).replace(/[&<>"']/g, c =>
     ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
@@ -126,27 +150,49 @@ async function cargarCola() {
     if (!res.ok) return;
     const { juegos } = await res.json();
     estadoJuegos = juegos;
+    // Un cambio real de datos vuelve siempre a la página 1 (lo urgente se ve
+    // ya); el recálculo local de tiempos cada 30s no pasa por acá.
+    _pagJuegos = 0;
     renderJuegos();
   } catch (_) {}
 }
 
 // ── Render principal ──────────────────────────────────────────────────────────
 function renderJuegos() {
-  const grid    = document.getElementById('juegosGrid');
+  const grid     = document.getElementById('juegosGrid');
   const sinDatos = document.getElementById('sinDatos');
+  const dots     = document.getElementById('dotsJuegos');
   const juegosConActividad = estadoJuegos.filter(j =>
     j.activos.length > 0 || j.cola.length > 0
   );
 
+  clearInterval(_timerJuegos);
+
   if (!juegosConActividad.length) {
     sinDatos.style.display = '';
     grid.style.display = 'none';
+    if (dots) dots.innerHTML = '';
     return;
   }
 
   sinDatos.style.display = 'none';
   grid.style.display = '';
-  grid.innerHTML = juegosConActividad.map(j => renderJuegoCard(j)).join('');
+
+  const paginas = paginar(juegosConActividad, POR_PAGINA_JUEGOS);
+  if (_pagJuegos >= paginas.length) _pagJuegos = 0;
+
+  const pintar = () => {
+    grid.innerHTML = paginas[_pagJuegos].map(j => renderJuegoCard(j)).join('');
+    renderDots('dotsJuegos', paginas, _pagJuegos);
+  };
+  pintar();
+
+  if (paginas.length > 1) {
+    _timerJuegos = setInterval(() => {
+      _pagJuegos = (_pagJuegos + 1) % paginas.length;
+      pintar();
+    }, ROTACION_MS);
+  }
 }
 
 function renderJuegoCard(j) {

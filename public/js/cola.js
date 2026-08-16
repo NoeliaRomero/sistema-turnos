@@ -4,6 +4,33 @@ let colaData   = [];
 let filtroId   = '';  // '' = todos
 let timerTick  = null;
 
+// ── Paginado automático ───────────────────────────────────────────────────────
+// En un TV nadie puede scrollear: si hay más tarjetas de las que entran cómodas
+// en pantalla, en vez de desbordar (invisible) o achicar todo, se dividen en
+// páginas que van rotando solas. Un cambio real de datos (llamada, turno nuevo,
+// etc. — ver cargarCola) vuelve siempre a la página 1 para que lo urgente se
+// vea ya; el recálculo local de tiempos cada 30s no toca la página actual.
+const ROTACION_MS = 6000;
+const POR_PAGINA_JUGANDO = 4;
+const POR_PAGINA_ESPERA  = 6;
+
+let _pagJugando = 0, _timerJugando = null;
+let _pagCola    = 0, _timerCola    = null;
+
+function paginar(items, porPagina) {
+  const paginas = [];
+  for (let i = 0; i < items.length; i += porPagina) paginas.push(items.slice(i, i + porPagina));
+  return paginas;
+}
+
+function renderDots(contId, paginas, paginaActual) {
+  const el = document.getElementById(contId);
+  if (!el) return;
+  el.innerHTML = paginas.length > 1
+    ? paginas.map((_, i) => `<span class="dot-pag ${i === paginaActual ? 'activo' : ''}"></span>`).join('')
+    : '';
+}
+
 function escapeHtml(str) {
   return String(str == null ? '' : str).replace(/[&<>"']/g, c =>
     ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
@@ -97,6 +124,10 @@ async function cargarCola() {
   const res  = await fetch('/api/turnos/cola');
   const data = await res.json();
   colaData   = data.juegos;
+  // Un cambio real de datos vuelve siempre a la página 1 (lo urgente se ve
+  // ya); el recálculo local de tiempos cada 30s no pasa por acá.
+  _pagJugando = 0;
+  _pagCola    = 0;
   construirFiltros();
   renderTodo();
 }
@@ -125,6 +156,8 @@ function construirFiltros() {
 
 function setFiltro(id) {
   filtroId = id;
+  _pagJugando = 0;
+  _pagCola    = 0;
   renderTodo();
   construirFiltros();
 }
@@ -143,12 +176,32 @@ function renderJugando(juegos) {
   const cont = document.getElementById('listaJugando');
   const grupos = juegos.flatMap(j => j.jugando.map(t => ({ ...t, juego: j })));
 
+  clearInterval(_timerJugando);
+
   if (!grupos.length) {
     cont.innerHTML = '<div class="sin-datos"><i class="bi bi-controller"></i>Sin grupos jugando</div>';
+    renderDots('dotsJugando', [], 0);
     return;
   }
 
-  cont.innerHTML = grupos.map(t => {
+  const paginas = paginar(grupos, POR_PAGINA_JUGANDO);
+  if (_pagJugando >= paginas.length) _pagJugando = 0;
+
+  const pintar = () => {
+    cont.innerHTML = paginas[_pagJugando].map(pintarCardJugando).join('');
+    renderDots('dotsJugando', paginas, _pagJugando);
+  };
+  pintar();
+
+  if (paginas.length > 1) {
+    _timerJugando = setInterval(() => {
+      _pagJugando = (_pagJugando + 1) % paginas.length;
+      pintar();
+    }, ROTACION_MS);
+  }
+}
+
+function pintarCardJugando(t) {
     const pct     = t.juego.duracion_minutos > 0
       ? Math.min(100, Math.round((t.tiempo_transcurrido / t.juego.duracion_minutos) * 100)) : 0;
     const vencido = t.tiempo_transcurrido > t.juego.duracion_minutos;
@@ -192,7 +245,6 @@ function renderJugando(juegos) {
         <div class="segmentos">${segmentosHtml}</div>
       </div>
     </div>`;
-  }).join('');
 }
 
 function renderCola(juegos) {
@@ -204,12 +256,17 @@ function renderCola(juegos) {
   const items = juegos.flatMap(j => j.cola.map(t => ({ ...t, juego: j })))
     .sort((a, b) => (a.tiempo_espera_estimado ?? 0) - (b.tiempo_espera_estimado ?? 0));
 
+  clearInterval(_timerCola);
+
   if (!items.length) {
     cont.innerHTML = '<div class="sin-datos"><i class="bi bi-hourglass-split"></i>Sin grupos en espera</div>';
+    renderDots('dotsCola', [], 0);
     return;
   }
 
-  cont.innerHTML = items.map((t, i) => {
+  // La posición (#1, #2...) y "¡Próximo!" se calculan sobre el índice real en
+  // la lista completa ANTES de paginar, para que no se reinicien en cada página.
+  const htmls = items.map((t, i) => {
     const icono     = iconoDeJuego(t.juego.id);
     const esProximo = i === 0 && t.tiempo_espera_estimado === 0;
     const min       = t.tiempo_espera_estimado ?? 0;
@@ -229,7 +286,23 @@ function renderCola(juegos) {
             : `<div class="aprox">Aprox.</div><div class="num">${p.numero}<span style="font-size:1rem"> ${p.unidad}</span></div>`}
         </div>
       </div>`;
-  }).join('');
+  });
+
+  const paginas = paginar(htmls, POR_PAGINA_ESPERA);
+  if (_pagCola >= paginas.length) _pagCola = 0;
+
+  const pintar = () => {
+    cont.innerHTML = paginas[_pagCola].join('');
+    renderDots('dotsCola', paginas, _pagCola);
+  };
+  pintar();
+
+  if (paginas.length > 1) {
+    _timerCola = setInterval(() => {
+      _pagCola = (_pagCola + 1) % paginas.length;
+      pintar();
+    }, ROTACION_MS);
+  }
 }
 
 // ── Flash de pantalla ─────────────────────────────────────────────────────────
