@@ -9,31 +9,46 @@ function escapeHtml(str) {
     ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 }
 
-// Formatea minutos de espera como horas cuando pasan los 60 (ej. "1h 20min").
-function formatEspera(min) {
-  if (min < 60) return `${min} min`;
+// Formatea minutos de espera como horas cuando pasan los 60 (ej. "1h 20").
+// Devuelve {numero, unidad} para renderizar el número grande y la unidad chica
+// por separado, como en el mockup.
+function formatEsperaPartes(min) {
+  if (min < 60) return { numero: String(min), unidad: 'MIN' };
   const horas = Math.floor(min / 60);
   const resto = min % 60;
-  return resto === 0 ? `${horas}h` : `${horas}h ${resto}min`;
+  return resto === 0
+    ? { numero: `${horas}`, unidad: 'H' }
+    : { numero: `${horas}h${resto}`, unidad: 'MIN' };
 }
 
-// ── Color por juego ──────────────────────────────────────────────────────────
-// Cada juego se pinta con un color propio (estable mientras no cambie el orden
-// alfabético que devuelve el backend) para distinguirlos de un vistazo en la
-// pantalla, sobre todo cuando se muestran varios juegos mezclados.
+// ── Color + ícono por juego ──────────────────────────────────────────────────
+// Cada juego se pinta con un color/ícono propio (estable mientras no cambie el
+// orden alfabético que devuelve el backend) para distinguirlos de un vistazo.
 const PALETA_JUEGOS = [
-  { accent: '#3b82f6', bg: 'rgba(59,130,246,0.14)',  bgStrong: '#3b82f6', border: 'rgba(59,130,246,0.35)',  text: '#93c5fd' }, // azul
-  { accent: '#f97316', bg: 'rgba(249,115,22,0.14)',  bgStrong: '#f97316', border: 'rgba(249,115,22,0.35)',  text: '#fdba74' }, // naranja
-  { accent: '#10b981', bg: 'rgba(16,185,129,0.14)',  bgStrong: '#10b981', border: 'rgba(16,185,129,0.35)',  text: '#6ee7b7' }, // verde
-  { accent: '#ec4899', bg: 'rgba(236,72,153,0.14)',  bgStrong: '#ec4899', border: 'rgba(236,72,153,0.35)',  text: '#f9a8d4' }, // rosa
-  { accent: '#a855f7', bg: 'rgba(168,85,247,0.14)',  bgStrong: '#a855f7', border: 'rgba(168,85,247,0.35)',  text: '#d8b4fe' }, // violeta
-  { accent: '#06b6d4', bg: 'rgba(6,182,212,0.14)',   bgStrong: '#06b6d4', border: 'rgba(6,182,212,0.35)',   text: '#67e8f9' }, // cian
-  { accent: '#eab308', bg: 'rgba(234,179,8,0.14)',   bgStrong: '#eab308', border: 'rgba(234,179,8,0.35)',   text: '#fde047' }, // amarillo
-  { accent: '#ef4444', bg: 'rgba(239,68,68,0.14)',   bgStrong: '#ef4444', border: 'rgba(239,68,68,0.35)',   text: '#fca5a5' }, // rojo
+  { accent: '#3b82f6', bg: 'rgba(59,130,246,0.12)',  bgStrong: '#3b82f6', border: 'rgba(59,130,246,0.35)',  text: '#93c5fd' }, // azul
+  { accent: '#a855f7', bg: 'rgba(168,85,247,0.12)',  bgStrong: '#a855f7', border: 'rgba(168,85,247,0.35)',  text: '#d8b4fe' }, // violeta
+  { accent: '#f97316', bg: 'rgba(249,115,22,0.12)',  bgStrong: '#f97316', border: 'rgba(249,115,22,0.35)',  text: '#fdba74' }, // naranja
+  { accent: '#ec4899', bg: 'rgba(236,72,153,0.12)',  bgStrong: '#ec4899', border: 'rgba(236,72,153,0.35)',  text: '#f9a8d4' }, // rosa
+  { accent: '#10b981', bg: 'rgba(16,185,129,0.12)',  bgStrong: '#10b981', border: 'rgba(16,185,129,0.35)',  text: '#6ee7b7' }, // verde
+  { accent: '#06b6d4', bg: 'rgba(6,182,212,0.12)',   bgStrong: '#06b6d4', border: 'rgba(6,182,212,0.35)',   text: '#67e8f9' }, // cian
+  { accent: '#eab308', bg: 'rgba(234,179,8,0.12)',   bgStrong: '#eab308', border: 'rgba(234,179,8,0.35)',   text: '#fde047' }, // amarillo
+  { accent: '#ef4444', bg: 'rgba(239,68,68,0.12)',   bgStrong: '#ef4444', border: 'rgba(239,68,68,0.35)',   text: '#fca5a5' }, // rojo
 ];
+// Íconos genéricos que rotan junto con el color — no dependen del nombre del
+// juego (que es libre / lo define el admin), así funciona para cualquier
+// juego futuro sin necesidad de mapear nombre → ícono a mano.
+const ICONOS_JUEGOS = [
+  'bi-speedometer2', 'bi-bullseye', 'bi-trophy-fill', 'bi-lightning-charge-fill',
+  'bi-joystick', 'bi-stars', 'bi-gem', 'bi-fire',
+];
+
 function colorDeJuego(juegoId) {
   const idx = colaData.findIndex(j => j.id === juegoId);
   return PALETA_JUEGOS[(idx >= 0 ? idx : 0) % PALETA_JUEGOS.length];
+}
+function iconoDeJuego(juegoId) {
+  const idx = colaData.findIndex(j => j.id === juegoId);
+  return ICONOS_JUEGOS[(idx >= 0 ? idx : 0) % ICONOS_JUEGOS.length];
 }
 function estiloJuego(juegoId) {
   const c = colorDeJuego(juegoId);
@@ -59,12 +74,12 @@ async function cargarCola() {
 
 function construirFiltros() {
   const cont = document.getElementById('filtros');
-  cont.innerHTML = '<span style="color:rgba(255,255,255,.4); font-size:.8rem; text-transform:uppercase; letter-spacing:1px;">Filtrar:</span>';
+  cont.innerHTML = '<span class="etiqueta">Filtrar:</span>';
 
   const btnTodos = document.createElement('button');
   btnTodos.className = `filtro-btn ${filtroId === '' ? 'activo' : ''}`;
   btnTodos.dataset.id = '';
-  btnTodos.textContent = 'Todos los juegos';
+  btnTodos.innerHTML = '<i class="bi bi-grid-3x3-gap-fill"></i>Todos';
   btnTodos.addEventListener('click', () => setFiltro(''));
   cont.appendChild(btnTodos);
 
@@ -73,7 +88,7 @@ function construirFiltros() {
     btn.className = `filtro-btn ${filtroId === String(j.id) ? 'activo' : ''}`;
     btn.dataset.id = j.id;
     btn.style.cssText = estiloJuego(j.id);
-    btn.innerHTML = `<span class="dot-juego" style="background:${colorDeJuego(j.id).accent}"></span>${escapeHtml(j.nombre)}`;
+    btn.innerHTML = `<i class="bi ${iconoDeJuego(j.id)}"></i>${escapeHtml(j.nombre)}`;
     btn.addEventListener('click', () => setFiltro(String(j.id)));
     cont.appendChild(btn);
   });
@@ -81,10 +96,8 @@ function construirFiltros() {
 
 function setFiltro(id) {
   filtroId = id;
-  document.querySelectorAll('.filtro-btn').forEach(b => {
-    b.classList.toggle('activo', b.dataset.id === id);
-  });
   renderTodo();
+  construirFiltros();
 }
 
 // ── Render completo ───────────────────────────────────────────────────────────
@@ -102,7 +115,7 @@ function renderJugando(juegos) {
   const grupos = juegos.flatMap(j => j.jugando.map(t => ({ ...t, juego: j })));
 
   if (!grupos.length) {
-    cont.innerHTML = '<div class="sin-datos"><i>🎮</i>Sin grupos jugando</div>';
+    cont.innerHTML = '<div class="sin-datos"><i class="bi bi-controller"></i>Sin grupos jugando</div>';
     return;
   }
 
@@ -110,6 +123,7 @@ function renderJugando(juegos) {
     const pct     = t.juego.duracion_minutos > 0
       ? Math.min(100, Math.round((t.tiempo_transcurrido / t.juego.duracion_minutos) * 100)) : 0;
     const vencido = t.tiempo_transcurrido > t.juego.duracion_minutos;
+    const icono   = iconoDeJuego(t.juego.id);
 
     const etapaHtml = t.etapa_actual_nombre
       ? `<div class="etapa-tv">
@@ -122,80 +136,68 @@ function renderJugando(juegos) {
 
     // El estado real (llamado = ventana previa de 5 min / jugando = ya en curso)
     // se muestra explícito: no son lo mismo, sobre todo con juegos por etapas.
-    const estadoChip = t.estado === 'jugando'
-      ? `<span class="estado-chip jugando"><i class="bi bi-play-fill me-1"></i>Jugando</span>`
-      : `<span class="estado-chip llamado"><i class="bi bi-megaphone-fill me-1"></i>Llamado</span>`;
+    const estadoPill = t.estado === 'jugando'
+      ? `<span class="estado-pill jugando"><span class="dot"></span>Jugando</span>`
+      : `<span class="estado-pill llamado"><span class="dot"></span>Llamado</span>`;
+
+    // Barra de progreso segmentada (12 bloques)
+    const totalSeg = 12;
+    const llenos   = Math.round((pct / 100) * totalSeg);
+    const segmentosHtml = Array.from({ length: totalSeg }, (_, i) =>
+      `<div class="segmento ${i < llenos ? (vencido ? 'vencido-seg' : 'lleno') : ''}"></div>`
+    ).join('');
 
     return `
-    <div class="card-jugando" id="jugando-${t.id}" style="${estiloJuego(t.juego.id)}">
-      <div class="juego-label-row">
-        <div class="juego-label"><i class="bi bi-controller me-1"></i>${escapeHtml(t.juego.nombre)}</div>
-        ${estadoChip}
-      </div>
+    <div class="card-jugando nuevo" id="jugando-${t.id}" style="${estiloJuego(t.juego.id)}">
+      <i class="bi ${icono} icono-fondo"></i>
+      <div class="juego-label"><i class="bi ${icono}"></i>${escapeHtml(t.juego.nombre)}</div>
       <div class="biper-grande">${escapeHtml(t.biper_numero)}</div>
       <div class="familia-nombre">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>
+      ${estadoPill}
       ${etapaHtml}
-      <div class="info-row">
-        <span class="tag-miembros"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} personas</span>
-        <span style="font-size:.95rem; color:rgba(255,255,255,.6);">${t.tiempo_transcurrido} min en juego</span>
-      </div>
-      <div class="progreso-wrap">
-        <div class="progreso-label">
-          <span>Progreso del turno</span>
-          <span>${vencido ? '⚠️ Tiempo excedido' : `${t.tiempo_restante} min restantes`}</span>
-        </div>
-        <div class="progreso-bar">
-          <div class="progreso-fill ${vencido ? 'vencido' : ''}" style="width:${pct}%"></div>
-        </div>
-      </div>
+      <div class="tag-miembros"><i class="bi bi-people-fill"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</div>
+      <div class="restante-label">${vencido ? '⚠️ Tiempo excedido' : 'Tiempo restante'}</div>
+      <div class="restante-num ${vencido ? 'vencido' : ''}">${t.tiempo_restante}<span class="u">MIN</span></div>
+      <div class="segmentos">${segmentosHtml}</div>
     </div>`;
   }).join('');
 }
 
 function renderCola(juegos) {
   const cont = document.getElementById('listaCola');
-  let html = '';
-  let hayCola = false;
 
-  juegos.forEach(j => {
-    if (!j.cola.length) return;
-    hayCola = true;
+  // Une la cola de todos los juegos filtrados en una sola lista, ordenada por
+  // tiempo de espera (así "Todos" muestra un orden real de llegada al frente,
+  // no la cola de cada juego repitiendo la posición 01 por separado).
+  const items = juegos.flatMap(j => j.cola.map(t => ({ ...t, juego: j })))
+    .sort((a, b) => (a.tiempo_espera_estimado ?? 0) - (b.tiempo_espera_estimado ?? 0));
 
-    if (!filtroId) {
-      html += `<div class="juego-sep" style="${estiloJuego(j.id)}"><span class="dot-juego"></span>${escapeHtml(j.nombre)}</div>`;
-    }
+  if (!items.length) {
+    cont.innerHTML = '<div class="sin-datos"><i class="bi bi-hourglass-split"></i>Sin grupos en espera</div>';
+    return;
+  }
 
-    html += j.cola.map(t => {
-      const esProximo = t.posicion === 1 && t.tiempo_espera_estimado === 0;
-      return `
-      <div class="card-cola ${esProximo ? 'proximo' : ''}" id="cola-${t.id}" style="${esProximo ? '' : estiloJuego(j.id)}">
-        <div class="posicion">${t.posicion}</div>
-        <div class="biper-col">${escapeHtml(t.biper_numero)}</div>
-        <div class="familia-col">
-          <div class="nombre">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>
-          <div class="sub">
-            <i class="bi bi-people me-1"></i>${t.cantidad_miembros} personas
-            ${!filtroId ? '' : ''}
+  cont.innerHTML = items.map((t, i) => {
+    const icono     = iconoDeJuego(t.juego.id);
+    const esProximo = i === 0 && t.tiempo_espera_estimado === 0;
+    const min       = t.tiempo_espera_estimado ?? 0;
+    const p         = formatEsperaPartes(min);
+    return `
+      <div class="card-cola ${esProximo ? 'proximo' : ''}" id="cola-${t.id}">
+        <div class="cola-posicion">${String(i + 1).padStart(2, '0')}</div>
+        <div class="cola-datos">
+          <div class="cola-nombre">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>
+          <div class="cola-juego" style="color:${colorDeJuego(t.juego.id).accent}">
+            <i class="bi ${icono}"></i>${escapeHtml(t.juego.nombre)}
           </div>
         </div>
-        <div class="espera-col ${esProximo ? 'proximo' : ''}">
+        <div class="cola-espera">
           ${esProximo
-            ? `<div class="espera-num">¡Próximo!</div>`
-            : t.tiempo_espera_estimado < 60
-              ? `<div class="espera-num">~${t.tiempo_espera_estimado}</div>
-                 <div class="espera-label">min espera</div>`
-              : `<div class="espera-num">~${formatEspera(t.tiempo_espera_estimado)}</div>
-                 <div class="espera-label">de espera</div>`}
+            ? `<div class="num" style="font-size:1.3rem">¡Próximo!</div>`
+            : `<div class="aprox">Aprox.</div><div class="num">${p.numero}<span style="font-size:1rem"> ${p.unidad}</span></div>`}
         </div>
       </div>`;
-    }).join('');
-  });
-
-  if (!hayCola) {
-    cont.innerHTML = '<div class="sin-datos"><i>⏳</i>Sin grupos en espera</div>';
-  } else {
-    cont.innerHTML = html;
-  }
+  }).join('');
 }
 
 // ── Flash de pantalla ─────────────────────────────────────────────────────────

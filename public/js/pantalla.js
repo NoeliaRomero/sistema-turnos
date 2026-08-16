@@ -25,9 +25,20 @@ const PALETA_JUEGOS = [
   { accent: '#eab308', bg: 'rgba(234,179,8,0.10)',  border: 'rgba(234,179,8,0.3)',   text: '#fde047' },
   { accent: '#ef4444', bg: 'rgba(239,68,68,0.10)',  border: 'rgba(239,68,68,0.3)',   text: '#fca5a5' },
 ];
+// Íconos genéricos que rotan junto con el color — no dependen del nombre del
+// juego (lo define el admin libremente), así funciona para cualquier juego
+// futuro sin necesidad de mapear nombre → ícono a mano.
+const ICONOS_JUEGOS = [
+  'bi-speedometer2', 'bi-bullseye', 'bi-trophy-fill', 'bi-lightning-charge-fill',
+  'bi-joystick', 'bi-stars', 'bi-gem', 'bi-fire',
+];
 function colorDeJuego(juegoId) {
   const idx = estadoJuegos.findIndex(j => j.id === juegoId);
   return PALETA_JUEGOS[(idx >= 0 ? idx : 0) % PALETA_JUEGOS.length];
+}
+function iconoDeJuego(juegoId) {
+  const idx = estadoJuegos.findIndex(j => j.id === juegoId);
+  return ICONOS_JUEGOS[(idx >= 0 ? idx : 0) % ICONOS_JUEGOS.length];
 }
 function estiloJuego(juegoId) {
   const c = colorDeJuego(juegoId);
@@ -115,24 +126,26 @@ function renderJuegos() {
 function renderJuegoCard(j) {
   const totalActivos = j.activos.length;
   const totalCola    = j.cola.length;
+  const icono        = iconoDeJuego(j.id);
 
   const activosHtml = totalActivos
     ? j.activos.map(t => {
         const esLlamado  = t.estado === 'llamado';
         const chipEstado = esLlamado
-          ? '<span class="meta-chip chip-llamado">&#128276; Llamado</span>'
-          : '<span class="meta-chip chip-jugando">&#9654; Jugando</span>';
-        const chipTiempo = `<span class="meta-chip chip-tiempo">&#8987; ${t.tiempo_transcurrido ?? 0} min</span>`;
+          ? '<span class="meta-chip chip-llamado"><i class="bi bi-megaphone-fill me-1"></i>Llamado</span>'
+          : '<span class="meta-chip chip-jugando"><i class="bi bi-play-fill me-1"></i>Jugando</span>';
+        const chipTiempo = `<span class="meta-chip chip-tiempo"><i class="bi bi-clock me-1"></i>${t.tiempo_transcurrido ?? 0} min</span>`;
         const chipEtapa  = t.etapa_actual_nombre
-          ? `<span class="meta-chip chip-etapa">&#8635; ${escapeHtml(t.etapa_actual_nombre)}</span>` : '';
+          ? `<span class="meta-chip chip-etapa"><i class="bi bi-layers me-1"></i>${escapeHtml(t.etapa_actual_nombre)}</span>` : '';
         return `
           <div class="turno-activo ${esLlamado ? 'estado-llamado' : ''} nuevo">
+            <i class="bi ${icono} icono-fondo"></i>
             <div class="biper-tv">${escapeHtml(t.biper_numero)}</div>
             <div class="turno-info">
               <div class="turno-cliente">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>
               <div class="turno-meta">
                 ${chipEstado}${chipTiempo}${chipEtapa}
-                ${t.cantidad_miembros > 1 ? `<span class="meta-chip chip-tiempo">&#128101; ${t.cantidad_miembros} pers.</span>` : ''}
+                ${t.cantidad_miembros > 1 ? `<span class="meta-chip chip-tiempo"><i class="bi bi-people-fill me-1"></i>${t.cantidad_miembros} pers.</span>` : ''}
               </div>
             </div>
           </div>`;
@@ -140,13 +153,16 @@ function renderJuegoCard(j) {
     : '<p class="sin-activo">Sin turno activo</p>';
 
   const colaHtml = totalCola
-    ? `<div class="cola-lista">${j.cola.slice(0, 5).map(t => `
+    ? `<div class="cola-lista">${j.cola.slice(0, 5).map(t => {
+        const esProximo = t.posicion === 1 && t.tiempo_espera_estimado === 0;
+        return `
         <div class="cola-item">
           <span class="posicion">#${t.posicion}</span>
           <span class="biper-cola">${escapeHtml(t.biper_numero)}</span>
           <span class="cola-cliente">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</span>
-          <span class="espera-chip">~${formatEspera(t.tiempo_espera_estimado ?? 0)}</span>
-        </div>`).join('')}
+          <span class="espera-chip" style="${esProximo ? 'color:#4ade80;font-weight:800;' : ''}">${esProximo ? '¡Próximo!' : `~${formatEspera(t.tiempo_espera_estimado ?? 0)}`}</span>
+        </div>`;
+      }).join('')}
         ${totalCola > 5 ? `<div class="sin-cola">+${totalCola - 5} más en cola</div>` : ''}
       </div>`
     : '<p class="sin-cola">Cola vacía</p>';
@@ -154,10 +170,10 @@ function renderJuegoCard(j) {
   return `
     <div class="juego-card" id="juego-${j.id}" style="${estiloJuego(j.id)}">
       <div class="juego-header">
-        <span class="juego-nombre">${escapeHtml(j.nombre)}</span>
+        <span class="juego-nombre"><i class="bi ${icono}"></i>${escapeHtml(j.nombre)}</span>
         <div class="juego-contadores">
-          <span class="contador-badge badge-activo">&#9654; ${totalActivos} activo${totalActivos !== 1 ? 's' : ''}</span>
-          <span class="contador-badge badge-espera">&#8987; ${totalCola} en cola</span>
+          <span class="contador-badge badge-activo"><i class="bi bi-play-fill"></i> ${totalActivos} activo${totalActivos !== 1 ? 's' : ''}</span>
+          <span class="contador-badge badge-espera"><i class="bi bi-hourglass-split"></i> ${totalCola} en cola</span>
         </div>
       </div>
       <div class="juego-body">

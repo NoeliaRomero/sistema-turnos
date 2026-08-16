@@ -6,47 +6,85 @@
   <title>Pantalla Operativa – Sistema de Turnos</title>
   <style>
     * { margin:0; padding:0; box-sizing:border-box; }
-
-    /* Base pensada para un TV de 55" visto a varios metros. */
+    /* Base pensada para un TV de 55" visto a varios metros de distancia. */
     html { font-size: 19px; }
 
     body {
-      background: #05091f;
+      background: #060a1c;
       color: white;
       font-family: 'Segoe UI', system-ui, sans-serif;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
+      position: relative;
     }
+
+    /* ── Fondo decorativo: franjas diagonales tenues en las esquinas ──────── */
+    body::before, body::after {
+      content: '';
+      position: fixed;
+      width: 60vw;
+      height: 60vh;
+      pointer-events: none;
+      z-index: 0;
+      opacity: .5;
+    }
+    body::before {
+      left: -10vw; bottom: -20vh;
+      background: linear-gradient(115deg, transparent 40%, rgba(59,130,246,.16) 46%, transparent 52%),
+                  linear-gradient(115deg, transparent 55%, rgba(168,85,247,.14) 60%, transparent 66%);
+    }
+    body::after {
+      right: -10vw; bottom: -20vh;
+      background: linear-gradient(245deg, transparent 40%, rgba(249,115,22,.14) 46%, transparent 52%),
+                  linear-gradient(245deg, transparent 55%, rgba(236,72,153,.12) 60%, transparent 66%);
+    }
+    header, main, footer { position: relative; z-index: 1; }
 
     /* ── Header ────────────────────────────────────────────────────────── */
     header {
-      background: rgba(255,255,255,0.04);
-      border-bottom: 1px solid rgba(255,255,255,0.08);
-      padding: 18px 32px;
+      padding: 20px 36px;
       display: flex;
       align-items: center;
       justify-content: space-between;
       flex-shrink: 0;
+      border-bottom: 1px solid rgba(255,255,255,0.08);
     }
-    .brand {
+    .marca { display:flex; align-items:center; gap:14px; }
+    .marca-icono {
+      width: 46px; height: 46px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6);
+      display: flex; align-items: center; justify-content: center;
       font-size: 1.5rem;
-      font-weight: 800;
-      color: rgba(255,255,255,0.88);
+      flex-shrink: 0;
+    }
+    .marca-nombre { font-size: 1.15rem; font-weight: 800; letter-spacing: .5px; color: rgba(255,255,255,.92); line-height:1.15; }
+
+    .titulo-central { text-align: center; flex: 1; }
+    .titulo-central h1 {
+      font-size: 2rem;
+      font-weight: 900;
       letter-spacing: 2px;
+      line-height: 1;
+    }
+    .titulo-central .subtitulo {
+      font-size: .85rem;
+      font-weight: 700;
+      letter-spacing: 3px;
+      color: #60a5fa;
+      margin-top: 4px;
       text-transform: uppercase;
     }
-    .clock {
-      font-size: 1.7rem;
-      font-weight: 600;
-      color: rgba(255,255,255,0.6);
-      font-variant-numeric: tabular-nums;
-    }
+
+    .reloj-wrap { display:flex; align-items:center; gap:12px; }
+    .reloj-wrap i { font-size: 1.5rem; color: rgba(255,255,255,.4); }
+    .clock { font-size: 1.7rem; font-weight: 700; color: rgba(255,255,255,0.85); font-variant-numeric: tabular-nums; }
 
     /* ── Main grid ─────────────────────────────────────────────────────── */
     main {
       flex: 1;
-      padding: 28px 32px;
+      padding: 26px 32px;
       overflow-y: auto;
     }
 
@@ -55,9 +93,9 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      min-height: 60vh;
+      min-height: 50vh;
       color: rgba(255,255,255,0.2);
-      font-size: 1.5rem;
+      font-size: 1.4rem;
       font-weight: 300;
       gap: 16px;
     }
@@ -65,63 +103,58 @@
 
     .juegos-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(440px, 1fr));
-      gap: 22px;
+      grid-template-columns: repeat(auto-fill, minmax(430px, 1fr));
+      gap: 20px;
     }
 
-    /* ── Tarjeta de juego — coloreada según --jc-* seteadas inline por juego,
-       para distinguir cada juego de un vistazo (misma paleta que cola.js) ── */
+    /* ── Tarjeta de juego — coloreada según --jc-* seteadas inline por juego ── */
     .juego-card {
-      background: rgba(255,255,255,0.05);
-      border: 1px solid var(--jc-border, rgba(255,255,255,0.1));
+      background: rgba(255,255,255,0.04);
+      border: 1.5px solid var(--jc-border, rgba(255,255,255,0.15));
       border-top: 6px solid var(--jc-accent, rgba(255,255,255,0.3));
       border-radius: 18px;
       overflow: hidden;
     }
     .juego-header {
-      background: var(--jc-bg, rgba(255,255,255,0.07));
-      padding: 16px 22px;
+      background: var(--jc-bg, rgba(255,255,255,0.05));
+      padding: 14px 20px;
       display: flex;
       align-items: center;
       justify-content: space-between;
     }
     .juego-nombre {
-      font-size: 1.35rem;
+      font-size: 1.25rem;
       font-weight: 800;
       letter-spacing: 1px;
       text-transform: uppercase;
       color: var(--jc-text, rgba(255,255,255,0.9));
-    }
-    .juego-contadores {
       display: flex;
-      gap: 8px;
+      align-items: center;
+      gap: 10px;
     }
-    .contador-badge {
-      font-size: .85rem;
-      font-weight: 700;
-      padding: 4px 12px;
-      border-radius: 20px;
-    }
+    .juego-contadores { display: flex; gap: 8px; }
+    .contador-badge { font-size: .8rem; font-weight: 700; padding: 4px 12px; border-radius: 20px; }
     .badge-activo  { background: rgba(59,130,246,0.35); color: #93c5fd; border: 1px solid rgba(59,130,246,0.5); }
     .badge-espera  { background: rgba(245,158,11,0.25); color: #fcd34d; border: 1px solid rgba(245,158,11,0.4); }
 
-    .juego-body { padding: 18px 22px; }
+    .juego-body { padding: 16px 20px; }
 
-    /* En juego */
     .seccion-label {
-      font-size: .82rem;
+      font-size: .78rem;
       font-weight: 800;
       letter-spacing: 2px;
       text-transform: uppercase;
       color: rgba(255,255,255,0.35);
-      margin-bottom: 12px;
+      margin-bottom: 10px;
     }
 
     .turno-activo {
-      background: var(--jc-bg, rgba(59,130,246,0.12));
+      position: relative;
+      overflow: hidden;
+      background: var(--jc-bg, rgba(59,130,246,0.1));
       border: 1px solid var(--jc-border, rgba(59,130,246,0.25));
       border-left: 6px solid var(--jc-accent, #3b82f6);
-      border-radius: 12px;
+      border-radius: 14px;
       padding: 14px 18px;
       margin-bottom: 10px;
       display: flex;
@@ -129,86 +162,90 @@
       gap: 16px;
     }
     .turno-activo.estado-llamado {
-      background: rgba(245,158,11,0.12);
+      background: rgba(245,158,11,0.1);
       border-color: rgba(245,158,11,0.3);
       border-left-color: #f59e0b;
     }
+    .turno-activo .icono-fondo {
+      position: absolute; right:-10px; bottom:-14px;
+      font-size: 4.5rem; color: var(--jc-accent, #3b82f6); opacity:.08; pointer-events:none;
+    }
     .biper-tv {
-      font-size: 2.9rem;
+      font-size: 2.6rem;
       font-weight: 900;
       color: var(--jc-accent, #93c5fd);
       line-height: 1;
-      min-width: 58px;
+      min-width: 52px;
       text-align: center;
     }
     .turno-activo.estado-llamado .biper-tv { color: #fcd34d; }
     .turno-info { flex: 1; }
     .turno-cliente {
-      font-size: 1.2rem;
+      font-size: 1.1rem;
       font-weight: 700;
       color: rgba(255,255,255,0.9);
       margin-bottom: 6px;
     }
-    .turno-meta {
-      display: flex;
-      gap: 8px;
-      flex-wrap: wrap;
-    }
-    .meta-chip {
-      font-size: .85rem;
-      font-weight: 700;
-      padding: 3px 10px;
-      border-radius: 10px;
-    }
-    .chip-jugando { background: rgba(59,130,246,0.25); color: #93c5fd; }
-    .chip-llamado { background: rgba(245,158,11,0.25); color: #fcd34d; }
-    .chip-tiempo  { background: rgba(255,255,255,0.1);  color: rgba(255,255,255,0.6); }
-    .chip-etapa   { background: rgba(139,92,246,0.25);  color: #c4b5fd; }
+    .turno-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items:center; }
+    .meta-chip { font-size: .8rem; font-weight: 700; padding: 3px 10px; border-radius: 10px; }
+    .chip-jugando { background: rgba(34,197,94,.16); color:#4ade80; }
+    .chip-llamado { background: rgba(245,158,11,.16); color:#fbbf24; }
+    .chip-tiempo  { background: rgba(255,255,255,0.08);  color: rgba(255,255,255,0.55); }
+    .chip-etapa   { background: rgba(139,92,246,0.2);  color: #c4b5fd; }
 
-    /* Cola de espera */
-    .divisor {
-      border: none;
-      border-top: 1px solid rgba(255,255,255,0.07);
-      margin: 16px 0;
-    }
+    .divisor { border: none; border-top: 1px solid rgba(255,255,255,0.07); margin: 14px 0; }
 
     .cola-lista { display: flex; flex-direction: column; gap: 8px; }
     .cola-item {
       display: flex;
       align-items: center;
       gap: 12px;
-      background: rgba(255,255,255,0.04);
-      border-left: 4px solid var(--jc-accent, rgba(255,255,255,0.15));
-      border-radius: 8px;
-      padding: 10px 14px;
-    }
-    .posicion {
-      font-size: .95rem;
-      font-weight: 700;
-      color: rgba(255,255,255,0.35);
-      min-width: 24px;
-    }
-    .biper-cola {
-      font-size: 1.55rem;
-      font-weight: 900;
-      color: rgba(255,255,255,0.75);
-      min-width: 42px;
-    }
-    .cola-cliente { font-size: 1.02rem; color: rgba(255,255,255,0.65); flex: 1; }
-    .espera-chip {
-      font-size: .85rem;
-      font-weight: 700;
-      color: rgba(255,255,255,0.45);
-      background: rgba(255,255,255,0.08);
-      padding: 3px 10px;
+      background: rgba(255,255,255,0.035);
+      border-left: 4px solid var(--jc-accent, rgba(255,255,255,0.2));
       border-radius: 10px;
+      padding: 9px 14px;
     }
-    .sin-cola { color: rgba(255,255,255,0.25); font-size: 1rem; padding: 4px 0; }
-    .sin-activo { color: rgba(255,255,255,0.25); font-size: 1rem; padding: 4px 0; }
+    .posicion { font-size: .9rem; font-weight: 700; color: rgba(255,255,255,0.35); min-width: 22px; }
+    .biper-cola { font-size: 1.4rem; font-weight: 900; color: rgba(255,255,255,0.75); min-width: 40px; }
+    .cola-cliente { font-size: .98rem; color: rgba(255,255,255,0.62); flex: 1; }
+    .espera-chip {
+      font-size: .82rem; font-weight: 700;
+      color: rgba(255,255,255,0.5);
+      background: rgba(255,255,255,0.07);
+      padding: 3px 10px; border-radius: 10px;
+    }
+    .sin-cola { color: rgba(255,255,255,0.22); font-size: .95rem; padding: 4px 0; }
+    .sin-activo { color: rgba(255,255,255,0.22); font-size: .95rem; padding: 4px 0; }
+
+    /* ── Footer informativo ── */
+    footer {
+      flex-shrink: 0;
+      border-top: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.02);
+      padding: 16px 36px;
+      display: flex;
+      justify-content: space-around;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .footer-item { display:flex; align-items:center; gap:14px; }
+    .footer-item .icono {
+      width: 40px; height: 40px; border-radius: 50%;
+      display:flex; align-items:center; justify-content:center;
+      font-size: 1.15rem;
+      flex-shrink: 0;
+    }
+    .footer-item:nth-child(1) .icono { background: rgba(59,130,246,.15); color:#60a5fa; }
+    .footer-item:nth-child(2) .icono { background: rgba(250,204,21,.15); color:#facc15; }
+    .footer-item:nth-child(3) .icono { background: rgba(249,115,22,.15); color:#fb923c; }
+    .footer-item .texto .linea1 { font-size:.78rem; font-weight:700; letter-spacing:.5px; color: rgba(255,255,255,.6); text-transform:uppercase; }
+    .footer-item .texto .linea2 { font-size:.95rem; font-weight:800; color: rgba(255,255,255,.95); }
+    .footer-item:nth-child(1) .texto .linea2 { color:#93c5fd; }
+    .footer-item:nth-child(3) .texto .linea2 { color:#fdba74; }
 
     /* Flash overlay */
     #flash {
-      pointer-events: none;
+      pointer-events:none;
       position: fixed;
       inset: 0;
       background: rgba(59,130,246,0.2);
@@ -220,7 +257,7 @@
 
     /* Toast de turno cancelado */
     #toastCancelado {
-      pointer-events: none;
+      pointer-events:none;
       position: fixed;
       top: 24px;
       left: 50%;
@@ -237,17 +274,14 @@
       z-index: 1000;
       box-shadow: 0 8px 24px rgba(0,0,0,0.4);
     }
-    #toastCancelado.show {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
-    }
+    #toastCancelado.show { opacity: 1; transform: translateX(-50%) translateY(0); }
 
-    /* Animación de nuevo elemento */
-    @keyframes slideIn {
-      from { opacity: 0; transform: translateY(-8px); }
-      to   { opacity: 1; transform: translateY(0); }
-    }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
     .nuevo { animation: slideIn .35s ease; }
+
+    ::-webkit-scrollbar { width:6px; }
+    ::-webkit-scrollbar-track { background:transparent; }
+    ::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.15); border-radius:4px; }
   </style>
 </head>
 <body>
@@ -256,8 +290,18 @@
 <div id="toastCancelado"></div>
 
 <header>
-  <div class="brand"><i class="bi bi-controller"></i> Sistema de Turnos</div>
-  <div class="clock" id="clock">--:--:--</div>
+  <div class="marca">
+    <div class="marca-icono"><i class="bi bi-controller"></i></div>
+    <div class="marca-nombre">UNIVERSALL<br>ENTRETENIMIENTOS</div>
+  </div>
+  <div class="titulo-central">
+    <h1>SISTEMA DE TURNOS</h1>
+    <div class="subtitulo">Estado en vivo</div>
+  </div>
+  <div class="reloj-wrap">
+    <i class="bi bi-clock"></i>
+    <div class="clock" id="clock">--:--:--</div>
+  </div>
 </header>
 
 <main>
@@ -267,6 +311,30 @@
   </div>
   <div class="juegos-grid" id="juegosGrid" style="display:none"></div>
 </main>
+
+<footer>
+  <div class="footer-item">
+    <div class="icono"><i class="bi bi-info-circle-fill"></i></div>
+    <div class="texto">
+      <div class="linea1">Los tiempos son</div>
+      <div class="linea2">Estimados</div>
+    </div>
+  </div>
+  <div class="footer-item">
+    <div class="icono"><i class="bi bi-star-fill"></i></div>
+    <div class="texto">
+      <div class="linea1">¡Gracias por elegirnos!</div>
+      <div class="linea2">Que te diviertas</div>
+    </div>
+  </div>
+  <div class="footer-item">
+    <div class="icono"><i class="bi bi-ticket-perforated-fill"></i></div>
+    <div class="texto">
+      <div class="linea1">¿Ya tenés tu turno?</div>
+      <div class="linea2">Preparate y que comience la diversión</div>
+    </div>
+  </div>
+</footer>
 
 <link href="/vendor/bootstrap-icons.min.css" rel="stylesheet">
 <script src="/socket.io/socket.io.js"></script>
