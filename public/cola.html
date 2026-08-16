@@ -202,10 +202,16 @@
     @keyframes blink-dot { 0%,100%{opacity:1} 50%{opacity:.35} }
 
     /* Grilla de tarjetas "jugando ahora" */
+    /* Una sola columna siempre: dejamos de calcular cuántas entran según el
+       ancho disponible (minmax/auto-fill), porque eso depende del ancho real
+       que reporte cada TV — y varía. Con 1 columna fija, el paginado (ver
+       POR_PAGINA_JUGANDO=1 en cola.js) es 100% predecible en cualquier
+       pantalla: siempre una card completa por vez, rotando. */
     .grid-jugando {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      grid-template-columns: 1fr;
       gap: 18px;
+      max-width: 460px;
     }
 
     /* Tarjeta jugando — coloreada según --jc-* seteadas inline por juego.
