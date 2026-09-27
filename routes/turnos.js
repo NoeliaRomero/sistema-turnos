@@ -264,12 +264,16 @@ module.exports = (io) => {
              ul.nombre AS llamado_por_nombre,
              uf.nombre AS finalizado_por_nombre,
              ea.nombre  AS etapa_actual_nombre,
-             ea.orden   AS etapa_actual_orden
+             ea.orden   AS etapa_actual_orden,
+             sc.nombre  AS subcategoria_nombre,
+             v.codigo_viper AS viper_codigo
       FROM turnos t
       JOIN atracciones a ON t.atraccion_id = a.id
       LEFT JOIN usuarios ul    ON t.llamado_por    = ul.id
       LEFT JOIN usuarios uf    ON t.finalizado_por = uf.id
       LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id
+      LEFT JOIN juego_subcategorias sc ON t.subcategoria_id = sc.id
+      LEFT JOIN vipers v ON t.viper_id = v.id
       WHERE 1=1
     `;
     const params = [];

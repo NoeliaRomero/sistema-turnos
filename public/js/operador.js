@@ -113,7 +113,9 @@ function cardEsperando(t) {
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
               <span class="atraccion-tag">${t.atraccion_nombre}</span>
               ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${t.subcategoria_nombre}</span>` : ''}
+              <span class="duracion-tag"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
               ${t.duracion_minutos ? `<span class="duracion-tag"><i class="bi bi-clock me-1"></i>${t.duracion_minutos} min</span>` : ''}
+              ${t.viper_codigo ? `<span class="atraccion-tag" style="background:#ede9fe;color:#5b21b6"><i class="bi bi-broadcast me-1"></i>${t.viper_codigo}</span>` : ''}
               <span class="hora-tag">${formatHora(t.created_at)}</span>
             </div>
           </div>
@@ -163,6 +165,8 @@ function cardLlamado(t) {
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
               <span class="atraccion-tag">${escapeHtml(t.atraccion_nombre)}</span>
               ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>` : ''}
+              <span class="duracion-tag"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
+              ${t.viper_codigo ? `<span class="atraccion-tag" style="background:#ede9fe;color:#5b21b6"><i class="bi bi-broadcast me-1"></i>${escapeHtml(t.viper_codigo)}</span>` : ''}
               <span class="badge bg-warning text-dark px-2">
                 <i class="bi bi-bell-fill me-1"></i>Llamado
               </span>
@@ -232,7 +236,9 @@ function cardJugando(t) {
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
               <span class="atraccion-tag">${escapeHtml(t.atraccion_nombre)}</span>
               ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>` : ''}
+              <span class="duracion-tag"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
               ${duracion ? `<span class="duracion-tag"><i class="bi bi-clock me-1"></i>${duracion} min est.</span>` : ''}
+              ${t.viper_codigo ? `<span class="atraccion-tag" style="background:#ede9fe;color:#5b21b6"><i class="bi bi-broadcast me-1"></i>${escapeHtml(t.viper_codigo)}</span>` : ''}
               <span class="badge bg-primary text-white px-2">
                 <i class="bi bi-play-circle me-1"></i>Jugando
               </span>
