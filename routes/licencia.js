@@ -24,13 +24,13 @@ const { requireAuth } = require('../middleware/auth');
 
 // ── Clave pública (solo verifica; la privada está en tools/private.pem del dev) ──
 const PUBLIC_KEY = `-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAys9aCISsHGPymThF06ZS
-5hlz2Ki4AqmN53XJPpT3+QGY3TPsSEvxTs/hQNKizDxXxtxYM2WdknqsbahawKZy
-XPV4cPL0xvyQ6G7BV4spwsOB365njG9ktroSv79Ohea7aT4wDVZKxndW0rTfsjku
-UxIvlZgVpSDBmTw921G7aCgtOb3vqscYJhsFT9nkSAuFoiWq90HdQVk76AhQFazp
-lKSZVNt+9+RGawFNS8Yo0Ctd7zV5dVO+Sa+6xMW8ei48SOg4d5F95hOzFsCNLg/i
-V7xrW7ZiZOk0IGBRAXBu27tLjCVGJgJifApbi8Gsis4mGZw2ufDFmP9vUTEqPIMY
-WQIDAQAB
+MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA0VUbS3sE2DeOhwdatjqo
+cR+O7jg+fLkB5LlnVvUdd6B+FK52DcWx6Gr8KXyrA259QYL2yGJw1gND2WXTgxni
+6cPrbUqq/dbYrKabMX/nFogmaj7XKDYIxqZ19elqqye4hW+X0fJdsheetCT4tmFO
+ooytYBTu8OUyi67OlRjnxsjl9QzVdZUd/b6r2cNfAtZ7m7ZBHAiELnzZhi+QenoU
+5S5yciqiQizbP8MV6Dp+KQDCyY9YG77g2JS7PxR6Ti+BqgHDKHLBTRiEXJwgNMDb
+Fzkkh83+BPryhJs6fOgziQ0sUy7RjteEtXTrC9HODZ+LImWNqO+AcRoXTs5ihA53
+IwIDAQAB
 -----END PUBLIC KEY-----`;
 
 // ── Rutas de archivos ─────────────────────────────────────────────────────────
