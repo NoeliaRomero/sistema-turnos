@@ -277,12 +277,18 @@ function renderJuegoPane(j) {
       const claseEspera = t.tiempo_espera_estimado === 0 ? 'espera-0'
         : t.tiempo_espera_estimado <= 30 ? 'espera-baja' : 'espera-alta';
 
-      // Posición dentro de la misma subcategoría (o sin subcategoría)
+      // Posición dentro de la misma subcategoría (solo determina quién puede
+      // ser llamado/combinado — esa restricción no aplica al reordenamiento)
       const subcatKey     = t.subcategoria_id ?? '__null__';
       const subcatList    = colaBySubcat[subcatKey] || [];
       const posSubcat     = subcatList.findIndex(x => x.id === t.id) + 1;
       const esPrimeroSubcat = posSubcat === 1;
       const esUltimoSubcat  = posSubcat === subcatList.length;
+
+      // Posición real dentro de TODA la cola en espera del juego — de esto
+      // dependen las flechas de subir/bajar, sin importar la subcategoría.
+      const esPrimeroCola = t.posicion === 1;
+      const esUltimoCola  = t.posicion === j.cola.length;
 
       // Botón de acción: "Llamar" para primero sin nadie jugando, "Combinar" si hay alguien jugando de la misma subcategoría
       let btnLlamar = '';
@@ -311,13 +317,13 @@ function renderJuegoPane(j) {
         }
       }
 
-      // Flechas basadas en posición dentro de la misma subcategoría
+      // Flechas basadas en la posición real dentro de toda la cola (no por subcategoría)
       const btnSubir = `<button class="btn btn-outline-secondary btn-sm py-0 px-2" title="Subir en la cola"
-        ${esPrimeroSubcat ? 'disabled' : ''} onclick="moverTurno(${t.id},'subir')">
+        ${esPrimeroCola ? 'disabled' : ''} onclick="moverTurno(${t.id},'subir')">
         <i class="bi bi-chevron-up"></i>
       </button>`;
       const btnBajar = `<button class="btn btn-outline-secondary btn-sm py-0 px-2" title="Bajar en la cola"
-        ${esUltimoSubcat ? 'disabled' : ''} onclick="moverTurno(${t.id},'bajar')">
+        ${esUltimoCola ? 'disabled' : ''} onclick="moverTurno(${t.id},'bajar')">
         <i class="bi bi-chevron-down"></i>
       </button>`;
 

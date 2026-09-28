@@ -88,7 +88,7 @@ async function cargarTurnos() {
 function renderTurnos() {
   const filtrados = filtroId ? turnos.filter(t => String(t.atraccion_id) === filtroId) : turnos;
   const esperando = filtrados.filter(t => t.estado === 'esperando')
-    .sort((a,b) => new Date(a.created_at) - new Date(b.created_at));
+    .sort((a,b) => (a.orden_cola - b.orden_cola) || (a.id - b.id));
   const activos   = filtrados.filter(t => t.estado === 'llamado' || t.estado === 'jugando')
     .sort((a,b) => new Date(a.called_at) - new Date(b.called_at));
 
@@ -318,6 +318,7 @@ socket.on('turno:llamado',        t => { upsert(t); renderTurnos(); });
 socket.on('turno:jugando',        t => { upsert(t); renderTurnos(); });
 socket.on('turno:etapa_avanzada', t => { upsert(t); renderTurnos(); });
 socket.on('turno:finalizado',     t => { turnos = turnos.filter(x => x.id !== t.id); renderTurnos(); });
+socket.on('turno:reordenado',     () => cargarTurnos());
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function upsert(t) {
