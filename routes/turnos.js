@@ -2,6 +2,7 @@ const express = require('express');
 const db = require('../db/database');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const serialService = require('../server/services/serialService');
+const { getCodigoBeeper, existeBeeper } = require('../server/config/beeperCodes');
 
 // Incluye etapa_actual, subcategoria y campos de estado jugando
 const SELECT_TURNO = `
@@ -250,7 +251,7 @@ module.exports = (io) => {
       .prepare("SELECT biper_numero FROM turnos WHERE estado IN ('esperando','llamado','jugando')")
       .all().map(r => parseInt(r.biper_numero, 10)).filter(n => !isNaN(n));
     let sig = 1;
-    while (usados.includes(sig)) sig++;
+    while (usados.includes(sig) || !existeBeeper(sig)) sig++;
     res.json({ biper_numero: String(sig) });
   });
 
@@ -319,6 +320,9 @@ module.exports = (io) => {
 
     if (!biper_numero) {
       return res.status(400).json({ error: 'atraccion_id y biper_numero son requeridos' });
+    }
+    if (!existeBeeper(biper_numero)) {
+      return res.status(400).json({ error: `El biper ${biper_numero} no existe` });
     }
 
     // ── Validar cantidad_miembros: entero >= 1 ────────────────────────────────
@@ -591,8 +595,15 @@ module.exports = (io) => {
     io.emit('turno:llamado', turno);
     io.emit('biper:activar', { numero: turno.biper_numero, turno });
 
-    // Activar VIPER si corresponde
-    if (turno.viper_id) {
+    // Activar el beeper físico: primero por número de beeper (códigos TX
+    // cargados en server/config/beeperCodes.js); si no hay código, se
+    // mantiene el flujo VIPER anterior.
+    const codigoBeeper = getCodigoBeeper(turno.biper_numero);
+    if (codigoBeeper) {
+      serialService.enviarRaw(codigoBeeper, io).catch(err => {
+        console.error('[SERIAL] Error al llamar beeper', turno.biper_numero, err.message);
+      });
+    } else if (turno.viper_id) {
       const viper = db.prepare("SELECT codigo_raw FROM vipers WHERE id = ? AND estado = 'ACTIVO'").get(turno.viper_id);
       if (viper?.codigo_raw) {
         serialService.enviarRaw(viper.codigo_raw, io).catch(err => {
