@@ -71,13 +71,11 @@ async function cargarVipers() {
   const tbody = document.getElementById('tablaVipers');
   if (!tbody) return;
   tbody.innerHTML = vipers.length === 0
-    ? '<tr><td colspan="5" class="text-center text-muted py-4">No hay VIPERs registrados</td></tr>'
+    ? '<tr><td colspan="3" class="text-center text-muted py-4">No hay VIPERs registrados</td></tr>'
     : vipers.map(v => `
       <tr>
-        <td class="ps-4 fw-semibold">${v.id}</td>
-        <td>${escapeHtml(v.codigo_viper)}</td>
+        <td class="ps-4 fw-semibold">${escapeHtml(v.codigo_viper)}</td>
         <td class="text-center">${ESTADO_BADGE[v.estado] || ESTADO_BADGE.PENDIENTE}</td>
-        <td class="text-center">${v.tiene_codigo ? 'Sí' : 'No'}</td>
         <td class="text-end pe-4">${renderAccion(v)}</td>
       </tr>`).join('');
 }
