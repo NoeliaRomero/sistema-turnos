@@ -319,10 +319,10 @@ module.exports = (io) => {
     }
 
     if (!biper_numero) {
-      return res.status(400).json({ error: 'atraccion_id y biper_numero son requeridos' });
+      return res.status(400).json({ error: 'El juego y el número de beeper son requeridos' });
     }
     if (!existeBeeper(biper_numero)) {
-      return res.status(400).json({ error: `El biper ${biper_numero} no existe` });
+      return res.status(400).json({ error: `El beeper ${biper_numero} no existe` });
     }
 
     // ── Validar cantidad_miembros: entero >= 1 ────────────────────────────────
@@ -347,16 +347,16 @@ module.exports = (io) => {
     if (viper_id != null && viper_id !== '') {
       viperId = Number(viper_id);
       if (!Number.isInteger(viperId) || viperId <= 0) {
-        return res.status(400).json({ error: 'El identificador de VIPER es inválido.' });
+        return res.status(400).json({ error: 'El identificador del beeper es inválido.' });
       }
       const viper = db.prepare("SELECT id FROM vipers WHERE id = ? AND estado = 'ACTIVO'").get(viperId);
-      if (!viper) return res.status(400).json({ error: 'El VIPER seleccionado no está activo' });
+      if (!viper) return res.status(400).json({ error: 'El beeper seleccionado no está activo' });
     }
 
     const enUso = db
       .prepare("SELECT id FROM turnos WHERE biper_numero=? AND atraccion_id=? AND estado IN ('esperando','llamado','jugando')")
       .get(String(biper_numero), atraccionId);
-    if (enUso) return res.status(409).json({ error: `El biper ${biper_numero} ya está en uso en este juego` });
+    if (enUso) return res.status(409).json({ error: `El beeper ${biper_numero} ya está en uso en este juego` });
 
     // ── Validar subcategoria_id si el juego la usa ────────────────────────────
     let subcategoriaId = null;
@@ -997,12 +997,12 @@ function _notificarRecepcion(io, usuario, turno) {
 
   io.emit('recepcion:notificacion', {
     operador:          usuario.nombre,
-    familiaFinalizada: turno.nombre_cliente || `Biper ${turno.biper_numero}`,
+    familiaFinalizada: turno.nombre_cliente || `Beeper ${turno.biper_numero}`,
     biper_finalizado:  turno.biper_numero,
     atraccion:         turno.atraccion_nombre,
     siguiente: siguiente ? {
       id:                siguiente.id,
-      nombre_cliente:    siguiente.nombre_cliente || `Biper ${siguiente.biper_numero}`,
+      nombre_cliente:    siguiente.nombre_cliente || `Beeper ${siguiente.biper_numero}`,
       biper_numero:      siguiente.biper_numero,
       cantidad_miembros: siguiente.cantidad_miembros,
     } : null,

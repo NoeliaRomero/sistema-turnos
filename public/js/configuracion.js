@@ -71,7 +71,7 @@ async function cargarVipers() {
   const tbody = document.getElementById('tablaVipers');
   if (!tbody) return;
   tbody.innerHTML = vipers.length === 0
-    ? '<tr><td colspan="3" class="text-center text-muted py-4">No hay VIPERs registrados</td></tr>'
+    ? '<tr><td colspan="3" class="text-center text-muted py-4">No hay beepers registrados</td></tr>'
     : vipers.map(v => `
       <tr>
         <td class="ps-4 fw-semibold">${escapeHtml(v.codigo_viper)}</td>
@@ -176,7 +176,7 @@ document.getElementById('btnGuardarViper').addEventListener('click', async () =>
   errEl.classList.add('d-none');
 
   if (!codigo) {
-    errEl.textContent = 'El código VIPER es obligatorio.';
+    errEl.textContent = 'El código del beeper es obligatorio.';
     errEl.classList.remove('d-none');
     return;
   }
@@ -189,11 +189,11 @@ document.getElementById('btnGuardarViper').addEventListener('click', async () =>
 
   if (res.ok) {
     modalViperInst.hide();
-    mostrarToast('VIPER agregado correctamente', 'success');
+    mostrarToast('Beeper agregado correctamente', 'success');
     cargarVipers();
   } else {
     const data = await res.json();
-    errEl.textContent = data.error || 'Error al guardar el VIPER.';
+    errEl.textContent = data.error || 'Error al guardar el beeper.';
     errEl.classList.remove('d-none');
   }
 });
@@ -220,7 +220,7 @@ document.getElementById('btnGuardarEdicionViper').addEventListener('click', asyn
   errEl.classList.add('d-none');
 
   if (!codigo) {
-    errEl.textContent = 'El código VIPER es obligatorio.';
+    errEl.textContent = 'El código del beeper es obligatorio.';
     errEl.classList.remove('d-none');
     return;
   }
@@ -238,11 +238,11 @@ document.getElementById('btnGuardarEdicionViper').addEventListener('click', asyn
 
   if (res.ok) {
     modalEditarViperInst.hide();
-    mostrarToast('VIPER actualizado correctamente', 'success');
+    mostrarToast('Beeper actualizado correctamente', 'success');
     cargarVipers();
   } else {
     const data = await res.json();
-    errEl.textContent = data.error || 'Error al actualizar el VIPER.';
+    errEl.textContent = data.error || 'Error al actualizar el beeper.';
     errEl.classList.remove('d-none');
   }
 });
@@ -260,12 +260,12 @@ document.getElementById('btnConfirmarEliminarViper').addEventListener('click', a
   const res = await fetch(`/api/vipers/${viperEliminando}`, { method: 'DELETE' });
   if (res.ok) {
     modalEliminarViperInst.hide();
-    mostrarToast('VIPER eliminado correctamente', 'success');
+    mostrarToast('Beeper eliminado correctamente', 'success');
     cargarVipers();
   } else {
     const data = await res.json();
     modalEliminarViperInst.hide();
-    mostrarToast(data.error || 'Error al eliminar el VIPER.', 'danger');
+    mostrarToast(data.error || 'Error al eliminar el beeper.', 'danger');
   }
 });
 
@@ -485,7 +485,7 @@ document.getElementById('btnConfirmarAsociarRf').addEventListener('click', async
   errEl.classList.add('d-none');
 
   if (!viperId) {
-    errEl.textContent = 'Seleccioná un VIPER para asociar el código.';
+    errEl.textContent = 'Seleccioná un beeper para asociar el código.';
     errEl.classList.remove('d-none');
     return;
   }

@@ -151,7 +151,7 @@ socket.on('turno:jugando',        () => cargarCola());
 socket.on('turno:nuevo',          () => cargarCola());
 socket.on('turno:finalizado',     (turno) => {
   if (turno && turno.estado === 'cancelado') {
-    mostrarToastCancelado(`Turno cancelado — Biper ${turno.biper_numero ?? ''}`);
+    mostrarToastCancelado(`Turno cancelado — Beeper ${turno.biper_numero ?? ''}`);
   }
   cargarCola();
 });

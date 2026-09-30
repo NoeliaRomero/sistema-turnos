@@ -181,7 +181,7 @@ function resolverPendiente(raw) {
     WHERE id = ?
   `).run(raw, ahora, ahora, viperId);
 
-  log('VIPER validado');
+  log('Beeper validado');
   log('Código guardado');
   registrarEvento({ viperId, accion: 'VALIDAR_VIPER', resultado: 'OK', ackEstado: 'ENTREGADO' });
   emitirActualizacion(viperId);
@@ -198,7 +198,7 @@ async function enviarSenal(viperId, mensaje, io) {
   ioRef = io || ioRef;
 
   const viper = db.prepare('SELECT * FROM vipers WHERE id = ?').get(viperId);
-  if (!viper) throw new Error('VIPER no encontrado');
+  if (!viper) throw new Error('Beeper no encontrado');
 
   if (pendiente) {
     throw new Error('Ya hay una validación en curso. Esperá a que finalice antes de iniciar otra.');
