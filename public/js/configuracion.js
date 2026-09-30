@@ -12,7 +12,6 @@ const socket = io();
   cargarVipers();
   cargarSerialConfig();
   cargarEstadoArduino();
-  cargarRfConfig();
   cargarMetricasViper();
   cargarEventosViper();
   setInterval(cargarEstadoArduino, 15000);
@@ -374,38 +373,6 @@ async function cargarEstadoArduino() {
   document.getElementById('diagUltimaComunicacion').textContent = diag.ultima_comunicacion_exitosa
     ? new Date(diag.ultima_comunicacion_exitosa).toLocaleString() : '–';
 }
-
-// ── Configuración RF ──────────────────────────────────────────────────────────
-async function cargarRfConfig() {
-  const res = await fetch('/api/vipers/rf-config');
-  if (!res.ok) return;
-  const cfg = await res.json();
-  if (cfg.frecuencia) document.getElementById('rfFrecuencia').value = cfg.frecuencia;
-  if (cfg.canal) document.getElementById('rfCanal').value = String(cfg.canal);
-  document.getElementById('rfRetransmisiones').value = cfg.retransmisiones ?? 3;
-  document.getElementById('rfIntervalo').value = cfg.intervalo_ms ?? 100;
-}
-
-document.getElementById('formRfConfig').addEventListener('submit', async e => {
-  e.preventDefault();
-  const body = {
-    frecuencia: document.getElementById('rfFrecuencia').value,
-    canal: document.getElementById('rfCanal').value,
-    retransmisiones: document.getElementById('rfRetransmisiones').value,
-    intervalo_ms: document.getElementById('rfIntervalo').value,
-  };
-  const res = await fetch('/api/vipers/rf-config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (res.ok) {
-    mostrarToast('Configuración RF guardada', 'success');
-  } else {
-    const data = await res.json();
-    mostrarToast(data.error || 'Error al guardar la configuración RF', 'danger');
-  }
-});
 
 // ── Herramientas de Diagnóstico ───────────────────────────────────────────────
 function mostrarResultadoDiagnostico(texto, tipo = 'info') {
