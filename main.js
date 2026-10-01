@@ -211,6 +211,9 @@ ipcMain.handle('backup:elegir-archivo', async (event) => {
 function aplicarHardening(win) {
   if (!app.isPackaged) return;
 
+  // Sin barra de menú (File, Edit, View...) en la app instalada
+  win.removeMenu();
+
   win.webContents.on('before-input-event', (event, input) => {
     if (input.type !== 'keyDown') return;
 
@@ -237,7 +240,11 @@ function aplicarHardening(win) {
 app.on('browser-window-created', (_event, win) => aplicarHardening(win));
 
 // ── Ciclo de vida de la app ───────────────────────────────────────────────────
-app.whenReady().then(crearVentana);
+app.whenReady().then(() => {
+  // Quitar el menú de la aplicación en builds empaquetados (en desarrollo se mantiene)
+  if (app.isPackaged) Menu.setApplicationMenu(null);
+  return crearVentana();
+});
 
 // En Windows/Linux: cerrar la app cuando se cierran todas las ventanas
 app.on('window-all-closed', () => {
