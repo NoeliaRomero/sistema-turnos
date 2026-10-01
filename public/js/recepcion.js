@@ -335,6 +335,10 @@ function renderJuegoPane(j) {
         ${esUltimoCola ? 'disabled' : ''} onclick="moverTurno(${t.id},'bajar')">
         <i class="bi bi-chevron-down"></i>
       </button>`;
+      // Input de posición: escribir el puesto deseado y Enter mueve el turno directo ahí
+      const inputPasos = `<input type="number" min="1" max="${j.cola.length}" value="${t.posicion}" id="pasos-${t.id}"
+        class="form-control form-control-sm py-0 px-1 text-center" style="width:42px" title="Escribí el puesto deseado y presioná Enter"
+        onkeydown="if(event.key==='Enter'){event.preventDefault();moverAPosicion(${t.id},${t.posicion},this.value);}">`;
 
       const subcatEsperaHtml = t.subcategoria_nombre
         ? `<span class="badge bg-success bg-opacity-75"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>`
@@ -364,7 +368,10 @@ function renderJuegoPane(j) {
           </div>
         </div>
         <div class="d-flex align-items-center gap-2">
-          <div class="d-flex flex-column gap-1">${btnSubir}${btnBajar}</div>
+          <div class="d-flex align-items-center gap-1">
+            <div class="d-flex flex-column gap-1">${btnSubir}${btnBajar}</div>
+            ${inputPasos}
+          </div>
           <span class="espera-badge ${claseEspera}">
             <i class="bi bi-hourglass-split me-1"></i>
             ${t.tiempo_espera_estimado === 0 ? '¡Próximo!' : `~${formatMinutos(t.tiempo_espera_estimado)}`}
@@ -609,11 +616,12 @@ async function _ejecutarLlamar(id, force = false) {
 }
 
 // ── Reordenar cola ────────────────────────────────────────────────────────────
-async function moverTurno(id, direccion) {
+async function moverTurno(id, direccion, pasos) {
+  const cantidad = Math.max(1, parseInt(pasos, 10) || 1);
   const res  = await fetch(`/api/turnos/${id}/mover`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ direccion }),
+    body: JSON.stringify({ direccion, pasos: cantidad }),
   });
   if (!res.ok) {
     const data = await res.json();
@@ -621,6 +629,15 @@ async function moverTurno(id, direccion) {
     return;
   }
   await cargarCola();
+}
+
+// Mueve el turno directamente al puesto escrito en el input (Enter).
+function moverAPosicion(id, posActual, posDestinoRaw) {
+  const destino = parseInt(posDestinoRaw, 10);
+  if (!Number.isFinite(destino) || destino < 1) return;
+  const diff = destino - posActual;
+  if (diff === 0) return;
+  moverTurno(id, diff < 0 ? 'subir' : 'bajar', Math.abs(diff));
 }
 
 // ── Editar turno en espera ────────────────────────────────────────────────────

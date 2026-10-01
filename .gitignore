@@ -26,4 +26,4 @@ tools/private.pem
 tools/*.lic
 
 # Electron build output
-dist/
+dist*/
