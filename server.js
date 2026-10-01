@@ -162,7 +162,11 @@ presencia.init(io);
 
 io.on('connection', socket => {
   const usuario = socket.request.session?.usuario;
-  if (usuario) {
+  // Las pantallas públicas (TV) comparten la cookie de sesión de Electron, pero
+  // no deben asociarse al usuario: si no, el logout las desconectaría junto con
+  // los sockets de ese usuario y dejarían de recibir eventos.
+  const esPantalla = socket.handshake.auth?.pantalla === true;
+  if (usuario && !esPantalla) {
     socket.join(`usuario:${usuario.id}`);
     if (usuario.rol === 'admin' || usuario.rol === 'superadmin') {
       socket.join('admins');

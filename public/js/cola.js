@@ -1,4 +1,6 @@
-const socket = io();
+// 'pantalla: true' indica al servidor que este socket es una pantalla pública:
+// no se asocia al usuario de la sesión compartida, así un logout no la desconecta.
+const socket = io({ auth: { pantalla: true } });
 
 let colaData   = [];
 let filtroId   = '';  // '' = todos
@@ -124,10 +126,20 @@ tickReloj();
 setInterval(tickReloj, 1000);
 
 // ── Cargar datos ──────────────────────────────────────────────────────────────
+// Usa el endpoint público (sin auth): la pantalla debe seguir funcionando aunque
+// se cierre la sesión y mostrar todos los juegos, sin importar el rol logueado.
+// Ante un error se conservan los últimos datos válidos en lugar de vaciar la vista.
 async function cargarCola() {
-  const res  = await fetch('/api/turnos/cola');
-  const data = await res.json();
-  colaData   = data.juegos;
+  try {
+    const res = await fetch('/api/turnos/cola-publica');
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!Array.isArray(data?.juegos)) return;
+    // '/cola-publica' devuelve 'activos'; el render de esta vista usa 'jugando'.
+    colaData = data.juegos.map(j => ({ ...j, jugando: j.activos || [], cola: j.cola || [] }));
+  } catch (_) {
+    return;
+  }
   // Un cambio real de datos vuelve siempre a la página 1 (lo urgente se ve
   // ya); el recálculo local de tiempos cada 30s no pasa por acá.
   _pagJugando = 0;
@@ -323,12 +335,20 @@ socket.on('turno:etapa_avanzada',() => { cargarCola(); flash(); });
 socket.on('turno:finalizado',    () => { cargarCola(); });
 socket.on('juego:actualizado',   () => { cargarCola(); });
 
+// Red de seguridad: si el servidor cierra el socket, el cliente de socket.io no
+// reconecta solo; se fuerza la reconexión. En cada (re)conexión se resincronizan
+// los datos por si se perdieron eventos mientras estaba desconectado.
+socket.on('disconnect', reason => {
+  if (reason === 'io server disconnect') socket.connect();
+});
+socket.on('connect', () => cargarCola());
+
 // Recalcular tiempos localmente cada 30s (igual que pantalla.js)
 setInterval(() => {
-  if (!colaData.length) return;
+  if (!Array.isArray(colaData) || !colaData.length) return;
   const ahora = Date.now();
   colaData.forEach(j => {
-    j.jugando.forEach(t => {
+    (j.jugando || []).forEach(t => {
       const baseTime = t.jugando_desde || t.called_at;
       if (baseTime) {
         t.tiempo_transcurrido = Math.floor((ahora - new Date(baseTime).getTime()) / 60000);

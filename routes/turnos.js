@@ -252,9 +252,10 @@ module.exports = (io) => {
 
     const juegos = atracciones.map(a => {
       const activos = db.prepare(`
-        SELECT t.biper_numero, t.nombre_cliente, t.cantidad_miembros, t.estado,
+        SELECT t.id, t.biper_numero, t.nombre_cliente, t.cantidad_miembros, t.estado,
                t.called_at, t.jugando_desde, t.subcategoria_id,
-               ea.nombre AS etapa_actual_nombre
+               ea.nombre AS etapa_actual_nombre,
+               ea.orden  AS etapa_actual_orden
         FROM turnos t
         LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id
         WHERE t.atraccion_id = ? AND t.estado IN ('llamado','jugando')
@@ -263,11 +264,17 @@ module.exports = (io) => {
         const baseTime = t.jugando_desde || t.called_at;
         const elapsed  = baseTime ? Math.floor((ahora - new Date(baseTime).getTime()) / 60000) : 0;
         const restante = Math.max(0, a.duracion_minutos - elapsed);
-        return { ...t, tiempo_transcurrido: elapsed, tiempo_restante: restante };
+        const sig = t.etapa_actual_orden != null ? etapaSiguiente(a.id, t.etapa_actual_orden) : null;
+        return {
+          ...t,
+          tiempo_transcurrido: elapsed,
+          tiempo_restante: restante,
+          etapa_siguiente_nombre: sig ? sig.nombre : null,
+        };
       });
 
       const esperando = db.prepare(`
-        SELECT t.biper_numero, t.nombre_cliente, t.cantidad_miembros, t.created_at, t.subcategoria_id
+        SELECT t.id, t.biper_numero, t.nombre_cliente, t.cantidad_miembros, t.created_at, t.subcategoria_id
         FROM turnos t
         WHERE t.atraccion_id = ? AND t.estado = 'esperando'
         ORDER BY t.orden_cola ASC, t.id ASC

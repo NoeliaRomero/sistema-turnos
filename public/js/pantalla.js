@@ -1,4 +1,6 @@
-const socket = io();
+// 'pantalla: true' indica al servidor que este socket es una pantalla pública:
+// no se asocia al usuario de la sesión compartida, así un logout no la desconecta.
+const socket = io({ auth: { pantalla: true } });
 
 // ── Paginado automático ───────────────────────────────────────────────────────
 // En un TV nadie puede scrollear: si hay más juegos con actividad de los que
@@ -275,6 +277,14 @@ socket.on('turno:finalizado',     (turno) => {
 });
 socket.on('turno:etapa_avanzada', () => cargarCola());
 socket.on('juego:actualizado',    () => cargarCola());
+
+// Red de seguridad: si el servidor cierra el socket, el cliente de socket.io no
+// reconecta solo; se fuerza la reconexión. En cada (re)conexión se resincronizan
+// los datos por si se perdieron eventos mientras estaba desconectado.
+socket.on('disconnect', reason => {
+  if (reason === 'io server disconnect') socket.connect();
+});
+socket.on('connect', () => cargarCola());
 
 // ── Actualizar timers localmente cada 30s sin recargar todo ──────────────────
 setInterval(() => {
