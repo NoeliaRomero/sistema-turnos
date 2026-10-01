@@ -60,7 +60,7 @@ async function cargarVipersActivos() {
   try {
     const res    = await fetch('/api/vipers/activos');
     const vipers = res.ok ? await res.json() : [];
-    sel.innerHTML = '<option value="">Sin VIPER físico</option>';
+    sel.innerHTML = '<option value="">Sin beeper físico</option>';
     vipers.forEach(v => {
       sel.innerHTML += `<option value="${v.id}">${v.codigo_viper}</option>`;
     });
@@ -404,7 +404,7 @@ document.getElementById('formRegistro').addEventListener('submit', async e => {
   const subcategoria_id = usaSubs ? (document.getElementById('selectSubcategoria').value || null) : null;
 
   if (!atraccion_id || !biper_numero || !nombre_cliente) {
-    mostrarToast('Completá juego, biper y nombre del grupo', 'warning'); return;
+    mostrarToast('Completá juego, beeper y nombre del grupo', 'warning'); return;
   }
   if (usaSubs && !subcategoria_id) {
     mostrarToast('Seleccioná una subcategoría para este juego', 'warning'); return;
@@ -423,7 +423,7 @@ document.getElementById('formRegistro').addEventListener('submit', async e => {
 
   if (!res.ok) { mostrarToast(data.error || 'Error al registrar', 'danger'); return; }
 
-  mostrarToast(`✅ ${nombre_cliente} – Biper ${data.biper_numero} registrado`, 'success');
+  mostrarToast(`✅ ${nombre_cliente} – Beeper ${data.biper_numero} registrado`, 'success');
   document.getElementById('formRegistro').reset();
   document.getElementById('inputMiembros').value = '1';
   document.getElementById('duracionJuego').textContent = '';
@@ -572,7 +572,7 @@ async function _ejecutarLlamar(id, force = false) {
       ? `con aproximadamente <strong>${data.tiempo_restante} min restantes</strong>`
       : 'con tiempo excedido';
     document.getElementById('confViperOtroJuegoTexto').innerHTML =
-      `El VIPER <strong>${escapeHtml(data.biper_numero)}</strong> está actualmente jugando en:<br><br>
+      `El beeper <strong>${escapeHtml(data.biper_numero)}</strong> está actualmente jugando en:<br><br>
        <div class="ms-2 mb-2">
          <div><span class="text-muted">Juego:</span> <strong>${escapeHtml(data.juego_origen)}</strong></div>
          <div><span class="text-muted">Familia / Grupo:</span> <strong>${escapeHtml(data.nombre_cliente || 'Sin nombre')}</strong></div>
@@ -592,7 +592,7 @@ async function _ejecutarLlamar(id, force = false) {
     modalConfCapacidad().show();
     return;
   }
-  mostrarToast(`📣 Biper ${data.biper_numero} – ${data.nombre_cliente || 'Grupo'} llamado a jugar`, 'success');
+  mostrarToast(`📣 Beeper ${data.biper_numero} – ${data.nombre_cliente || 'Grupo'} llamado a jugar`, 'success');
   await cargarCola();
   } finally {
     _llamarEnCurso = false;
@@ -776,7 +776,7 @@ socket.on('recepcion:notificacion', (data) => {
     ? `<div class="notif-siguiente">
          <i class="bi bi-arrow-right-circle me-1"></i>
          <strong>Siguiente:</strong> ${data.siguiente.nombre_cliente}
-         &nbsp;·&nbsp; Biper <strong>${data.siguiente.biper_numero}</strong>
+         &nbsp;·&nbsp; Beeper <strong>${data.siguiente.biper_numero}</strong>
          &nbsp;·&nbsp; ${data.siguiente.cantidad_miembros} persona${data.siguiente.cantidad_miembros !== 1 ? 's' : ''}
        </div>`
     : `<div class="notif-siguiente text-muted">
@@ -794,7 +794,7 @@ socket.on('recepcion:notificacion', (data) => {
       <div class="toast-body">
         <span class="notif-op">Op. ${data.operador}</span> finalizó a
         <strong>${data.familiaFinalizada}</strong>
-        (Biper&nbsp;<strong>${data.biper_finalizado}</strong>)
+        (Beeper&nbsp;<strong>${data.biper_finalizado}</strong>)
         ${siguienteTxt}
       </div>
     </div>`);

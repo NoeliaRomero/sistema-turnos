@@ -520,7 +520,7 @@ router.post('/exportar/csv', requireAuth('admin', 'superadmin'), async (req, res
       `).all(...params);
 
       csv += csvRow(['ID','Fecha Registro','Fecha Llamado','Inicio Juego','Fecha Finalización',
-        'Juego','Subcategoría','Familia','Cantidad Miembros','Biper','VIPER',
+        'Juego','Subcategoría','Familia','Cantidad Miembros','Beeper','Código Beeper',
         'Estado','Registrado por','Finalizado por']);
       filas.forEach(r => csv += csvRow([
         r.id, formatFecha(r.created_at), formatFecha(r.called_at),
@@ -560,7 +560,7 @@ router.post('/exportar/csv', requireAuth('admin', 'superadmin'), async (req, res
         SELECT id, codigo_viper, estado, canal, fecha_creacion, ultima_activacion, ultimo_test
         FROM vipers ORDER BY id
       `).all();
-      csv += csvRow(['ID','Código VIPER','Estado','Canal','Fecha Creación','Última Activación','Último Test']);
+      csv += csvRow(['ID','Código Beeper','Estado','Canal','Fecha Creación','Última Activación','Último Test']);
       filas.forEach(r => csv += csvRow([
         r.id, r.codigo_viper, r.estado, r.canal,
         formatFecha(r.fecha_creacion), formatFecha(r.ultima_activacion), formatFecha(r.ultimo_test),
@@ -681,7 +681,7 @@ router.post('/exportar/xlsx', requireAuth('admin', 'superadmin'), async (req, re
     `).all(...paramsTurnos);
 
     agregarHoja('Turnos',
-      ['ID','Fecha','Llamado','Inicio','Finalización','Juego','Subcategoría','Familia','Miembros','Biper','VIPER','Estado','Creado por','Finalizado por'],
+      ['ID','Fecha','Llamado','Inicio','Finalización','Juego','Subcategoría','Familia','Miembros','Beeper','Código Beeper','Estado','Creado por','Finalizado por'],
       turnos.map(r => [r.id, fechaCelda(r.created_at), fechaCelda(r.called_at), fechaCelda(r.jugando_desde), fechaCelda(r.finished_at), r.juego, r.subcategoria, r.nombre_cliente, r.cantidad_miembros, r.biper_numero, r.codigo_viper, estadoLegible(r.estado), r.creado_por, r.finalizado_por]),
       [1, 2, 3, 4]
     );
@@ -714,7 +714,7 @@ router.post('/exportar/xlsx', requireAuth('admin', 'superadmin'), async (req, re
       FROM vipers ORDER BY id
     `).all();
     agregarHoja('VIPERs',
-      ['ID','Código VIPER','Estado','Canal','Fecha Creación','Última Activación','Último Test'],
+      ['ID','Código Beeper','Estado','Canal','Fecha Creación','Última Activación','Último Test'],
       vipers.map(r => [r.id, r.codigo_viper, r.estado, r.canal, fechaCelda(r.fecha_creacion), fechaCelda(r.ultima_activacion), fechaCelda(r.ultimo_test)]),
       [4, 5, 6]
     );

@@ -39,7 +39,7 @@ const FEATURES = [
   {
     key:   'feature_cancelar_turno',
     icon:  '❌',
-    label: 'Cancelar bipers',
+    label: 'Cancelar beepers',
     desc:  'Puede habilitar a operadores y recepcionistas para cancelar el turno de clientes que no llegaron',
     grupo: 'Permisos que el administrador puede otorgar a su equipo',
   },

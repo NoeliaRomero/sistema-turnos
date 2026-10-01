@@ -318,7 +318,7 @@ async function cancelarTurno(id) {
 // ── Socket ────────────────────────────────────────────────────────────────────
 socket.on('turno:nuevo', t => {
   turnos.push(t); renderTurnos(); destacar(t.id);
-  mostrarToast(`Nuevo turno – Biper ${t.biper_numero} (${t.atraccion_nombre})`, 'info');
+  mostrarToast(`Nuevo turno – Beeper ${t.biper_numero} (${t.atraccion_nombre})`, 'info');
 });
 socket.on('turno:llamado',        t => { upsert(t); renderTurnos(); });
 socket.on('turno:jugando',        t => { upsert(t); renderTurnos(); });

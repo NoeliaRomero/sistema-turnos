@@ -61,7 +61,7 @@
           <i class="bi bi-sliders"></i>Configuración del Sistema
         </button>
         <button type="button" class="list-group-item" data-panel="viper">
-          <i class="bi bi-cpu"></i>Configuración VIPER
+          <i class="bi bi-cpu"></i>Configuración de Beepers
         </button>
         <button type="button" class="list-group-item" data-panel="backups">
           <i class="bi bi-cloud-arrow-up"></i>Configuración de Backups
@@ -86,9 +86,9 @@
                 <div class="rounded-3 p-2" style="background:#ede9fe">
                   <i class="bi bi-cpu fs-4" style="color:#6f42c1"></i>
                 </div>
-                <h6 class="fw-bold mb-0">VIPER</h6>
+                <h6 class="fw-bold mb-0">Beepers</h6>
               </div>
-              <p class="text-muted small mb-0">Gestioná los dispositivos VIPER: registro, estado y señales de activación.</p>
+              <p class="text-muted small mb-0">Gestioná los beepers: registro, estado y señales de activación.</p>
             </div>
           </div>
           <div class="col-md-6">
@@ -153,9 +153,9 @@
       <!-- Panel VIPER -->
       <div class="config-panel d-none" id="panelViper">
         <div class="d-flex justify-content-between align-items-center mb-3">
-          <h5 class="fw-bold mb-0"><i class="bi bi-cpu me-2 text-primary"></i>Configuración VIPER</h5>
+          <h5 class="fw-bold mb-0"><i class="bi bi-cpu me-2 text-primary"></i>Configuración de Beepers</h5>
           <button class="btn btn-primary px-4" id="btnNuevoViper">
-            <i class="bi bi-plus-lg me-2"></i>Agregar VIPER
+            <i class="bi bi-plus-lg me-2"></i>Agregar Beeper
           </button>
         </div>
         <div class="card mb-3">
@@ -163,10 +163,8 @@
             <table class="table table-hover align-middle mb-0">
               <thead class="table-light">
                 <tr>
-                  <th class="ps-4">ID</th>
-                  <th>Código VIPER</th>
+                  <th class="ps-4">Código Beeper</th>
                   <th class="text-center">Estado</th>
-                  <th class="text-center">Código</th>
                   <th class="text-end pe-4">Acción</th>
                 </tr>
               </thead>
@@ -249,42 +247,6 @@
           </div>
         </div>
 
-        <!-- Configuración RF -->
-        <div class="card p-4 mb-3">
-          <h6 class="fw-bold mb-3"><i class="bi bi-broadcast-pin me-2 text-primary"></i>Configuración RF</h6>
-          <form id="formRfConfig" class="row g-3 align-items-end">
-            <div class="col-md-3">
-              <label class="form-label fw-semibold small" for="rfFrecuencia">Frecuencia RF</label>
-              <select class="form-select" id="rfFrecuencia">
-                <option value="315 MHz">315 MHz</option>
-                <option value="433.92 MHz" selected>433.92 MHz</option>
-                <option value="868 MHz">868 MHz</option>
-                <option value="915 MHz">915 MHz</option>
-              </select>
-            </div>
-            <div class="col-md-2">
-              <label class="form-label fw-semibold small" for="rfCanal">Canal</label>
-              <select class="form-select" id="rfCanal">
-                <option value="1">1</option>
-                <option value="2">2</option>
-                <option value="3">3</option>
-                <option value="4">4</option>
-              </select>
-            </div>
-            <div class="col-md-3">
-              <label class="form-label fw-semibold small" for="rfRetransmisiones">Retransmisiones</label>
-              <input type="number" class="form-control" id="rfRetransmisiones" value="3" min="0">
-            </div>
-            <div class="col-md-2">
-              <label class="form-label fw-semibold small" for="rfIntervalo">Intervalo (ms)</label>
-              <input type="number" class="form-control" id="rfIntervalo" value="100" min="0">
-            </div>
-            <div class="col-md-2">
-              <button type="submit" class="btn btn-primary w-100">Guardar Config. RF</button>
-            </div>
-          </form>
-        </div>
-
         <!-- Herramientas de Diagnóstico -->
         <div class="card p-4 mb-3">
           <h6 class="fw-bold mb-3"><i class="bi bi-tools me-2 text-primary"></i>Herramientas</h6>
@@ -292,7 +254,7 @@
             <button class="btn btn-outline-primary" id="btnProbarConexion"><i class="bi bi-wifi me-1"></i>Probar Conexión</button>
             <button class="btn btn-outline-warning" id="btnReiniciarArduino"><i class="bi bi-arrow-repeat me-1"></i>Reiniciar Arduino</button>
             <button class="btn btn-outline-secondary" id="btnLeerConfig"><i class="bi bi-search me-1"></i>Leer Configuración Actual</button>
-            <button class="btn btn-outline-success" id="btnAprenderViper"><i class="bi bi-magic me-1"></i>Aprender Nuevo VIPER</button>
+            <button class="btn btn-outline-success" id="btnAprenderViper"><i class="bi bi-magic me-1"></i>Aprender Nuevo Beeper</button>
           </div>
           <div id="diagnosticoResultado" class="alert alert-info d-none small mb-0" style="font-family:monospace; white-space:pre-wrap;"></div>
         </div>
@@ -326,7 +288,7 @@
                   <th>Fecha</th>
                   <th>Usuario</th>
                   <th>Acción</th>
-                  <th>VIPER</th>
+                  <th>Beeper</th>
                   <th>Estado</th>
                 </tr>
               </thead>
@@ -479,7 +441,7 @@
                 <option value="turnos">Turnos</option>
                 <option value="usuarios">Usuarios</option>
                 <option value="juegos">Juegos</option>
-                <option value="vipers">VIPERs</option>
+                <option value="vipers">Beepers</option>
                 <option value="estadisticas">Estadísticas</option>
               </select>
             </div>
@@ -643,13 +605,13 @@
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0 rounded-4">
       <div class="modal-header border-0 pb-0">
-        <h5 class="modal-title fw-bold">Agregar VIPER</h5>
+        <h5 class="modal-title fw-bold">Agregar Beeper</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
         <div class="mb-3">
-          <label class="form-label fw-semibold" for="vCodigoViper">Código VIPER <span class="text-danger">*</span></label>
-          <input type="text" class="form-control" id="vCodigoViper" placeholder="Ingrese el código del VIPER">
+          <label class="form-label fw-semibold" for="vCodigoViper">Código Beeper <span class="text-danger">*</span></label>
+          <input type="text" class="form-control" id="vCodigoViper" placeholder="Ingrese el código del beeper">
         </div>
         <div id="viperError" class="alert alert-danger d-none"></div>
       </div>
@@ -670,7 +632,7 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
-        <p class="text-muted small">Se enviará el siguiente mensaje por el puerto serial configurado. El VIPER quedará en estado <strong>VALIDANDO</strong> a la espera de la captura del código RAW.</p>
+        <p class="text-muted small">Se enviará el siguiente mensaje por el puerto serial configurado. El beeper quedará en estado <strong>VALIDANDO</strong> a la espera de la captura del código RAW.</p>
         <div class="mb-3">
           <label class="form-label fw-semibold" for="senalMensaje">Mensaje a enviar</label>
           <textarea class="form-control" id="senalMensaje" rows="2">READY_PARA_TEST_DE_CABLE</textarea>
@@ -719,7 +681,7 @@
           <input type="text" class="form-control" id="rfCodigoDetectado" readonly style="font-family:monospace;">
         </div>
         <div class="mb-3">
-          <label class="form-label fw-semibold small" for="rfAsociarViperId">Asociar a VIPER existente</label>
+          <label class="form-label fw-semibold small" for="rfAsociarViperId">Asociar a beeper existente</label>
           <select class="form-select" id="rfAsociarViperId"></select>
         </div>
         <div id="rfAsociarError" class="alert alert-danger d-none"></div>
@@ -737,12 +699,12 @@
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0 rounded-4">
       <div class="modal-header border-0 pb-0">
-        <h5 class="modal-title fw-bold">Editar VIPER</h5>
+        <h5 class="modal-title fw-bold">Editar Beeper</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">
         <div class="mb-3">
-          <label class="form-label fw-semibold" for="eCodigoViper">Código VIPER <span class="text-danger">*</span></label>
+          <label class="form-label fw-semibold" for="eCodigoViper">Código Beeper <span class="text-danger">*</span></label>
           <input type="text" class="form-control" id="eCodigoViper">
         </div>
         <div class="mb-3">
@@ -779,7 +741,7 @@
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content border-0 rounded-4">
       <div class="modal-header border-0 pb-0">
-        <h5 class="modal-title fw-bold">¿Desea eliminar este VIPER?</h5>
+        <h5 class="modal-title fw-bold">¿Desea eliminar este beeper?</h5>
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body">

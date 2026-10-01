@@ -12,7 +12,6 @@ const socket = io();
   cargarVipers();
   cargarSerialConfig();
   cargarEstadoArduino();
-  cargarRfConfig();
   cargarMetricasViper();
   cargarEventosViper();
   setInterval(cargarEstadoArduino, 15000);
@@ -71,13 +70,11 @@ async function cargarVipers() {
   const tbody = document.getElementById('tablaVipers');
   if (!tbody) return;
   tbody.innerHTML = vipers.length === 0
-    ? '<tr><td colspan="5" class="text-center text-muted py-4">No hay VIPERs registrados</td></tr>'
+    ? '<tr><td colspan="3" class="text-center text-muted py-4">No hay beepers registrados</td></tr>'
     : vipers.map(v => `
       <tr>
-        <td class="ps-4 fw-semibold">${v.id}</td>
-        <td>${escapeHtml(v.codigo_viper)}</td>
+        <td class="ps-4 fw-semibold">${escapeHtml(v.codigo_viper)}</td>
         <td class="text-center">${ESTADO_BADGE[v.estado] || ESTADO_BADGE.PENDIENTE}</td>
-        <td class="text-center">${v.tiene_codigo ? 'Sí' : 'No'}</td>
         <td class="text-end pe-4">${renderAccion(v)}</td>
       </tr>`).join('');
 }
@@ -178,7 +175,7 @@ document.getElementById('btnGuardarViper').addEventListener('click', async () =>
   errEl.classList.add('d-none');
 
   if (!codigo) {
-    errEl.textContent = 'El código VIPER es obligatorio.';
+    errEl.textContent = 'El código del beeper es obligatorio.';
     errEl.classList.remove('d-none');
     return;
   }
@@ -191,11 +188,11 @@ document.getElementById('btnGuardarViper').addEventListener('click', async () =>
 
   if (res.ok) {
     modalViperInst.hide();
-    mostrarToast('VIPER agregado correctamente', 'success');
+    mostrarToast('Beeper agregado correctamente', 'success');
     cargarVipers();
   } else {
     const data = await res.json();
-    errEl.textContent = data.error || 'Error al guardar el VIPER.';
+    errEl.textContent = data.error || 'Error al guardar el beeper.';
     errEl.classList.remove('d-none');
   }
 });
@@ -222,7 +219,7 @@ document.getElementById('btnGuardarEdicionViper').addEventListener('click', asyn
   errEl.classList.add('d-none');
 
   if (!codigo) {
-    errEl.textContent = 'El código VIPER es obligatorio.';
+    errEl.textContent = 'El código del beeper es obligatorio.';
     errEl.classList.remove('d-none');
     return;
   }
@@ -240,11 +237,11 @@ document.getElementById('btnGuardarEdicionViper').addEventListener('click', asyn
 
   if (res.ok) {
     modalEditarViperInst.hide();
-    mostrarToast('VIPER actualizado correctamente', 'success');
+    mostrarToast('Beeper actualizado correctamente', 'success');
     cargarVipers();
   } else {
     const data = await res.json();
-    errEl.textContent = data.error || 'Error al actualizar el VIPER.';
+    errEl.textContent = data.error || 'Error al actualizar el beeper.';
     errEl.classList.remove('d-none');
   }
 });
@@ -262,12 +259,12 @@ document.getElementById('btnConfirmarEliminarViper').addEventListener('click', a
   const res = await fetch(`/api/vipers/${viperEliminando}`, { method: 'DELETE' });
   if (res.ok) {
     modalEliminarViperInst.hide();
-    mostrarToast('VIPER eliminado correctamente', 'success');
+    mostrarToast('Beeper eliminado correctamente', 'success');
     cargarVipers();
   } else {
     const data = await res.json();
     modalEliminarViperInst.hide();
-    mostrarToast(data.error || 'Error al eliminar el VIPER.', 'danger');
+    mostrarToast(data.error || 'Error al eliminar el beeper.', 'danger');
   }
 });
 
@@ -377,38 +374,6 @@ async function cargarEstadoArduino() {
     ? new Date(diag.ultima_comunicacion_exitosa).toLocaleString() : '–';
 }
 
-// ── Configuración RF ──────────────────────────────────────────────────────────
-async function cargarRfConfig() {
-  const res = await fetch('/api/vipers/rf-config');
-  if (!res.ok) return;
-  const cfg = await res.json();
-  if (cfg.frecuencia) document.getElementById('rfFrecuencia').value = cfg.frecuencia;
-  if (cfg.canal) document.getElementById('rfCanal').value = String(cfg.canal);
-  document.getElementById('rfRetransmisiones').value = cfg.retransmisiones ?? 3;
-  document.getElementById('rfIntervalo').value = cfg.intervalo_ms ?? 100;
-}
-
-document.getElementById('formRfConfig').addEventListener('submit', async e => {
-  e.preventDefault();
-  const body = {
-    frecuencia: document.getElementById('rfFrecuencia').value,
-    canal: document.getElementById('rfCanal').value,
-    retransmisiones: document.getElementById('rfRetransmisiones').value,
-    intervalo_ms: document.getElementById('rfIntervalo').value,
-  };
-  const res = await fetch('/api/vipers/rf-config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (res.ok) {
-    mostrarToast('Configuración RF guardada', 'success');
-  } else {
-    const data = await res.json();
-    mostrarToast(data.error || 'Error al guardar la configuración RF', 'danger');
-  }
-});
-
 // ── Herramientas de Diagnóstico ───────────────────────────────────────────────
 function mostrarResultadoDiagnostico(texto, tipo = 'info') {
   const el = document.getElementById('diagnosticoResultado');
@@ -487,7 +452,7 @@ document.getElementById('btnConfirmarAsociarRf').addEventListener('click', async
   errEl.classList.add('d-none');
 
   if (!viperId) {
-    errEl.textContent = 'Seleccioná un VIPER para asociar el código.';
+    errEl.textContent = 'Seleccioná un beeper para asociar el código.';
     errEl.classList.remove('d-none');
     return;
   }

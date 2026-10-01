@@ -65,7 +65,7 @@ function renderTurnos() {
 
   lista.innerHTML = turnos.map(t => {
     const cancelBtn = me.permiso_cancelar_turno
-      ? `<button class="btn btn-sm btn-outline-danger ms-2" onclick="cancelarTurno(${t.id})" title="Cancelar biper">
+      ? `<button class="btn btn-sm btn-outline-danger ms-2" onclick="cancelarTurno(${t.id})" title="Cancelar beeper">
            <i class="bi bi-x-circle"></i>
          </button>` : '';
     return `
@@ -94,7 +94,7 @@ document.getElementById('formVenta').addEventListener('submit', async e => {
   const nombre_cliente = document.getElementById('inputNombre').value.trim();
 
   if (!atraccion_id || !biper_numero) {
-    mostrarToast('Completá atracción y número de biper', 'warning'); return;
+    mostrarToast('Completá atracción y número de beeper', 'warning'); return;
   }
   const res  = await fetch('/api/turnos', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -102,7 +102,7 @@ document.getElementById('formVenta').addEventListener('submit', async e => {
   });
   const data = await res.json();
   if (!res.ok) { mostrarToast(data.error||'Error al registrar', 'danger'); return; }
-  mostrarToast(`Turno registrado – Biper ${data.biper_numero}`, 'success');
+  mostrarToast(`Turno registrado – Beeper ${data.biper_numero}`, 'success');
   e.target.reset();
 });
 
@@ -114,7 +114,7 @@ document.getElementById('btnAutoBiper').addEventListener('click', async () => {
 
 // ── Cancelar biper ────────────────────────────────────────────────────────────
 async function cancelarTurno(id) {
-  if (!confirm('¿Cancelar el biper? El turno quedará anulado.')) return;
+  if (!confirm('¿Cancelar el beeper? El turno quedará anulado.')) return;
   const res = await fetch(`/api/turnos/${id}/cancelar`, { method: 'PUT' });
   if (!res.ok) { const d = await res.json(); mostrarToast(d.error||'Sin permiso', 'danger'); return; }
   mostrarToast('Turno cancelado', 'warning');
