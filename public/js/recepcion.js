@@ -8,6 +8,15 @@ function escapeHtml(str) {
     ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 }
 
+// Formatea minutos de forma legible: 45 → "45 min", 60 → "1 h", 160 → "2 h 40 min"
+function formatMinutos(minutos) {
+  const total = Math.max(0, Math.ceil(Number(minutos) || 0));
+  if (total < 60) return `${total} min`;
+  const h = Math.floor(total / 60);
+  const m = total % 60;
+  return m ? `${h} h ${m} min` : `${h} h`;
+}
+
 // Escapa para uso en atributos onclick (HTML + JS string con comillas simples)
 function esc(s) {
   return String(s == null ? '' : s)
@@ -49,7 +58,7 @@ async function cargarAtracciones() {
   atracciones.forEach(a => {
     const minM = a.min_miembros || 1;
     const maxM = a.max_miembros || 30;
-    sel.innerHTML += `<option value="${a.id}" data-duracion="${a.duracion_minutos}" data-min-miembros="${minM}" data-max-miembros="${maxM}" data-usa-subcategorias="${a.usa_subcategorias || 0}">${escapeHtml(a.nombre)} (${a.duracion_minutos} min)</option>`;
+    sel.innerHTML += `<option value="${a.id}" data-duracion="${a.duracion_minutos}" data-min-miembros="${minM}" data-max-miembros="${maxM}" data-usa-subcategorias="${a.usa_subcategorias || 0}">${escapeHtml(a.nombre)} (${formatMinutos(a.duracion_minutos)})</option>`;
   });
 }
 
@@ -76,7 +85,7 @@ document.getElementById('selectJuego').addEventListener('change', async () => {
   const inputM   = document.getElementById('inputMiembros');
 
   if (duracion) {
-    duEl.innerHTML = `<i class="bi bi-clock me-1"></i>Duración: <strong>${duracion} min</strong>&nbsp;&nbsp;<i class="bi bi-people ms-2 me-1"></i>Personas: <strong>${minM}–${maxM}</strong>`;
+    duEl.innerHTML = `<i class="bi bi-clock me-1"></i>Duración: <strong>${formatMinutos(duracion)}</strong>&nbsp;&nbsp;<i class="bi bi-people ms-2 me-1"></i>Personas: <strong>${minM}–${maxM}</strong>`;
     inputM.min = minM;
     inputM.max = maxM;
     const current = parseInt(inputM.value) || 1;
@@ -129,7 +138,7 @@ function actualizarEsperaEstimada() {
   if (totalEspera === 0) {
     msg.innerHTML = `<strong>¡Puede jugar casi de inmediato!</strong> No hay grupos en espera.`;
   } else {
-    msg.innerHTML = `Tiempo de espera estimado para este juego: <strong>~${Math.ceil(totalEspera)} minutos</strong>`;
+    msg.innerHTML = `Tiempo de espera estimado para este juego: <strong>~${formatMinutos(totalEspera)}</strong>`;
   }
 }
 
@@ -251,8 +260,8 @@ function renderJuegoPane(j) {
         </div>
         <div class="d-flex align-items-center gap-3">
           <div class="text-end">
-            <div class="fw-semibold text-primary">${t.tiempo_restante} min restantes</div>
-            <div class="text-muted small">${t.tiempo_transcurrido} min transcurridos</div>
+            <div class="fw-semibold text-primary">${formatMinutos(t.tiempo_restante)} restantes</div>
+            <div class="text-muted small">${formatMinutos(t.tiempo_transcurrido)} transcurridos</div>
           </div>
           ${btnCancelarTurno}
           ${btnFinalizar}
@@ -358,7 +367,7 @@ function renderJuegoPane(j) {
           <div class="d-flex flex-column gap-1">${btnSubir}${btnBajar}</div>
           <span class="espera-badge ${claseEspera}">
             <i class="bi bi-hourglass-split me-1"></i>
-            ${t.tiempo_espera_estimado === 0 ? '¡Próximo!' : `~${t.tiempo_espera_estimado} min`}
+            ${t.tiempo_espera_estimado === 0 ? '¡Próximo!' : `~${formatMinutos(t.tiempo_espera_estimado)}`}
           </span>
           ${btnEditar}${btnEliminar}
           ${btnLlamar}
@@ -569,7 +578,7 @@ async function _ejecutarLlamar(id, force = false) {
   if (data.advertencia === 'biper_en_otro_juego') {
     _pendingLlamarId = id;
     const restanteTexto = data.tiempo_restante > 0
-      ? `con aproximadamente <strong>${data.tiempo_restante} min restantes</strong>`
+      ? `con aproximadamente <strong>${formatMinutos(data.tiempo_restante)} restantes</strong>`
       : 'con tiempo excedido';
     document.getElementById('confViperOtroJuegoTexto').innerHTML =
       `El beeper <strong>${escapeHtml(data.biper_numero)}</strong> está actualmente jugando en:<br><br>
