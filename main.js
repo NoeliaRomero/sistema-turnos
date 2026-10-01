@@ -149,7 +149,7 @@ async function crearVentana() {
     height: 800,
     minWidth:  900,
     minHeight: 600,
-    title: 'Sistema Universal',
+    title: 'Sistema Universal Plus',
     webPreferences: {
       nodeIntegration:  false,  // El renderer NO tiene acceso a Node
       contextIsolation: true,   // Contexto aislado (buena práctica de seguridad)

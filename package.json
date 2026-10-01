@@ -1,6 +1,6 @@
 {
   "name": "sistema-turnos-biper",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Sistema de gestión de turnos y llamado por biper",
   "main": "main.js",
   "scripts": {
@@ -11,8 +11,8 @@
     "build:linux": "electron-builder --linux --x64"
   },
   "build": {
-    "appId": "ar.com.sistemauniversal",
-    "productName": "Sistema Universal",
+    "appId": "ar.com.sistemauniversal.plus",
+    "productName": "Sistema Universal Plus",
     "files": [
       "**/*",
       "!db/turnos.db",
