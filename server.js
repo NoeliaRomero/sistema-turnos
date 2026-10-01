@@ -140,7 +140,7 @@ app.use('/api/auth',        require('./routes/auth'));
 const backupModule = require('./routes/backup');
 app.use('/api/backup',      backupModule.router);
 app.use('/api/licencia',    licenciaModule.router);
-app.use('/api/atracciones', require('./routes/atracciones'));
+app.use('/api/atracciones', require('./routes/atracciones')(io));
 app.use('/api/turnos',      require('./routes/turnos')(io));
 app.use('/api/usuarios',    require('./routes/usuarios'));
 app.use('/api/stats',       require('./routes/stats'));

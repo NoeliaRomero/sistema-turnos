@@ -1,7 +1,9 @@
 const express = require('express');
-const router  = express.Router();
 const db      = require('../db/database');
 const { requireAuth, requirePermission } = require('../middleware/auth');
+
+module.exports = (io) => {
+const router  = express.Router();
 
 function recalcularDuracion(juegoId) {
   const { total } = db.prepare(
@@ -111,6 +113,7 @@ router.post('/', requirePermission('permiso_gestionar_juegos'), (req, res) => {
   }
 
   const juego = db.prepare('SELECT * FROM atracciones WHERE id = ?').get(juegoId);
+  io.emit('juego:actualizado', { accion: 'creado', id: juegoId });
   res.status(201).json({
     ...juego,
     etapas:        usaEtapas ? etapasDeJuego(juegoId)        : [],
@@ -163,6 +166,7 @@ router.put('/:id', requirePermission('permiso_gestionar_juegos'), (req, res) => 
     db.prepare("DELETE FROM juego_subcategorias WHERE juego_id = ?").run(req.params.id);
   }
 
+  io.emit('juego:actualizado', { accion: 'editado', id: Number(req.params.id) });
   res.json({ ok: true });
 });
 
@@ -191,7 +195,9 @@ router.delete('/:id', requirePermission('permiso_gestionar_juegos'), (req, res) 
   db.prepare('DELETE FROM juego_subcategorias WHERE juego_id = ?').run(id);
   db.prepare('DELETE FROM atracciones WHERE id = ?').run(id);
 
+  io.emit('juego:actualizado', { accion: 'eliminado', id });
   res.json({ ok: true });
 });
 
-module.exports = router;
+return router;
+};

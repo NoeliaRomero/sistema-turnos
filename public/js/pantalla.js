@@ -1,14 +1,104 @@
 const socket = io();
 
+// ── Paginado automático ───────────────────────────────────────────────────────
+// En un TV nadie puede scrollear: si hay más juegos con actividad de los que
+// entran cómodos en pantalla, se dividen en páginas que rotan solas en vez de
+// desbordar (invisible) o achicar todo. Un cambio real de datos (ver
+// cargarCola) vuelve siempre a la página 1; el recálculo local de tiempos
+// cada 30s no toca la página actual.
+const ROTACION_MS = 6000;
+const POR_PAGINA_JUEGOS = 4;
+let _pagJuegos = 0, _timerJuegos = null;
+
+function paginar(items, porPagina) {
+  const paginas = [];
+  for (let i = 0; i < items.length; i += porPagina) paginas.push(items.slice(i, i + porPagina));
+  return paginas;
+}
+
+function renderDots(contId, paginas, paginaActual) {
+  const el = document.getElementById(contId);
+  if (!el) return;
+  el.innerHTML = paginas.length > 1
+    ? paginas.map((_, i) => `<span class="dot-pag ${i === paginaActual ? 'activo' : ''}"></span>`).join('')
+    : '';
+}
+
 function escapeHtml(str) {
   return String(str == null ? '' : str).replace(/[&<>"']/g, c =>
     ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 }
 
+// Formatea minutos de espera como horas cuando pasan los 60 (ej. "1h 20min").
+function formatEspera(min) {
+  if (min < 60) return `${min} min`;
+  const horas = Math.floor(min / 60);
+  const resto = min % 60;
+  return resto === 0 ? `${horas}h` : `${horas}h ${resto}min`;
+}
+
+// ── Color por juego (mismo criterio que cola.js: un color propio y estable
+// por juego, para distinguirlos de un vistazo en pantalla) ───────────────────
+const PALETA_JUEGOS = [
+  { accent: '#3b82f6', bg: 'rgba(59,130,246,0.10)', border: 'rgba(59,130,246,0.3)',  text: '#93c5fd' },
+  { accent: '#f97316', bg: 'rgba(249,115,22,0.10)', border: 'rgba(249,115,22,0.3)',  text: '#fdba74' },
+  { accent: '#10b981', bg: 'rgba(16,185,129,0.10)', border: 'rgba(16,185,129,0.3)',  text: '#6ee7b7' },
+  { accent: '#ec4899', bg: 'rgba(236,72,153,0.10)', border: 'rgba(236,72,153,0.3)',  text: '#f9a8d4' },
+  { accent: '#a855f7', bg: 'rgba(168,85,247,0.10)', border: 'rgba(168,85,247,0.3)',  text: '#d8b4fe' },
+  { accent: '#06b6d4', bg: 'rgba(6,182,212,0.10)',  border: 'rgba(6,182,212,0.3)',   text: '#67e8f9' },
+  { accent: '#eab308', bg: 'rgba(234,179,8,0.10)',  border: 'rgba(234,179,8,0.3)',   text: '#fde047' },
+  { accent: '#ef4444', bg: 'rgba(239,68,68,0.10)',  border: 'rgba(239,68,68,0.3)',   text: '#fca5a5' },
+];
+// Ícono a medida para los juegos conocidos (mismo criterio que las fotos:
+// palabra clave en el nombre, no id). Un juego sin match usa la rotación
+// genérica de abajo, indexada por id para que sea estable.
+const ICONOS_POR_NOMBRE = [
+  { match: /kart/i,          icono: 'bi-speedometer2' },
+  { match: /paintball/i,     icono: 'bi-bullseye' },
+  { match: /escape\s*room/i, icono: 'bi-key-fill' },
+  { match: /atraco/i,        icono: 'bi-bank2' },
+];
+const ICONOS_FALLBACK = [
+  'bi-joystick', 'bi-trophy-fill', 'bi-lightning-charge-fill', 'bi-stars',
+  'bi-gem', 'bi-fire', 'bi-controller', 'bi-dice-5-fill',
+];
+// Se indexa por el ID del juego (fijo en la base), no por su posición en la
+// lista: ver la misma nota en cola.js — así el color de cada juego no se
+// reacomoda en cascada cuando se renombra o agrega otro juego.
+function colorDeJuego(juegoId) {
+  return PALETA_JUEGOS[juegoId % PALETA_JUEGOS.length];
+}
+function iconoDeJuego(juegoId) {
+  const juego    = estadoJuegos.find(j => j.id === juegoId);
+  const conocido = ICONOS_POR_NOMBRE.find(e => e.match.test(juego?.nombre || ''));
+  return conocido ? conocido.icono : ICONOS_FALLBACK[juegoId % ICONOS_FALLBACK.length];
+}
+// Fondo ilustrado por juego (mismo criterio que cola.js): se matchea por
+// palabra clave en el nombre, no por id, y si no hay imagen conocida para ese
+// juego (ej. "Tiro al Blanco") simplemente no lleva foto.
+const IMAGENES_JUEGOS = [
+  { match: /kart/i,          archivo: 'karting.png' },
+  { match: /paintball/i,     archivo: 'paintball.png' },
+  { match: /escape\s*room/i, archivo: 'escaperoom.png' },
+  { match: /atraco/i,        archivo: 'atraco.png' },
+];
+function imagenDeJuego(nombre) {
+  const encontrado = IMAGENES_JUEGOS.find(e => e.match.test(nombre || ''));
+  return encontrado ? `/assets/juegos/${encontrado.archivo}` : null;
+}
+
+function estiloJuego(juegoId) {
+  const c = colorDeJuego(juegoId);
+  const juego = estadoJuegos.find(j => j.id === juegoId);
+  const img   = imagenDeJuego(juego?.nombre);
+  const imgCss = img ? `url('${img}')` : 'none';
+  return `--jc-accent:${c.accent}; --jc-bg:${c.bg}; --jc-border:${c.border}; --jc-text:${c.text}; --jc-img:${imgCss};`;
+}
+
 // ── Reloj ─────────────────────────────────────────────────────────────────────
 function tickReloj() {
   document.getElementById('clock').textContent =
-    new Date().toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+    new Date().toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit', second:'2-digit', hour12: false });
 }
 tickReloj();
 setInterval(tickReloj, 1000);
@@ -60,50 +150,75 @@ async function cargarCola() {
     if (!res.ok) return;
     const { juegos } = await res.json();
     estadoJuegos = juegos;
+    // Un cambio real de datos vuelve siempre a la página 1 (lo urgente se ve
+    // ya); el recálculo local de tiempos cada 30s no pasa por acá.
+    _pagJuegos = 0;
     renderJuegos();
   } catch (_) {}
 }
 
 // ── Render principal ──────────────────────────────────────────────────────────
 function renderJuegos() {
-  const grid    = document.getElementById('juegosGrid');
+  const grid     = document.getElementById('juegosGrid');
   const sinDatos = document.getElementById('sinDatos');
+  const dots     = document.getElementById('dotsJuegos');
   const juegosConActividad = estadoJuegos.filter(j =>
     j.activos.length > 0 || j.cola.length > 0
   );
 
+  clearInterval(_timerJuegos);
+
   if (!juegosConActividad.length) {
     sinDatos.style.display = '';
     grid.style.display = 'none';
+    if (dots) dots.innerHTML = '';
     return;
   }
 
   sinDatos.style.display = 'none';
   grid.style.display = '';
-  grid.innerHTML = juegosConActividad.map(j => renderJuegoCard(j)).join('');
+
+  const paginas = paginar(juegosConActividad, POR_PAGINA_JUEGOS);
+  if (_pagJuegos >= paginas.length) _pagJuegos = 0;
+
+  const pintar = () => {
+    grid.innerHTML = paginas[_pagJuegos].map(j => renderJuegoCard(j)).join('');
+    renderDots('dotsJuegos', paginas, _pagJuegos);
+  };
+  pintar();
+
+  if (paginas.length > 1) {
+    _timerJuegos = setInterval(() => {
+      _pagJuegos = (_pagJuegos + 1) % paginas.length;
+      pintar();
+    }, ROTACION_MS);
+  }
 }
 
 function renderJuegoCard(j) {
   const totalActivos = j.activos.length;
   const totalCola    = j.cola.length;
+  const icono        = iconoDeJuego(j.id);
+  const tieneImg     = !!imagenDeJuego(j.nombre);
 
   const activosHtml = totalActivos
     ? j.activos.map(t => {
         const esLlamado  = t.estado === 'llamado';
         const chipEstado = esLlamado
-          ? '<span class="meta-chip chip-llamado">&#128276; Llamado</span>'
-          : '<span class="meta-chip chip-jugando">&#9654; Jugando</span>';
-        const chipTiempo = `<span class="meta-chip chip-tiempo">&#8987; ${t.tiempo_transcurrido ?? 0} min</span>`;
+          ? '<span class="meta-chip chip-llamado"><i class="bi bi-megaphone-fill me-1"></i>Llamado</span>'
+          : '<span class="meta-chip chip-jugando"><i class="bi bi-play-fill me-1"></i>Jugando</span>';
+        const chipTiempo = `<span class="meta-chip chip-tiempo"><i class="bi bi-clock me-1"></i>${t.tiempo_transcurrido ?? 0} min</span>`;
         const chipEtapa  = t.etapa_actual_nombre
-          ? `<span class="meta-chip chip-etapa">&#8635; ${escapeHtml(t.etapa_actual_nombre)}</span>` : '';
+          ? `<span class="meta-chip chip-etapa"><i class="bi bi-layers me-1"></i>${escapeHtml(t.etapa_actual_nombre)}</span>` : '';
         return `
-          <div class="turno-activo ${esLlamado ? 'estado-llamado' : ''} nuevo">
+          <div class="turno-activo ${esLlamado ? 'estado-llamado' : ''} ${tieneImg ? 'con-imagen' : ''} nuevo">
+            ${tieneImg ? '' : `<i class="bi ${icono} icono-fondo"></i>`}
             <div class="biper-tv">${escapeHtml(t.biper_numero)}</div>
             <div class="turno-info">
               <div class="turno-cliente">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>
               <div class="turno-meta">
                 ${chipEstado}${chipTiempo}${chipEtapa}
-                ${t.cantidad_miembros > 1 ? `<span class="meta-chip chip-tiempo">&#128101; ${t.cantidad_miembros} pers.</span>` : ''}
+                ${t.cantidad_miembros > 1 ? `<span class="meta-chip chip-tiempo"><i class="bi bi-people-fill me-1"></i>${t.cantidad_miembros} pers.</span>` : ''}
               </div>
             </div>
           </div>`;
@@ -111,24 +226,27 @@ function renderJuegoCard(j) {
     : '<p class="sin-activo">Sin turno activo</p>';
 
   const colaHtml = totalCola
-    ? `<div class="cola-lista">${j.cola.slice(0, 5).map(t => `
+    ? `<div class="cola-lista">${j.cola.slice(0, 5).map(t => {
+        const esProximo = t.posicion === 1 && t.tiempo_espera_estimado === 0;
+        return `
         <div class="cola-item">
           <span class="posicion">#${t.posicion}</span>
           <span class="biper-cola">${escapeHtml(t.biper_numero)}</span>
           <span class="cola-cliente">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</span>
-          <span class="espera-chip">~${t.tiempo_espera_estimado ?? 0} min</span>
-        </div>`).join('')}
+          <span class="espera-chip" style="${esProximo ? 'color:#4ade80;font-weight:800;' : ''}">${esProximo ? '¡Próximo!' : `~${formatEspera(t.tiempo_espera_estimado ?? 0)}`}</span>
+        </div>`;
+      }).join('')}
         ${totalCola > 5 ? `<div class="sin-cola">+${totalCola - 5} más en cola</div>` : ''}
       </div>`
     : '<p class="sin-cola">Cola vacía</p>';
 
   return `
-    <div class="juego-card" id="juego-${j.id}">
+    <div class="juego-card" id="juego-${j.id}" style="${estiloJuego(j.id)}">
       <div class="juego-header">
-        <span class="juego-nombre">${escapeHtml(j.nombre)}</span>
+        <span class="juego-nombre"><i class="bi ${icono}"></i><span class="juego-nombre-txt">${escapeHtml(j.nombre)}</span></span>
         <div class="juego-contadores">
-          <span class="contador-badge badge-activo">&#9654; ${totalActivos} activo${totalActivos !== 1 ? 's' : ''}</span>
-          <span class="contador-badge badge-espera">&#8987; ${totalCola} en cola</span>
+          <span class="contador-badge badge-activo"><i class="bi bi-play-fill"></i> ${totalActivos} activo${totalActivos !== 1 ? 's' : ''}</span>
+          <span class="contador-badge badge-espera"><i class="bi bi-hourglass-split"></i> ${totalCola} en cola</span>
         </div>
       </div>
       <div class="juego-body">
@@ -156,6 +274,7 @@ socket.on('turno:finalizado',     (turno) => {
   cargarCola();
 });
 socket.on('turno:etapa_avanzada', () => cargarCola());
+socket.on('juego:actualizado',    () => cargarCola());
 
 // ── Actualizar timers localmente cada 30s sin recargar todo ──────────────────
 setInterval(() => {
