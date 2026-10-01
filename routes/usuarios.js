@@ -33,6 +33,9 @@ router.post('/', (req, res) => {
   if (!ROLES_VALIDOS.includes(rol)) {
     return res.status(400).json({ error: 'Rol inválido' });
   }
+  if (rol === 'operador' && !atraccion_id) {
+    return res.status(400).json({ error: 'El operador debe tener una atracción asignada' });
+  }
   const dup = db.prepare("SELECT id FROM usuarios WHERE username = ?").get(username.trim());
   if (dup) return res.status(409).json({ error: 'El nombre de usuario ya existe' });
 
@@ -59,6 +62,9 @@ router.put('/:id', (req, res) => {
 
   if (!nombre?.trim() || !username?.trim() || !rol) {
     return res.status(400).json({ error: 'Nombre, usuario y rol son requeridos' });
+  }
+  if (rol === 'operador' && !atraccion_id) {
+    return res.status(400).json({ error: 'El operador debe tener una atracción asignada' });
   }
 
   const target = db.prepare("SELECT rol FROM usuarios WHERE id=?").get(id);

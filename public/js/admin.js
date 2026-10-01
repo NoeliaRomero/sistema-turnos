@@ -365,6 +365,9 @@ async function guardarUsuario() {
   if (!payload.nombre || !payload.username || !payload.rol) {
     errEl.textContent = 'Completá nombre, usuario y rol'; errEl.classList.remove('d-none'); return;
   }
+  if (payload.rol === 'operador' && !payload.atraccion_id) {
+    errEl.textContent = 'Asigná una atracción al operador'; errEl.classList.remove('d-none'); return;
+  }
   if (!id && !payload.password) {
     errEl.textContent = 'La contraseña es requerida para usuarios nuevos'; errEl.classList.remove('d-none'); return;
   }
