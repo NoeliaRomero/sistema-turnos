@@ -19,7 +19,7 @@
       "!db/*.db-shm",
       "!db/*.db-wal",
       "!tools/**",
-      "!dist/**",
+      "!dist*/**",
       "!.claude/**",
       "!capacitor.config.json",
       "!db/session.key",
