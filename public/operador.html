@@ -51,6 +51,15 @@
     .etapa-sig {
       font-size: .78rem; color: #6b7280;
     }
+
+    /* Cola de espera: alto fijo (~5 turnos) con scroll interno, no crece con la cantidad de turnos */
+    #listaEsperando {
+      max-height: 690px;
+      overflow-y: auto;
+      padding-right: 6px;
+    }
+    #listaEsperando::-webkit-scrollbar { width: 8px; }
+    #listaEsperando::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
   </style>
 </head>
 <body>

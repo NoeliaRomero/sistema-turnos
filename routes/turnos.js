@@ -264,12 +264,16 @@ module.exports = (io) => {
              ul.nombre AS llamado_por_nombre,
              uf.nombre AS finalizado_por_nombre,
              ea.nombre  AS etapa_actual_nombre,
-             ea.orden   AS etapa_actual_orden
+             ea.orden   AS etapa_actual_orden,
+             sc.nombre  AS subcategoria_nombre,
+             v.codigo_viper AS viper_codigo
       FROM turnos t
       JOIN atracciones a ON t.atraccion_id = a.id
       LEFT JOIN usuarios ul    ON t.llamado_por    = ul.id
       LEFT JOIN usuarios uf    ON t.finalizado_por = uf.id
       LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id
+      LEFT JOIN juego_subcategorias sc ON t.subcategoria_id = sc.id
+      LEFT JOIN vipers v ON t.viper_id = v.id
       WHERE 1=1
     `;
     const params = [];
@@ -913,20 +917,13 @@ module.exports = (io) => {
     const op    = direccion === 'subir' ? '<' : '>';
     const order = direccion === 'subir' ? 'DESC' : 'ASC';
 
-    let turnoB;
-    if (turnoA.subcategoria_id) {
-      turnoB = db.prepare(`
-        SELECT id, orden_cola FROM turnos
-        WHERE atraccion_id = ? AND estado = 'esperando' AND subcategoria_id = ? AND orden_cola ${op} ?
-        ORDER BY orden_cola ${order} LIMIT 1
-      `).get(turnoA.atraccion_id, turnoA.subcategoria_id, turnoA.orden_cola);
-    } else {
-      turnoB = db.prepare(`
-        SELECT id, orden_cola FROM turnos
-        WHERE atraccion_id = ? AND estado = 'esperando' AND subcategoria_id IS NULL AND orden_cola ${op} ?
-        ORDER BY orden_cola ${order} LIMIT 1
-      `).get(turnoA.atraccion_id, turnoA.orden_cola);
-    }
+    // El orden se mueve entre TODOS los turnos en espera de la atracción, sin
+    // importar su subcategoría — esa restricción aplica solo al llamado/combinación.
+    const turnoB = db.prepare(`
+      SELECT id, orden_cola FROM turnos
+      WHERE atraccion_id = ? AND estado = 'esperando' AND orden_cola ${op} ?
+      ORDER BY orden_cola ${order} LIMIT 1
+    `).get(turnoA.atraccion_id, turnoA.orden_cola);
 
     if (!turnoB) {
       return res.status(400).json({ error: 'No se puede mover en esa dirección' });
