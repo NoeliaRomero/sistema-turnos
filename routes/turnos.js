@@ -43,6 +43,50 @@ function conEtapaSig(turno) {
   return { ...turno, etapa_siguiente_nombre: sig ? sig.nombre : null };
 }
 
+// Los turnos activos (llamado/jugando) de una misma subcategoría (o sin
+// subcategoría, si el juego no las usa) juegan TODOS al mismo tiempo — están
+// combinados. La validación de /llamar impide que convivan simultáneamente
+// dos subcategorías distintas, así que agrupar por subcategoria_id y tomar el
+// máximo tiempo_restante de cada grupo (no la suma) da el momento real en que
+// esa sesión combinada termina.
+function acumuladoBaseDesdeActivos(activos) {
+  const maxPorGrupo = {};
+  activos.forEach(t => {
+    const key = t.subcategoria_id ?? '__null__';
+    maxPorGrupo[key] = Math.max(maxPorGrupo[key] || 0, t.tiempo_restante);
+  });
+  return Object.values(maxPorGrupo).reduce((s, v) => s + v, 0);
+}
+
+// Calcula el tiempo de espera estimado agrupando turnos combinables (misma
+// subcategoría y que entran juntos en la capacidad máxima) en un solo bloque:
+// esos grupos juegan al mismo tiempo, así que comparten la misma espera en
+// lugar de sumar la duración del juego una vez por cada turno.
+function calcularEsperasCombinadas(esperando, atraccion, acumuladoInicial) {
+  const esperas = new Array(esperando.length);
+  let acumulado = acumuladoInicial;
+  let i = 0;
+  while (i < esperando.length) {
+    let miembros = esperando[i].cantidad_miembros || 0;
+    const subcat = esperando[i].subcategoria_id;
+    let j = i + 1;
+    while (j < esperando.length) {
+      const cand = esperando[j];
+      const mismaSubcat = atraccion.usa_subcategorias ? cand.subcategoria_id === subcat : true;
+      if (!mismaSubcat) break;
+      const nuevaCantidad = miembros + (cand.cantidad_miembros || 0);
+      if (nuevaCantidad > atraccion.max_miembros) break;
+      miembros = nuevaCantidad;
+      j++;
+    }
+    const espera = Math.ceil(acumulado);
+    for (let k = i; k < j; k++) esperas[k] = espera;
+    acumulado += atraccion.duracion_minutos;
+    i = j;
+  }
+  return esperas;
+}
+
 // ── Sincronización de grupos combinados ───────────────────────────────────────
 function getSincronizar() {
   try {
@@ -191,12 +235,9 @@ module.exports = (io) => {
         ORDER BY t.orden_cola ASC, t.id ASC
       `).all(a.id);
 
-      let acumulado = activos.reduce((s, t) => s + t.tiempo_restante, 0);
-      const cola = esperando.map((t, i) => {
-        const espera = Math.ceil(acumulado);
-        acumulado += a.duracion_minutos;
-        return { ...t, posicion: i + 1, tiempo_espera_estimado: espera };
-      });
+      const acumuladoBase = acumuladoBaseDesdeActivos(activos);
+      const esperas = calcularEsperasCombinadas(esperando, a, acumuladoBase);
+      const cola = esperando.map((t, i) => ({ ...t, posicion: i + 1, tiempo_espera_estimado: esperas[i] }));
 
       return { ...a, jugando: activos, cola };
     });
@@ -212,7 +253,7 @@ module.exports = (io) => {
     const juegos = atracciones.map(a => {
       const activos = db.prepare(`
         SELECT t.biper_numero, t.nombre_cliente, t.cantidad_miembros, t.estado,
-               t.called_at, t.jugando_desde,
+               t.called_at, t.jugando_desde, t.subcategoria_id,
                ea.nombre AS etapa_actual_nombre
         FROM turnos t
         LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id
@@ -226,18 +267,15 @@ module.exports = (io) => {
       });
 
       const esperando = db.prepare(`
-        SELECT t.biper_numero, t.nombre_cliente, t.cantidad_miembros, t.created_at
+        SELECT t.biper_numero, t.nombre_cliente, t.cantidad_miembros, t.created_at, t.subcategoria_id
         FROM turnos t
         WHERE t.atraccion_id = ? AND t.estado = 'esperando'
         ORDER BY t.orden_cola ASC, t.id ASC
       `).all(a.id);
 
-      let acumulado = activos.reduce((s, t) => s + t.tiempo_restante, 0);
-      const cola = esperando.map((t, i) => {
-        const espera = Math.ceil(acumulado);
-        acumulado += a.duracion_minutos;
-        return { ...t, posicion: i + 1, tiempo_espera_estimado: espera };
-      });
+      const acumuladoBase = acumuladoBaseDesdeActivos(activos);
+      const esperas = calcularEsperasCombinadas(esperando, a, acumuladoBase);
+      const cola = esperando.map((t, i) => ({ ...t, posicion: i + 1, tiempo_espera_estimado: esperas[i] }));
 
       return { id: a.id, nombre: a.nombre, duracion_minutos: a.duracion_minutos, activos, cola };
     });

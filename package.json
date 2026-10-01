@@ -16,6 +16,12 @@
     "files": [
       "**/*",
       "!db/turnos.db",
+      "!db/*.db-shm",
+      "!db/*.db-wal",
+      "!tools/**",
+      "!dist/**",
+      "!.claude/**",
+      "!capacitor.config.json",
       "!db/session.key",
       "!db/install.id",
       "!db/license.lic",
@@ -38,7 +44,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/icon.ico"
@@ -47,7 +55,9 @@
       "target": [
         {
           "target": "AppImage",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "category": "Office"
