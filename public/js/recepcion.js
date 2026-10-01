@@ -54,12 +54,17 @@ async function cargarAtracciones() {
   const res = await fetch('/api/atracciones');
   atracciones = await res.json();
   const sel = document.getElementById('selectJuego');
+  const seleccionPrevia = sel.value;
   sel.innerHTML = '<option value="">Seleccionar juego…</option>';
   atracciones.forEach(a => {
     const minM = a.min_miembros || 1;
     const maxM = a.max_miembros || 30;
     sel.innerHTML += `<option value="${a.id}" data-duracion="${a.duracion_minutos}" data-min-miembros="${minM}" data-max-miembros="${maxM}" data-usa-subcategorias="${a.usa_subcategorias || 0}">${escapeHtml(a.nombre)} (${formatMinutos(a.duracion_minutos)})</option>`;
   });
+  // Al recargar por un cambio de juego, conservar lo que la recepcionista ya había elegido
+  if (seleccionPrevia && atracciones.some(a => String(a.id) === seleccionPrevia)) {
+    sel.value = seleccionPrevia;
+  }
 }
 
 // ── VIPERs activos (selección opcional al registrar un grupo) ──────────────────
@@ -244,6 +249,12 @@ function renderJuegoPane(j) {
       const subcatHtml = t.subcategoria_nombre
         ? `<span class="badge bg-success bg-opacity-75 ms-1"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>`
         : '';
+      // El badge de estado refleja el estado real: 'llamado' es la ventana previa
+      // (5 min) antes de pasar a 'jugando' — no es lo mismo, sobre todo si el juego
+      // usa etapas y todavía está en la primera (ej. "En charla").
+      const badgeEstado = t.estado === 'jugando'
+        ? `<span class="badge bg-primary"><i class="bi bi-play-fill me-1"></i>JUGANDO</span>`
+        : `<span class="badge bg-warning text-dark"><i class="bi bi-megaphone-fill me-1"></i>LLAMADO</span>`;
       return `
       <div class="turno-row jugando d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div class="d-flex align-items-center gap-3">
@@ -252,7 +263,7 @@ function renderJuegoPane(j) {
             <div class="fw-bold">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>
             <div class="d-flex gap-2 mt-1 flex-wrap">
               <span class="miembros-badge"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
-              <span class="badge bg-primary"><i class="bi bi-play-fill me-1"></i>JUGANDO</span>
+              ${badgeEstado}
               ${subcatHtml}
             </div>
             ${etapaHtml}
@@ -793,6 +804,7 @@ socket.on('turno:finalizado',    () => cargarCola());
 socket.on('turno:reordenado',    () => cargarCola());
 socket.on('turno:editado',       () => cargarCola());
 socket.on('turno:eliminado',     () => cargarCola());
+socket.on('juego:actualizado',   () => { cargarCola(); cargarAtracciones(); });
 
 // ── Notificación de turno finalizado (enviada por operador) ───────────────────
 socket.on('recepcion:notificacion', (data) => {
