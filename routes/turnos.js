@@ -619,18 +619,38 @@ module.exports = (io) => {
       }
     }
 
+    // Backfill: si el juego usa etapas pero el turno nunca tuvo una asignada
+    // (ej. se creó antes de que se configuraran las etapas del juego), se le
+    // asigna la primera etapa recién ahora, al llamarlo.
+    let etapaParaIniciar = turnoActual.etapa_actual_id;
+    if (atraccionInfo?.usa_etapas && !etapaParaIniciar) {
+      const primeraEtapa = db.prepare(`
+        SELECT id FROM juego_etapas
+        WHERE juego_id = ? AND activa = 1
+        ORDER BY orden ASC LIMIT 1
+      `).get(turnoActual.atraccion_id);
+      if (primeraEtapa) {
+        etapaParaIniciar = primeraEtapa.id;
+        db.prepare('UPDATE turnos SET etapa_actual_id = ? WHERE id = ?').run(primeraEtapa.id, id);
+        db.prepare(`
+          INSERT INTO turno_etapas_historial (turno_id, etapa_id, etapa_nombre, etapa_orden)
+          SELECT ?, id, nombre, orden FROM juego_etapas WHERE id = ?
+        `).run(id, primeraEtapa.id);
+      }
+    }
+
     db.prepare(`
       UPDATE turnos
       SET estado='llamado', called_at=datetime('now','localtime'), llamado_por=?
       WHERE id=?
     `).run(req.session.usuario.id, id);
 
-    if (turnoActual.etapa_actual_id) {
+    if (etapaParaIniciar) {
       db.prepare(`
         UPDATE turno_etapas_historial
         SET iniciada_at = datetime('now','localtime'), iniciada_por = ?
         WHERE turno_id = ? AND etapa_id = ? AND iniciada_at IS NULL
-      `).run(req.session.usuario.id, id, turnoActual.etapa_actual_id);
+      `).run(req.session.usuario.id, id, etapaParaIniciar);
     }
 
     const turno = conEtapaSig(db.prepare(SELECT_TURNO).get(Number(id)));
@@ -955,6 +975,9 @@ module.exports = (io) => {
       return res.status(400).json({ error: 'direccion debe ser "subir" o "bajar"' });
     }
 
+    let pasos = parseInt(req.body.pasos, 10);
+    if (!Number.isFinite(pasos) || pasos < 1) pasos = 1;
+
     const turnoA = db.prepare(
       "SELECT id, atraccion_id, orden_cola, subcategoria_id FROM turnos WHERE id = ? AND estado = 'esperando'"
     ).get(Number(id));
@@ -963,23 +986,41 @@ module.exports = (io) => {
       return res.status(400).json({ error: 'El turno no existe o ya no está en espera' });
     }
 
-    const op    = direccion === 'subir' ? '<' : '>';
-    const order = direccion === 'subir' ? 'DESC' : 'ASC';
-
-    // El orden se mueve entre TODOS los turnos en espera de la atracción, sin
-    // importar su subcategoría — esa restricción aplica solo al llamado/combinación.
-    const turnoB = db.prepare(`
+    // Lista ordenada de TODOS los turnos en espera del mismo juego, sin importar
+    // subcategoría: la recepción quiere poder reordenar la cola completa a mano.
+    const lista = db.prepare(`
       SELECT id, orden_cola FROM turnos
-      WHERE atraccion_id = ? AND estado = 'esperando' AND orden_cola ${op} ?
-      ORDER BY orden_cola ${order} LIMIT 1
-    `).get(turnoA.atraccion_id, turnoA.orden_cola);
+      WHERE atraccion_id = ? AND estado = 'esperando'
+      ORDER BY orden_cola ASC, id ASC
+    `).all(turnoA.atraccion_id);
 
-    if (!turnoB) {
+    const idx = lista.findIndex(t => t.id === turnoA.id);
+    if (idx === -1) {
+      return res.status(400).json({ error: 'No se pudo ubicar el turno en la cola' });
+    }
+
+    let nuevoIdx = direccion === 'subir' ? idx - pasos : idx + pasos;
+    nuevoIdx = Math.max(0, Math.min(lista.length - 1, nuevoIdx));
+
+    if (nuevoIdx === idx) {
       return res.status(400).json({ error: 'No se puede mover en esa dirección' });
     }
 
-    db.prepare('UPDATE turnos SET orden_cola = ? WHERE id = ?').run(turnoB.orden_cola, turnoA.id);
-    db.prepare('UPDATE turnos SET orden_cola = ? WHERE id = ?').run(turnoA.orden_cola, turnoB.id);
+    // Se conserva el conjunto de valores de orden_cola; solo se reordena
+    // qué turno ocupa cada posición dentro de ese conjunto.
+    const ordenValores = lista.map(t => t.orden_cola);
+    const [item] = lista.splice(idx, 1);
+    lista.splice(nuevoIdx, 0, item);
+
+    const update = db.prepare('UPDATE turnos SET orden_cola = ? WHERE id = ?');
+    db.exec('BEGIN');
+    try {
+      lista.forEach((t, i) => update.run(ordenValores[i], t.id));
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      return res.status(500).json({ error: 'No se pudo reordenar la cola' });
+    }
 
     io.emit('turno:reordenado', { atraccion_id: turnoA.atraccion_id });
     res.json({ ok: true });
