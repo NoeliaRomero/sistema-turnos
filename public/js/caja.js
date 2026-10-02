@@ -140,12 +140,14 @@ function formatHora(dt) {
 }
 function mostrarToast(mensaje, tipo = 'success') {
   const id  = 'toast-' + Date.now();
-  const col = { success:'bg-success', danger:'bg-danger', warning:'bg-warning text-dark' }[tipo];
+  // Fondos claros (warning/info) llevan texto y botón de cierre oscuros para que se lean.
+  const claro = tipo === 'warning' || tipo === 'info';
+  const col = { success:'bg-success', danger:'bg-danger', warning:'bg-warning', info:'bg-info' }[tipo] || 'bg-secondary';
   document.getElementById('toastContainer').insertAdjacentHTML('beforeend', `
-    <div id="${id}" class="toast align-items-center text-white ${col} border-0" role="alert">
+    <div id="${id}" class="toast align-items-center ${col} ${claro ? 'text-dark' : 'text-white'} border-0 shadow" role="alert">
       <div class="d-flex">
         <div class="toast-body fw-semibold">${mensaje}</div>
-        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        <button type="button" class="btn-close ${claro ? '' : 'btn-close-white'} me-2 m-auto" data-bs-dismiss="toast"></button>
       </div>
     </div>`);
   const el = document.getElementById(id);
