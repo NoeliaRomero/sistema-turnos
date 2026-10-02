@@ -32,6 +32,23 @@
     .turno-row { border-left: 5px solid #fbbf24; background: white; border-radius: 10px; padding: 14px 18px; margin-bottom: 10px; }
     .turno-row.jugando { border-left-color: #3b82f6; background: #eff6ff; }
 
+    /* ── Tarjetas en espera: datos a la izquierda, controles en una línea ── */
+    /* Si los controles no entran al lado de los datos, bajan juntos a una
+       segunda línea alineada a la derecha (nunca se enciman). */
+    .turno-espera { flex-wrap: wrap; }
+    .turno-espera .turno-info  { flex: 1 1 260px; min-width: 0; }
+    .turno-espera .turno-datos { min-width: 0; }
+    .turno-espera .turno-nombre { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .turno-espera .turno-acciones {
+      flex: 0 1 auto; max-width: 100%; margin-left: auto;
+      flex-wrap: wrap; justify-content: flex-end; row-gap: 6px;
+    }
+    .turno-espera .turno-acciones .btn { white-space: nowrap; }
+    .turno-espera .espera-badge { white-space: nowrap; }
+    .biper-grupo { flex-shrink: 0; }
+    /* Varios beepers en una combinación: un poco más chicos para que entren */
+    .biper-grupo.combo .biper-num { font-size: 1.1rem; min-width: 40px; padding: 5px 9px; }
+
     /* ── Tabs de juegos ── */
     .nav-tabs .nav-link { font-weight: 600; color: #6c757d; border-radius: 8px 8px 0 0; }
     .nav-tabs .nav-link.active { color: #7c2d12; border-bottom-color: white; }

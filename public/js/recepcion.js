@@ -345,8 +345,9 @@ function renderJuegoPane(j) {
           ? j.jugando.some(g => g.subcategoria_id === t.subcategoria_id)
           : j.jugando.length > 0;
 
-        const puedeCombinar = subcatList.some(x =>
-          !grupo.some(c => c.id === x.id) && !_comboDe(j, x));
+        // Una tarjeta ya combinada no vuelve a ofrecer "Combinar"
+        const puedeCombinar = !combo && subcatList.some(x =>
+          x.id !== t.id && !_comboDe(j, x));
         const btnCombinar = puedeCombinar
           ? `<button class="btn btn-warning btn-sm fw-bold px-3"
               onclick="abrirCombinar(${j.id},${t.id})">
@@ -360,10 +361,11 @@ function renderJuegoPane(j) {
             <i class="bi bi-megaphone me-1"></i>Llamar${combo ? ' juntos' : ''}
           </button>${btnCombinar}`;
         } else {
-          btnLlamar = `<button class="btn btn-outline-secondary btn-sm px-3" disabled
-            title="Primero debe llamarse al grupo #1 de su subcategoría">
-            <i class="bi bi-lock me-1"></i>Espera turno
-          </button>${btnCombinar}`;
+          btnLlamar = `<span class="d-inline-block" title="Espera turno: primero debe llamarse al grupo #1 de su subcategoría">
+            <button class="btn btn-outline-secondary btn-sm px-2" disabled>
+              <i class="bi bi-lock"></i>
+            </button>
+          </span>${btnCombinar}`;
         }
       }
 
@@ -407,13 +409,15 @@ function renderJuegoPane(j) {
         ? `<span class="badge bg-warning text-dark"><i class="bi bi-link-45deg me-1"></i>Combinado</span>`
         : '';
 
+      // Izquierda: datos (se achican y el nombre se corta con "…").
+      // Derecha: controles siempre en una sola línea, igual en todas las tarjetas.
       return `
-      <div class="turno-row d-flex align-items-center justify-content-between flex-wrap gap-2 ${esPrimeroSubcat ? '' : 'opacity-65'}">
-        <div class="d-flex align-items-center gap-3">
+      <div class="turno-row turno-espera d-flex align-items-center justify-content-between gap-2 ${esPrimeroSubcat ? '' : 'opacity-65'}">
+        <div class="turno-info d-flex align-items-center gap-3">
           <div class="pos-num">${t.posicion}</div>
-          <div class="d-flex gap-1">${beepersHtml}</div>
-          <div>
-            <div class="fw-bold">${nombres}</div>
+          <div class="biper-grupo d-flex gap-1 ${combo ? 'combo' : ''}">${beepersHtml}</div>
+          <div class="turno-datos">
+            <div class="fw-bold turno-nombre" title="${nombres}">${nombres}</div>
             <div class="d-flex gap-2 mt-1 flex-wrap">
               <span class="miembros-badge"><i class="bi bi-people me-1"></i>${personas} persona${personas !== 1 ? 's' : ''}</span>
               ${subcatEsperaHtml}
@@ -421,7 +425,7 @@ function renderJuegoPane(j) {
             </div>
           </div>
         </div>
-        <div class="d-flex align-items-center gap-2">
+        <div class="turno-acciones d-flex align-items-center gap-2">
           <div class="d-flex align-items-center gap-1">
             <div class="d-flex flex-column gap-1">${btnSubir}${btnBajar}</div>
             ${inputPasos}
