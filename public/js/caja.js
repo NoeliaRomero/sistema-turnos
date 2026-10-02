@@ -96,11 +96,18 @@ document.getElementById('formVenta').addEventListener('submit', async e => {
   if (!atraccion_id || !biper_numero) {
     mostrarToast('Completá atracción y número de beeper', 'warning'); return;
   }
-  const res  = await fetch('/api/turnos', {
+  const enviar = confirmar => fetch('/api/turnos', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ atraccion_id, biper_numero, nombre_cliente })
+    body: JSON.stringify({ atraccion_id, biper_numero, nombre_cliente, confirmar_biper_otro_juego: confirmar })
   });
-  const data = await res.json();
+  let res  = await enviar(false);
+  let data = await res.json();
+  if (data.advertencia === 'biper_en_otro_juego_registro') {
+    const ok = confirm(`El beeper ${data.biper_numero} ya está asignado en ${data.juego_origen} (${data.nombre_cliente || 'Sin nombre'}). ¿Es la misma familia?`);
+    if (!ok) return;
+    res  = await enviar(true);
+    data = await res.json();
+  }
   if (!res.ok) { mostrarToast(data.error||'Error al registrar', 'danger'); return; }
   mostrarToast(`Turno registrado – Beeper ${data.biper_numero}`, 'success');
   e.target.reset();

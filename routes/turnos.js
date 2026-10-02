@@ -407,6 +407,25 @@ module.exports = (io) => {
       .get(String(biper_numero), atraccionId);
     if (enUso) return res.status(409).json({ error: `El beeper ${biper_numero} ya está en uso en este juego` });
 
+    // Un mismo beeper puede estar en varios juegos (familia en varias filas),
+    // pero la recepción debe confirmarlo para evitar errores de tipeo.
+    if (req.body.confirmar_biper_otro_juego !== true) {
+      const enOtroJuego = db.prepare(`
+        SELECT t.nombre_cliente, a.nombre AS juego_origen
+        FROM turnos t JOIN atracciones a ON t.atraccion_id = a.id
+        WHERE t.biper_numero = ? AND t.atraccion_id <> ? AND t.estado IN ('esperando','llamado','jugando')
+        ORDER BY t.id DESC LIMIT 1
+      `).get(String(biper_numero), atraccionId);
+      if (enOtroJuego) {
+        return res.status(409).json({
+          advertencia:    'biper_en_otro_juego_registro',
+          biper_numero:   String(biper_numero),
+          juego_origen:   enOtroJuego.juego_origen,
+          nombre_cliente: enOtroJuego.nombre_cliente,
+        });
+      }
+    }
+
     // ── Validar subcategoria_id si el juego la usa ────────────────────────────
     let subcategoriaId = null;
     if (juego.usa_subcategorias) {

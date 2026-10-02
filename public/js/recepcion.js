@@ -41,6 +41,7 @@ async function init() {
   await cargarAtracciones();
   await cargarVipersActivos();
   await cargarCola();
+  await asignarBiperAutomatico();
 }
 
 document.getElementById('btnLogout').addEventListener('click', async () => {
@@ -400,10 +401,34 @@ function renderJuegoPane(j) {
 // (esc() definido al inicio del archivo)
 
 // ── Formulario ────────────────────────────────────────────────────────────────
-document.getElementById('btnAutoBiper').addEventListener('click', async () => {
-  const res = await fetch('/api/turnos/proximo-biper');
-  const { biper_numero } = await res.json();
-  document.getElementById('inputBiper').value = biper_numero;
+async function asignarBiperAutomatico() {
+  try {
+    const res = await fetch('/api/turnos/proximo-biper');
+    if (!res.ok) return;
+    const { biper_numero } = await res.json();
+    document.getElementById('inputBiper').value = biper_numero;
+  } catch (_) { /* si falla, la recepcionista puede cargarlo a mano */ }
+}
+
+document.getElementById('btnAutoBiper').addEventListener('click', asignarBiperAutomatico);
+
+// Datos del registro pendiente de confirmar (beeper ya usado en otro juego)
+let _pendingRegistro = null;
+const modalConfBiperRegistro = () => bootstrap.Modal.getOrCreateInstance(document.getElementById('modalConfBiperRegistro'));
+
+document.getElementById('btnConfBiperRegistroSi').addEventListener('click', async () => {
+  modalConfBiperRegistro().hide();
+  const payload = _pendingRegistro;
+  _pendingRegistro = null;
+  if (payload) await enviarRegistro({ ...payload, confirmar_biper_otro_juego: true });
+});
+
+document.getElementById('btnConfBiperRegistroNo').addEventListener('click', () => {
+  modalConfBiperRegistro().hide();
+  _pendingRegistro = null;
+  const input = document.getElementById('inputBiper');
+  input.focus();
+  input.select();
 });
 
 // Botones +/- para miembros
@@ -442,15 +467,32 @@ document.getElementById('formRegistro').addEventListener('submit', async e => {
     mostrarToast(`Este juego requiere entre ${minM} y ${maxM} personas`, 'warning'); return;
   }
 
+  await enviarRegistro({ atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id, subcategoria_id });
+});
+
+async function enviarRegistro(payload) {
   const res  = await fetch('/api/turnos', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id, subcategoria_id })
+    body: JSON.stringify(payload)
   });
   const data = await res.json();
 
+  if (data.advertencia === 'biper_en_otro_juego_registro') {
+    _pendingRegistro = payload;
+    document.getElementById('confBiperRegistroTexto').innerHTML =
+      `El beeper <strong>${escapeHtml(data.biper_numero)}</strong> ya está asignado en:<br><br>
+       <div class="ms-2 mb-2">
+         <div><span class="text-muted">Juego:</span> <strong>${escapeHtml(data.juego_origen)}</strong></div>
+         <div><span class="text-muted">Familia / Grupo:</span> <strong>${escapeHtml(data.nombre_cliente || 'Sin nombre')}</strong></div>
+       </div>
+       ¿Es la misma familia?`;
+    modalConfBiperRegistro().show();
+    return;
+  }
+
   if (!res.ok) { mostrarToast(data.error || 'Error al registrar', 'danger'); return; }
 
-  mostrarToast(`✅ ${nombre_cliente} – Beeper ${data.biper_numero} registrado`, 'success');
+  mostrarToast(`✅ ${payload.nombre_cliente} – Beeper ${data.biper_numero} registrado`, 'success');
   document.getElementById('formRegistro').reset();
   document.getElementById('inputMiembros').value = '1';
   document.getElementById('duracionJuego').textContent = '';
@@ -458,7 +500,8 @@ document.getElementById('formRegistro').addEventListener('submit', async e => {
   document.getElementById('wrapSubcategoria').classList.add('d-none');
   document.getElementById('selectSubcategoria').innerHTML = '<option value="">Seleccionar subcategoría…</option>';
   await cargarCola();
-});
+  await asignarBiperAutomatico();
+}
 
 // ── Finalizar turno desde recepción ──────────────────────────────────────────
 let _pendingFinalizarId   = null;

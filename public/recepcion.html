@@ -270,6 +270,25 @@
   </div>
 </div>
 
+<!-- Modal advertencia: beeper en uso en otro juego al registrar -->
+<div class="modal fade" id="modalConfBiperRegistro" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4 text-center p-4">
+      <div class="fs-1 mb-2">⚠️</div>
+      <h6 class="fw-bold mb-2">Beeper ya asignado</h6>
+      <p class="text-muted small mb-3" id="confBiperRegistroTexto"></p>
+      <div class="d-flex gap-2">
+        <button class="btn btn-secondary flex-fill" id="btnConfBiperRegistroNo">
+          <i class="bi bi-x-circle me-1"></i>No, corregir
+        </button>
+        <button class="btn btn-warning flex-fill fw-bold" id="btnConfBiperRegistroSi">
+          <i class="bi bi-check-circle me-1"></i>Sí, misma familia
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal advertencia: capacidad excedida -->
 <div class="modal fade" id="modalConfCapacidad" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
   <div class="modal-dialog modal-dialog-centered">
