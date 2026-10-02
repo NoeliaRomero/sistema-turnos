@@ -314,6 +314,13 @@ function renderJuegoPane(j) {
     });
 
     html += j.cola.map(t => {
+      // Combinación en espera de este turno (solo si quedan 2+ grupos juntos).
+      // Se dibuja UNA sola tarjeta, en el lugar del primero; el resto no.
+      const combo = _comboDe(j, t);
+      if (combo && combo[0].id !== t.id) return '';
+      const grupo = combo || [t];
+      const ultimo = grupo[grupo.length - 1];
+
       const claseEspera = t.tiempo_espera_estimado === 0 ? 'espera-0'
         : t.tiempo_espera_estimado <= 30 ? 'espera-baja' : 'espera-alta';
 
@@ -323,37 +330,40 @@ function renderJuegoPane(j) {
       const subcatList    = colaBySubcat[subcatKey] || [];
       const posSubcat     = subcatList.findIndex(x => x.id === t.id) + 1;
       const esPrimeroSubcat = posSubcat === 1;
-      const esUltimoSubcat  = posSubcat === subcatList.length;
 
       // Posición real dentro de TODA la cola en espera del juego — de esto
       // dependen las flechas de subir/bajar, sin importar la subcategoría.
       const esPrimeroCola = t.posicion === 1;
-      const esUltimoCola  = t.posicion === j.cola.length;
+      const esUltimoCola  = ultimo.posicion === j.cola.length;
 
-      // Botón de acción: "Llamar" para primero sin nadie jugando, "Combinar" si hay alguien jugando de la misma subcategoría
+      // Botón de acción: "Llamar" para el primero (si está combinado, llama a
+      // toda la combinación); si hay alguien jugando de la misma subcategoría,
+      // cualquiera puede sumarse. "Combinar" une grupos en espera sin llamarlos.
       let btnLlamar = '';
       if (me?.permiso_llamar_turno) {
         const hayJugandoMismaSubcat = j.usa_subcategorias
           ? j.jugando.some(g => g.subcategoria_id === t.subcategoria_id)
           : j.jugando.length > 0;
 
-        if (hayJugandoMismaSubcat) {
-          // Hay alguien jugando de la misma subcategoría → "Combinar" activo para todos
-          btnLlamar = `<button class="btn btn-warning btn-sm fw-bold px-3"
-            onclick="llamarGrupo(${t.id},true,'${esc(j.nombre)}','${esc(t.nombre_cliente||'Sin nombre')}')">
-            <i class="bi bi-people-fill me-1"></i>Combinar
-          </button>`;
-        } else if (esPrimeroSubcat) {
-          // Nadie jugando aún → solo el primero de la subcategoría puede llamar
+        const puedeCombinar = subcatList.some(x =>
+          !grupo.some(c => c.id === x.id) && !_comboDe(j, x));
+        const btnCombinar = puedeCombinar
+          ? `<button class="btn btn-warning btn-sm fw-bold px-3"
+              onclick="abrirCombinar(${j.id},${t.id})">
+              <i class="bi bi-people-fill me-1"></i>Combinar
+            </button>`
+          : '';
+
+        if (esPrimeroSubcat || hayJugandoMismaSubcat) {
           btnLlamar = `<button class="btn btn-success btn-sm fw-bold px-3"
-            onclick="llamarGrupo(${t.id},false,'${esc(j.nombre)}','${esc(t.nombre_cliente||'Sin nombre')}')">
-            <i class="bi bi-megaphone me-1"></i>Llamar
-          </button>`;
+            onclick="llamarGrupo(${t.id},${hayJugandoMismaSubcat},'${esc(j.nombre)}','${esc(_nombreCombo(t, combo))}')">
+            <i class="bi bi-megaphone me-1"></i>Llamar${combo ? ' juntos' : ''}
+          </button>${btnCombinar}`;
         } else {
           btnLlamar = `<button class="btn btn-outline-secondary btn-sm px-3" disabled
             title="Primero debe llamarse al grupo #1 de su subcategoría">
             <i class="bi bi-lock me-1"></i>Espera turno
-          </button>`;
+          </button>${btnCombinar}`;
         }
       }
 
@@ -375,26 +385,39 @@ function renderJuegoPane(j) {
         ? `<span class="badge bg-success bg-opacity-75"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>`
         : '';
 
-      // Botones editar / eliminar (solo en espera — el backend también valida)
-      const btnEditar = `<button class="btn btn-outline-primary btn-sm px-2" title="Editar turno"
-        onclick="pedirEditarTurno(${t.id})">
-        <i class="bi bi-pencil"></i>
-      </button>`;
-      const btnEliminar = `<button class="btn btn-outline-danger btn-sm px-2" title="Eliminar turno"
-        onclick="pedirEliminarTurno(${t.id},'${esc(t.nombre_cliente||'Sin nombre')}','${esc(j.nombre)}',${t.cantidad_miembros})">
-        <i class="bi bi-trash"></i>
-      </button>`;
+      // Editar / eliminar son por grupo: en una combinación se reemplazan por
+      // "Separar" (después se puede editar o eliminar cada grupo suelto).
+      const btnsGrupo = combo
+        ? `<button class="btn btn-outline-secondary btn-sm px-2" title="Separar la combinación"
+            onclick="separarCombinacion(${t.id})">
+            <i class="bi bi-scissors"></i>
+          </button>`
+        : `<button class="btn btn-outline-primary btn-sm px-2" title="Editar turno"
+            onclick="pedirEditarTurno(${t.id})">
+            <i class="bi bi-pencil"></i>
+          </button><button class="btn btn-outline-danger btn-sm px-2" title="Eliminar turno"
+            onclick="pedirEliminarTurno(${t.id},'${esc(t.nombre_cliente||'Sin nombre')}','${esc(j.nombre)}',${t.cantidad_miembros})">
+            <i class="bi bi-trash"></i>
+          </button>`;
+
+      const personas = grupo.reduce((s, g) => s + (g.cantidad_miembros || 0), 0);
+      const beepersHtml = grupo.map(g => `<span class="biper-num">${escapeHtml(g.biper_numero)}</span>`).join('');
+      const nombres = grupo.map(g => escapeHtml(g.nombre_cliente || 'Sin nombre')).join(' + ');
+      const comboBadge = combo
+        ? `<span class="badge bg-warning text-dark"><i class="bi bi-link-45deg me-1"></i>Combinado</span>`
+        : '';
 
       return `
       <div class="turno-row d-flex align-items-center justify-content-between flex-wrap gap-2 ${esPrimeroSubcat ? '' : 'opacity-65'}">
         <div class="d-flex align-items-center gap-3">
           <div class="pos-num">${t.posicion}</div>
-          <span class="biper-num">${escapeHtml(t.biper_numero)}</span>
+          <div class="d-flex gap-1">${beepersHtml}</div>
           <div>
-            <div class="fw-bold">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>
+            <div class="fw-bold">${nombres}</div>
             <div class="d-flex gap-2 mt-1 flex-wrap">
-              <span class="miembros-badge"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
+              <span class="miembros-badge"><i class="bi bi-people me-1"></i>${personas} persona${personas !== 1 ? 's' : ''}</span>
               ${subcatEsperaHtml}
+              ${comboBadge}
             </div>
           </div>
         </div>
@@ -407,7 +430,7 @@ function renderJuegoPane(j) {
             <i class="bi bi-hourglass-split me-1"></i>
             ${t.tiempo_espera_estimado === 0 ? '¡Próximo!' : `~${formatMinutos(t.tiempo_espera_estimado)}`}
           </span>
-          ${btnEditar}${btnEliminar}
+          ${btnsGrupo}
           ${btnLlamar}
         </div>
       </div>`;
@@ -681,11 +704,165 @@ async function _ejecutarLlamar(id, force = false) {
     modalConfCapacidad().show();
     return;
   }
-  mostrarToast(`📣 Beeper ${data.biper_numero} – ${data.nombre_cliente || 'Grupo'} llamado a jugar`, 'success');
+  if (data.combinados?.length) {
+    const beepers = [data, ...data.combinados].map(t => t.biper_numero).join(', ');
+    mostrarToast(`📣 Combinación llamada a jugar – beepers ${beepers}`, 'success');
+  } else {
+    mostrarToast(`📣 Beeper ${data.biper_numero} – ${data.nombre_cliente || 'Grupo'} llamado a jugar`, 'success');
+  }
   await cargarCola();
   } finally {
     _llamarEnCurso = false;
   }
+}
+
+// ── Combinar grupos ───────────────────────────────────────────────────────────
+// Une grupos en espera del mismo juego y subcategoría SIN llamarlos: quedan
+// juntos en la cola y, cuando le toca al primero, se llaman todos a la vez.
+// El total de personas de la combinación no puede superar el máximo del juego.
+const modalCombinar = () => bootstrap.Modal.getOrCreateInstance(document.getElementById('modalCombinar'));
+let _combinar = null; // { juego, base, yaCombinados, candidatos, maximo, enOtroJuego, seleccion:Set }
+
+// Integrantes en espera de la combinación del turno (null si no está combinado
+// o si quedó solo).
+function _comboDe(juego, t) {
+  if (!t.combinacion_id) return null;
+  const miembros = juego.cola.filter(x => x.combinacion_id === t.combinacion_id);
+  return miembros.length >= 2 ? miembros : null;
+}
+
+function _nombreCombo(t, combo) {
+  return combo
+    ? combo.map(c => c.nombre_cliente || 'Sin nombre').join(' + ')
+    : (t.nombre_cliente || 'Sin nombre');
+}
+
+// Beepers llamados/jugando en un juego distinto al indicado → nombre de ese juego
+function _beepersEnOtroJuego(juegoId) {
+  const mapa = new Map();
+  colaData.filter(j => j.id !== juegoId).forEach(j =>
+    j.jugando.forEach(t => mapa.set(String(t.biper_numero), j.nombre)));
+  return mapa;
+}
+
+function abrirCombinar(juegoId, turnoId) {
+  const juego = colaData.find(j => j.id === juegoId);
+  const base  = juego?.cola.find(t => t.id === turnoId);
+  if (!juego || !base) return;
+
+  const mismaSubcat  = t => !juego.usa_subcategorias || t.subcategoria_id === base.subcategoria_id;
+  const comboBase    = _comboDe(juego, base) || [base];
+  const yaCombinados = comboBase.filter(t => t.id !== base.id);
+  const idsCombo     = new Set(comboBase.map(t => t.id));
+
+  _combinar = {
+    juego, base, yaCombinados,
+    maximo: juego.max_miembros || 20,
+    enOtroJuego: _beepersEnOtroJuego(juegoId),
+    candidatos: juego.cola.filter(t => !idsCombo.has(t.id) && mismaSubcat(t)),
+    seleccion: new Set(),
+  };
+
+  const subcatTxt = base.subcategoria_nombre ? ` (${escapeHtml(base.subcategoria_nombre)})` : '';
+  document.getElementById('combinarIntro').innerHTML =
+    `Elegí con qué grupos en espera combinar a <strong>${escapeHtml(base.nombre_cliente || 'Sin nombre')}</strong> en <strong>${escapeHtml(juego.nombre)}</strong>${subcatTxt}. Quedan juntos en la cola y se llaman todos a la vez cuando les toque.`;
+
+  _renderCombinar();
+  modalCombinar().show();
+}
+
+function _personasCombinar() {
+  const c = _combinar;
+  const grupo = [c.base, ...c.yaCombinados, ...c.candidatos.filter(t => c.seleccion.has(t.id))];
+  return grupo.reduce((s, t) => s + (t.cantidad_miembros || 0), 0);
+}
+
+function _filaCombinar(t, { marcado, disabled, fijo, motivo }) {
+  return `
+  <label class="d-flex align-items-center gap-3 border rounded-3 p-2 ${disabled && !fijo ? 'opacity-50' : ''}" style="cursor:${disabled ? 'default' : 'pointer'}">
+    <input type="checkbox" class="form-check-input m-0" ${marcado ? 'checked' : ''} ${disabled ? 'disabled' : ''}
+      onchange="_toggleCombinar(${t.id}, this.checked)">
+    <span class="biper-num">${escapeHtml(t.biper_numero)}</span>
+    <div class="flex-fill">
+      <div class="fw-bold">${escapeHtml(t.nombre_cliente || 'Sin nombre')}</div>
+      <div class="small text-muted">#${t.posicion} en cola · ${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</div>
+      ${motivo ? `<div class="small ${fijo ? 'text-warning-emphasis' : 'text-danger'}">${motivo}</div>` : ''}
+    </div>
+  </label>`;
+}
+
+function _renderCombinar() {
+  const c = _combinar;
+  const total  = _personasCombinar();
+  const libres = c.maximo - total;
+
+  document.getElementById('combinarContador').textContent = `${total} / ${c.maximo}`;
+  const barra = document.getElementById('combinarBarra');
+  barra.style.width = `${Math.min(100, (total / c.maximo) * 100)}%`;
+  barra.className = `progress-bar ${total > c.maximo ? 'bg-danger' : 'bg-warning'}`;
+
+  const filas = c.yaCombinados.map(t =>
+    _filaCombinar(t, { marcado: true, disabled: true, fijo: true, motivo: 'Ya combinado' }));
+
+  c.candidatos.forEach(t => {
+    const marcado = c.seleccion.has(t.id);
+    const otroJ   = c.enOtroJuego.get(String(t.biper_numero));
+    const enOtraCombi = !!_comboDe(c.juego, t);
+    const noEntra = !marcado && (t.cantidad_miembros || 0) > libres;
+    const motivo  = enOtraCombi ? 'Ya está combinado con otro grupo'
+                  : otroJ ? `Jugando en ${escapeHtml(otroJ)}`
+                  : noEntra ? 'Supera el máximo de personas' : '';
+    filas.push(_filaCombinar(t, { marcado, disabled: !marcado && !!motivo, motivo }));
+  });
+
+  document.getElementById('combinarLista').innerHTML = filas.length
+    ? filas.join('')
+    : `<p class="text-muted small text-center my-2">No hay otros grupos en espera de esta subcategoría.</p>`;
+
+  const aviso = document.getElementById('combinarAviso');
+  const msg = total > c.maximo ? `Se supera el máximo de ${c.maximo} personas del juego.` : '';
+  aviso.innerHTML = msg;
+  aviso.classList.toggle('d-none', !msg);
+
+  document.getElementById('btnCombinarConfirmar').disabled = !!msg || c.seleccion.size === 0;
+}
+
+function _toggleCombinar(id, marcado) {
+  if (marcado) _combinar.seleccion.add(id); else _combinar.seleccion.delete(id);
+  _renderCombinar();
+}
+
+document.getElementById('btnCombinarConfirmar').addEventListener('click', async (e) => {
+  const c = _combinar;
+  if (!c || !c.seleccion.size) return;
+  e.currentTarget.disabled = true;
+
+  const res  = await fetch('/api/turnos/combinar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ turno_id: c.base.id, con: [...c.seleccion] }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    mostrarToast(data.error || 'No se pudo combinar', 'danger');
+    e.currentTarget.disabled = false;
+    return;
+  }
+  modalCombinar().hide();
+  _combinar = null;
+  mostrarToast(`🔗 Grupos combinados (${data.personas} personas) — se llamarán juntos`, 'success');
+  await cargarCola();
+});
+
+async function separarCombinacion(id) {
+  const res = await fetch(`/api/turnos/${id}/descombinar`, { method: 'PUT' });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    mostrarToast(data.error || 'No se pudo separar', 'danger');
+    return;
+  }
+  mostrarToast('Combinación separada', 'warning');
+  await cargarCola();
 }
 
 // ── Reordenar cola ────────────────────────────────────────────────────────────

@@ -123,6 +123,8 @@ db.exec(`
   "ALTER TABLE turnos      ADD COLUMN creado_por              INTEGER REFERENCES usuarios(id)",
   "ALTER TABLE atracciones ADD COLUMN llamado_automatico              INTEGER DEFAULT 0",
   "ALTER TABLE atracciones ADD COLUMN tiempo_entre_llamados_segundos  INTEGER DEFAULT NULL",
+  // Grupos en espera combinados por recepción: se llaman todos juntos
+  "ALTER TABLE turnos      ADD COLUMN combinacion_id          INTEGER DEFAULT NULL",
 ].forEach(sql => { try { db.exec(sql); } catch (_) {} });
 
 // Inicializar orden_cola para turnos existentes sin valor

@@ -251,6 +251,37 @@
   </div>
 </div>
 
+<!-- Modal combinar: elegir grupos en espera para jugar juntos -->
+<div class="modal fade" id="modalCombinar" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content border-0 rounded-4 p-3">
+      <div class="modal-header border-0 pb-1">
+        <h6 class="modal-title fw-bold"><i class="bi bi-people-fill me-1"></i>Combinar grupos</h6>
+      </div>
+      <div class="modal-body pt-1">
+        <p class="text-muted small mb-2" id="combinarIntro"></p>
+        <div class="d-flex justify-content-between align-items-center small mb-1">
+          <span class="fw-semibold">Personas</span>
+          <span id="combinarContador" class="fw-bold"></span>
+        </div>
+        <div class="progress mb-3" style="height:8px">
+          <div class="progress-bar" id="combinarBarra" role="progressbar"></div>
+        </div>
+        <div id="combinarLista" class="d-flex flex-column gap-2"></div>
+        <div id="combinarAviso" class="alert alert-warning small py-2 mt-3 mb-0 d-none"></div>
+      </div>
+      <div class="modal-footer border-0 d-flex gap-2">
+        <button class="btn btn-secondary flex-fill" data-bs-dismiss="modal">
+          <i class="bi bi-x-circle me-1"></i>Cancelar
+        </button>
+        <button class="btn btn-warning flex-fill fw-bold" id="btnCombinarConfirmar">
+          <i class="bi bi-people-fill me-1"></i>Combinar
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal advertencia: biper en otro juego -->
 <div class="modal fade" id="modalConfViperOtroJuego" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
   <div class="modal-dialog modal-sm modal-dialog-centered">

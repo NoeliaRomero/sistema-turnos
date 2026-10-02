@@ -122,6 +122,26 @@ function _hermanosCombinados(turno) {
   ).all(...params);
 }
 
+// Turnos que acompañan a éste al finalizar/avanzar: los hermanos combinados
+// (si está activa la sincronización) y, siempre, los grupos que recepción
+// combinó con él (mismo combinacion_id) y siguen activos. `mismaEtapa`: al
+// avanzar de etapa solo acompañan los que están en la misma etapa; al cerrar
+// el turno se cierran todos.
+function _hermanosParaFinalizar(turno, { mismaEtapa = false } = {}) {
+  const mapa = new Map();
+  if (getSincronizar()) _hermanosCombinados(turno).forEach(h => mapa.set(h.id, h));
+  if (turno.combinacion_id) {
+    db.prepare(`
+      SELECT t.*, ea.orden AS etapa_actual_orden FROM turnos t
+      LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id
+      WHERE t.combinacion_id = ? AND t.atraccion_id = ? AND t.estado IN ('llamado','jugando') AND t.id != ?
+    `).all(turno.combinacion_id, turno.atraccion_id, turno.id)
+      .filter(h => !mismaEtapa || h.etapa_actual_id === turno.etapa_actual_id)
+      .forEach(h => mapa.set(h.id, h));
+  }
+  return [...mapa.values()];
+}
+
 // ── Cierre de turno (finalizado / no_llego / cancelado) ──────────────────────
 // Cierra TODAS las filas abiertas de turno_etapas_historial para el turno dado
 // y deja el turno en el estado final indicado. No decide por sí mismo si hay
@@ -502,7 +522,40 @@ module.exports = (io) => {
   // siguiente turno: misma lógica, mismas validaciones, sin duplicar nada.
   // Devuelve { status, body } en vez de escribir en `res`, para que ambos
   // disparadores puedan usarlo por igual.
-  function _ejecutarLlamado(turnoId, usuario, { force = false } = {}) {
+  // true si el beeper está llamado/jugando en un juego distinto al indicado.
+  function _biperEnOtroJuego(biperNumero, atraccionId) {
+    return !!db.prepare(`
+      SELECT 1 FROM turnos
+      WHERE biper_numero = ? AND atraccion_id != ? AND estado IN ('llamado','jugando')
+      LIMIT 1
+    `).get(biperNumero, atraccionId);
+  }
+
+  // Los otros turnos en espera combinados con éste (vacío si no está combinado).
+  function _companerosEnEspera(turno) {
+    if (!turno.combinacion_id) return [];
+    return db.prepare(`
+      SELECT * FROM turnos
+      WHERE combinacion_id = ? AND atraccion_id = ? AND estado = 'esperando' AND id != ?
+      ORDER BY orden_cola ASC, id ASC
+    `).all(turno.combinacion_id, turno.atraccion_id, turno.id);
+  }
+
+  // Una combinación se llama entera: está "ocupada" si cualquiera de sus
+  // beepers está en otro juego.
+  function _turnoOcupadoEnOtroJuego(turno) {
+    return [turno, ..._companerosEnEspera(turno)]
+      .some(t => _biperEnOtroJuego(t.biper_numero, turno.atraccion_id));
+  }
+
+  // `saltarOcupados` (solo llamado automático): para el chequeo de orden de
+  // cola, no cuentan los grupos en espera cuyo beeper está en otro juego, así
+  // se puede llamar al siguiente disponible sin esperar a que vuelvan.
+  // `combinar` (uso interno): al llamar a una combinación, sus integrantes
+  // entran a la misma etapa que el primero aunque ya esté ocupada por él.
+  // `esCompanero` (uso interno): el turno se llama como parte de la combinación
+  // de otro, que ya hizo las validaciones por todo el grupo.
+  function _ejecutarLlamado(turnoId, usuario, { force = false, saltarOcupados = false, combinar = false, esCompanero = false } = {}) {
     const id = Number(turnoId);
 
     const turnoActual = db.prepare(
@@ -524,6 +577,10 @@ module.exports = (io) => {
     const esReLlamado = turnoActual.estado === 'llamado';
     let atraccionInfo;
 
+    // Grupos combinados en espera con éste: se validan y llaman todos juntos.
+    const companeros   = (esReLlamado || esCompanero) ? [] : _companerosEnEspera(turnoActual);
+    const companerosId = new Set(companeros.map(c => c.id));
+
     if (!esReLlamado) {
       // Detectar modo "combinar": ya hay grupos del mismo juego+subcategoría en llamado/jugando
       const modoCombinable = (() => {
@@ -541,22 +598,26 @@ module.exports = (io) => {
 
       // Verificar que sea el primero en la cola solo cuando no hay nadie activo aún
       if (!modoCombinable) {
-        let primero;
+        let enCola;
         if (turnoActual.subcategoria_id) {
-          primero = db.prepare(`
-            SELECT id FROM turnos
+          enCola = db.prepare(`
+            SELECT * FROM turnos
             WHERE atraccion_id = ? AND subcategoria_id = ? AND estado = 'esperando'
-            ORDER BY orden_cola ASC, id ASC LIMIT 1
-          `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id);
+            ORDER BY orden_cola ASC, id ASC
+          `).all(turnoActual.atraccion_id, turnoActual.subcategoria_id);
         } else {
-          primero = db.prepare(`
-            SELECT id FROM turnos
+          enCola = db.prepare(`
+            SELECT * FROM turnos
             WHERE atraccion_id = ? AND subcategoria_id IS NULL AND estado = 'esperando'
-            ORDER BY orden_cola ASC, id ASC LIMIT 1
-          `).get(turnoActual.atraccion_id);
+            ORDER BY orden_cola ASC, id ASC
+          `).all(turnoActual.atraccion_id);
         }
+        const primero = saltarOcupados
+          ? enCola.find(t => !_turnoOcupadoEnOtroJuego(t))
+          : enCola[0];
 
-        if (primero && primero.id !== turnoActual.id) {
+        // Si el primero es de la misma combinación, el grupo entero es el primero.
+        if (primero && primero.id !== turnoActual.id && !companerosId.has(primero.id)) {
           console.log(`[LLAMAR] RECHAZADO: no es primero en cola (primero=${primero.id})`);
           return { status: 400, body: {
             error: 'Debe llamarse primero al grupo que llegó antes en la cola'
@@ -566,7 +627,7 @@ module.exports = (io) => {
 
       // Validación de biper en otro juego (omitible con force=true)
       if (!force) {
-        const conflictoViper = db.prepare(`
+        const buscarConflicto = biper => db.prepare(`
           SELECT t.id, t.nombre_cliente, t.biper_numero, t.called_at,
                  a.nombre AS atraccion_nombre, a.duracion_minutos
           FROM turnos t
@@ -574,7 +635,13 @@ module.exports = (io) => {
           WHERE t.biper_numero = ?
             AND t.atraccion_id != ?
             AND t.estado IN ('llamado','jugando')
-        `).get(turnoActual.biper_numero, turnoActual.atraccion_id);
+        `).get(biper, turnoActual.atraccion_id);
+        // Se revisa cada beeper de la combinación, no solo el del primero
+        let conflictoViper = null;
+        for (const t of [turnoActual, ...companeros]) {
+          conflictoViper = buscarConflicto(t.biper_numero);
+          if (conflictoViper) break;
+        }
 
         if (conflictoViper) {
           const elapsed   = conflictoViper.called_at
@@ -582,7 +649,7 @@ module.exports = (io) => {
           const restante  = Math.max(0, conflictoViper.duracion_minutos - elapsed);
           return { status: 200, body: {
             advertencia:    'biper_en_otro_juego',
-            biper_numero:   turnoActual.biper_numero,
+            biper_numero:   conflictoViper.biper_numero,
             juego_origen:   conflictoViper.atraccion_nombre,
             nombre_cliente: conflictoViper.nombre_cliente,
             tiempo_restante: restante,
@@ -641,8 +708,11 @@ module.exports = (io) => {
             `).get(turnoActual.atraccion_id, etapaDeEntrada).c;
           }
         }
-        console.log(`[LLAMAR] etapaDeEntrada=${etapaDeEntrada ?? 'ninguna'} etapaOcupada=${etapaOcupada} → ${etapaOcupada > 0 ? 'RECHAZADO: etapa ocupada' : 'OK'}`);
-        if (etapaOcupada > 0) {
+        // Integrante de una combinación: entra a la etapa junto al primero del
+        // grupo, que la acaba de ocupar. La subcategoría ya se validó arriba.
+        const permiteCombinar = combinar && etapaOcupada > 0;
+        console.log(`[LLAMAR] etapaDeEntrada=${etapaDeEntrada ?? 'ninguna'} etapaOcupada=${etapaOcupada} combinar=${combinar} → ${etapaOcupada > 0 && !permiteCombinar ? 'RECHAZADO: etapa ocupada' : 'OK'}`);
+        if (etapaOcupada > 0 && !permiteCombinar) {
           return { status: 400, body: {
             error: 'No se puede llamar: ya hay un grupo en esa etapa'
           } };
@@ -668,7 +738,8 @@ module.exports = (io) => {
             FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando')
           `).get(turnoActual.atraccion_id));
         }
-        const personasGrupo   = turnoActual.cantidad_miembros || 1;
+        const personasGrupo   = [turnoActual, ...companeros]
+          .reduce((s, t) => s + (t.cantidad_miembros || 1), 0);
         const totalPersonas   = personasJugando + personasGrupo;
         const maximoPermitido = atraccionInfo?.max_miembros || 20;
 
@@ -705,6 +776,8 @@ module.exports = (io) => {
       }
     }
 
+    // combinacion_id se conserva al llamar: los combinados juegan juntos y se
+    // finalizan juntos (ver _hermanosParaFinalizar).
     db.prepare(`
       UPDATE turnos
       SET estado='llamado', called_at=datetime('now','localtime'), llamado_por=?
@@ -743,11 +816,21 @@ module.exports = (io) => {
     // Iniciar timer de transición llamado → jugando
     _iniciarTimerJugando(turno.id);
 
+    // Llamar al resto de la combinación. Cola, beepers y capacidad ya se
+    // validaron para todo el grupo arriba (force); `combinar` los deja entrar
+    // a la misma etapa que el primero.
+    const llamadosJuntos = [];
+    for (const c of companeros) {
+      const r = _ejecutarLlamado(c.id, usuario, { force: true, combinar: true, esCompanero: true });
+      if (r.status === 200 && !r.body?.advertencia) llamadosJuntos.push(r.body);
+      else console.log(`[LLAMAR] combinación: turno=${c.id} no llamado: ${r.body?.error || r.body?.advertencia}`);
+    }
+
     // Si el juego tiene llamado automático habilitado, programar el intento
     // del siguiente turno (misma lógica de validación, reutilizada).
     _programarLlamadoAutomatico(turno.atraccion_id);
 
-    return { status: 200, body: turno };
+    return { status: 200, body: llamadosJuntos.length ? { ...turno, combinados: llamadosJuntos } : turno };
   }
 
   // Intenta llamar automáticamente al siguiente turno en espera de una
@@ -767,17 +850,32 @@ module.exports = (io) => {
     const handle = setTimeout(() => {
       timerAutoLlamado.delete(atraccionId);
 
-      const siguiente = db.prepare(`
-        SELECT id FROM turnos WHERE atraccion_id = ? AND estado = 'esperando'
-        ORDER BY orden_cola ASC, id ASC LIMIT 1
-      `).get(atraccionId);
-      if (!siguiente) return;
+      const enEspera = db.prepare(`
+        SELECT * FROM turnos WHERE atraccion_id = ? AND estado = 'esperando'
+        ORDER BY orden_cola ASC, id ASC
+      `).all(atraccionId);
+      if (!enEspera.length) return;
+
+      // Se saltean los grupos cuyo beeper está en otro juego (en una
+      // combinación, si cualquiera de sus beepers lo está): se llama al
+      // primero que esté libre. Si todos están ocupados, se reintenta pasado
+      // el mismo tiempo, hasta que alguno vuelva o la cola quede vacía.
+      const siguiente = enEspera.find(t => !_turnoOcupadoEnOtroJuego(t));
+      if (!siguiente) {
+        console.log(`[AUTO-LLAMAR] atraccion=${atraccionId} → todos los grupos en espera están en otro juego, se reintenta`);
+        _programarLlamadoAutomatico(atraccionId);
+        return;
+      }
+      if (siguiente !== enEspera[0]) {
+        const salteados = enEspera.slice(0, enEspera.indexOf(siguiente)).map(t => t.id).join(',');
+        console.log(`[AUTO-LLAMAR] atraccion=${atraccionId} salteados por estar en otro juego: ${salteados}`);
+      }
 
       // No hay una sesión humana detrás de un llamado automático: no aplica
       // el chequeo de atracción asignada del operador y no se registra
       // llamado_por (queda null, igual que cualquier columna sin asignar).
       const usuarioSistema = { id: null, rol: 'sistema', atraccion_id: null };
-      const resultado = _ejecutarLlamado(siguiente.id, usuarioSistema, {});
+      const resultado = _ejecutarLlamado(siguiente.id, usuarioSistema, { saltarOcupados: true });
       const exito = resultado.status === 200 && !resultado.body?.advertencia;
       console.log(`[AUTO-LLAMAR] atraccion=${atraccionId} turno=${siguiente.id} → ${exito ? 'llamado' : 'no llamado: ' + (resultado.body?.advertencia || resultado.body?.error || 'rechazado')}`);
     }, atraccion.tiempo_entre_llamados_segundos * 1000);
@@ -813,6 +911,44 @@ module.exports = (io) => {
       return res.status(403).json({ error: 'Solo podés finalizar turnos de tu juego asignado' });
     }
 
+    // Solo puede haber un turno por etapa: no se avanza si la etapa siguiente
+    // está ocupada, salvo que el ocupante sea parte de la misma combinación.
+    // Como una etapa nunca tiene dos turnos salvo combinados, un ocupante que
+    // compartió con este turno la etapa actual es su compañero de combinación
+    // (avanzó primero): si este turno entró a la etapa actual estrictamente
+    // ANTES de que el ocupante entrara a la siguiente, estuvieron juntos en la
+    // etapa actual. Un empate en el mismo segundo se trata como no combinado
+    // (lado seguro: se bloquea).
+    if (turnoActual.etapa_actual_id) {
+      const sigEtapa = etapaSiguiente(turnoActual.atraccion_id, turnoActual.etapa_actual_orden);
+      if (sigEtapa) {
+        const miInicio = db.prepare(`
+          SELECT iniciada_at FROM turno_etapas_historial
+          WHERE turno_id = ? AND etapa_id = ? AND finalizada_at IS NULL
+          ORDER BY id DESC LIMIT 1
+        `).get(Number(id), turnoActual.etapa_actual_id)?.iniciada_at;
+
+        const ocupantes = db.prepare(`
+          SELECT id FROM turnos
+          WHERE atraccion_id = ? AND estado IN ('llamado','jugando')
+            AND etapa_actual_id = ? AND id != ?
+        `).all(turnoActual.atraccion_id, sigEtapa.id, Number(id));
+
+        const esCompanero = (ocupanteId) => !!miInicio && !!db.prepare(`
+          SELECT 1 FROM turno_etapas_historial
+          WHERE turno_id = ? AND etapa_id = ? AND finalizada_at IS NULL AND iniciada_at > ?
+          LIMIT 1
+        `).get(ocupanteId, sigEtapa.id, miInicio);
+
+        if (ocupantes.some(o => !esCompanero(o.id))) {
+          console.log(`[FINALIZAR] turno=${id} RECHAZADO: etapa "${sigEtapa.nombre}" ocupada por turno(s) ${ocupantes.map(o => o.id).join(',')}`);
+          return res.status(400).json({
+            error: `No se puede pasar a "${sigEtapa.nombre}": ya hay un grupo en esa etapa`
+          });
+        }
+      }
+    }
+
     // Cancelar el timer de llamado→jugando al finalizar
     if (timerLlamado.has(Number(id))) {
       clearTimeout(timerLlamado.get(Number(id)));
@@ -834,14 +970,17 @@ module.exports = (io) => {
       io.emit('turno:finalizado', turno);
       _notificarRecepcion(io, usuario, turno);
 
-      if (getSincronizar()) {
-        _hermanosCombinados(turnoActual).forEach(h => {
+      {
+        _hermanosParaFinalizar(turnoActual).forEach(h => {
           if (timerLlamado.has(h.id)) { clearTimeout(timerLlamado.get(h.id)); timerLlamado.delete(h.id); }
           const tH = _cerrarTurno(h.id, 'finalizado', usuario.id);
           io.emit('turno:finalizado', tH);
           _notificarRecepcion(io, usuario, tH);
         });
       }
+
+      // El juego quedó libre: llamar al siguiente pasado el tiempo configurado.
+      _programarLlamadoAutomatico(turnoActual.atraccion_id);
 
       return res.json(turno);
     }
@@ -865,8 +1004,8 @@ module.exports = (io) => {
       const turno = conEtapaSig(db.prepare(SELECT_TURNO).get(Number(id)));
       io.emit('turno:etapa_avanzada', turno);
 
-      if (getSincronizar()) {
-        _hermanosCombinados(turnoActual).forEach(h => {
+      {
+        _hermanosParaFinalizar(turnoActual, { mismaEtapa: true }).forEach(h => {
           if (h.etapa_actual_id) {
             db.prepare("UPDATE turno_etapas_historial SET finalizada_at=datetime('now','localtime'), finalizada_por=? WHERE turno_id=? AND etapa_id=? AND finalizada_at IS NULL").run(usuario.id, h.id, h.etapa_actual_id);
           }
@@ -885,6 +1024,9 @@ module.exports = (io) => {
         });
       }
 
+      // Avanzar libera la etapa anterior: el siguiente en espera puede entrar.
+      _programarLlamadoAutomatico(turnoActual.atraccion_id);
+
       return res.json(turno);
     }
 
@@ -892,14 +1034,16 @@ module.exports = (io) => {
     io.emit('turno:finalizado', turno);
     _notificarRecepcion(io, usuario, turno);
 
-    if (getSincronizar()) {
-      _hermanosCombinados(turnoActual).forEach(h => {
+    {
+      _hermanosParaFinalizar(turnoActual).forEach(h => {
         if (timerLlamado.has(h.id)) { clearTimeout(timerLlamado.get(h.id)); timerLlamado.delete(h.id); }
         const tH = _cerrarTurno(h.id, 'finalizado', usuario.id);
         io.emit('turno:finalizado', tH);
         _notificarRecepcion(io, usuario, tH);
       });
     }
+
+    _programarLlamadoAutomatico(turnoActual.atraccion_id);
 
     res.json(turno);
   });
@@ -1081,6 +1225,89 @@ module.exports = (io) => {
   });
 
   // ── Mover turno en la cola (subir / bajar) ────────────────────────────────────
+  // ── Combinar grupos en espera ───────────────────────────────────────────────
+  // Une al turno `turno_id` con los turnos `con` (todos en espera del mismo
+  // juego y subcategoría) sin llamarlos: quedan juntos en la cola y se llaman
+  // todos a la vez cuando le toque al primero. El total de personas no puede
+  // superar el máximo del juego.
+  router.post('/combinar', requireAuth('admin', 'recepcion'), requirePermission('permiso_llamar_turno'), (req, res) => {
+    const baseId = Number(req.body?.turno_id);
+    const conIds = Array.isArray(req.body?.con) ? [...new Set(req.body.con.map(Number))] : [];
+    if (!Number.isInteger(baseId) || !conIds.length || conIds.some(i => !Number.isInteger(i) || i === baseId)) {
+      return res.status(400).json({ error: 'Elegí al menos un grupo para combinar' });
+    }
+
+    const base = db.prepare("SELECT * FROM turnos WHERE id = ? AND estado = 'esperando'").get(baseId);
+    if (!base) return res.status(400).json({ error: 'El turno ya no está en espera' });
+    const juego = db.prepare('SELECT max_miembros, usa_subcategorias FROM atracciones WHERE id = ?').get(base.atraccion_id);
+
+    const nuevos = conIds.map(i => db.prepare("SELECT * FROM turnos WHERE id = ? AND estado = 'esperando'").get(i));
+    if (nuevos.some(t => !t || t.atraccion_id !== base.atraccion_id)) {
+      return res.status(400).json({ error: 'Todos los grupos tienen que estar en espera en el mismo juego' });
+    }
+    if (juego?.usa_subcategorias && nuevos.some(t => t.subcategoria_id !== base.subcategoria_id)) {
+      return res.status(400).json({ error: 'Solo se pueden combinar grupos de la misma subcategoría' });
+    }
+    if (nuevos.some(t => t.combinacion_id && t.combinacion_id !== base.combinacion_id && _companerosEnEspera(t).length)) {
+      return res.status(400).json({ error: 'Uno de los grupos ya está combinado con otro' });
+    }
+
+    const miembros = [base, ..._companerosEnEspera(base), ...nuevos.filter(t => !t.combinacion_id || t.combinacion_id !== base.combinacion_id)];
+    const unicos   = [...new Map(miembros.map(t => [t.id, t])).values()];
+    const personas = unicos.reduce((s, t) => s + (t.cantidad_miembros || 1), 0);
+    const maximo   = juego?.max_miembros || 20;
+    if (personas > maximo) {
+      return res.status(400).json({ error: `Combinados serían ${personas} personas y el juego admite ${maximo}` });
+    }
+
+    // Los combinados quedan seguidos en la cola, en el lugar del que estaba
+    // más adelante (se conserva el conjunto de valores de orden_cola).
+    // Si el turno base ya tiene una combinación en espera se suma a ella; si no,
+    // se usa un id nuevo (no el del turno: combinaciones viejas siguen activas
+    // en juego con su id, y no deben mezclarse con la nueva).
+    const combinacionId = _companerosEnEspera(base).length
+      ? base.combinacion_id
+      : db.prepare('SELECT COALESCE(MAX(combinacion_id), 0) + 1 AS n FROM turnos').get().n;
+    const idsGrupo = new Set(unicos.map(t => t.id));
+    const lista = db.prepare(`
+      SELECT id, orden_cola FROM turnos WHERE atraccion_id = ? AND estado = 'esperando'
+      ORDER BY orden_cola ASC, id ASC
+    `).all(base.atraccion_id);
+    const ordenValores = lista.map(t => t.orden_cola);
+    const primerIdx = lista.findIndex(t => idsGrupo.has(t.id));
+    const grupo  = lista.filter(t => idsGrupo.has(t.id));
+    const resto  = lista.filter(t => !idsGrupo.has(t.id));
+    resto.splice(primerIdx, 0, ...grupo);
+
+    db.exec('BEGIN');
+    try {
+      const setCombi = db.prepare('UPDATE turnos SET combinacion_id = ? WHERE id = ?');
+      unicos.forEach(t => setCombi.run(combinacionId, t.id));
+      const setOrden = db.prepare('UPDATE turnos SET orden_cola = ? WHERE id = ?');
+      resto.forEach((t, i) => setOrden.run(ordenValores[i], t.id));
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      return res.status(500).json({ error: 'No se pudo combinar' });
+    }
+
+    console.log(`[COMBINAR] combinacion=${combinacionId} turnos=${[...idsGrupo].join(',')} personas=${personas}/${maximo}`);
+    io.emit('turno:reordenado', { atraccion_id: base.atraccion_id });
+    res.json({ ok: true, combinacion_id: combinacionId, personas });
+  });
+
+  // ── Separar una combinación (vuelven a ser grupos sueltos) ──────────────────
+  router.put('/:id/descombinar', requireAuth('admin', 'recepcion'), requirePermission('permiso_llamar_turno'), (req, res) => {
+    const turno = db.prepare("SELECT * FROM turnos WHERE id = ? AND estado = 'esperando'").get(Number(req.params.id));
+    if (!turno?.combinacion_id) return res.status(400).json({ error: 'El grupo no está combinado' });
+
+    db.prepare("UPDATE turnos SET combinacion_id = NULL WHERE combinacion_id = ? AND atraccion_id = ? AND estado = 'esperando'")
+      .run(turno.combinacion_id, turno.atraccion_id);
+
+    io.emit('turno:reordenado', { atraccion_id: turno.atraccion_id });
+    res.json({ ok: true });
+  });
+
   router.put('/:id/mover', requireAuth('admin', 'recepcion'), (req, res) => {
     const { id } = req.params;
     const { direccion } = req.body;
@@ -1093,7 +1320,7 @@ module.exports = (io) => {
     if (!Number.isFinite(pasos) || pasos < 1) pasos = 1;
 
     const turnoA = db.prepare(
-      "SELECT id, atraccion_id, orden_cola, subcategoria_id FROM turnos WHERE id = ? AND estado = 'esperando'"
+      "SELECT * FROM turnos WHERE id = ? AND estado = 'esperando'"
     ).get(Number(id));
 
     if (!turnoA) {
@@ -1108,23 +1335,28 @@ module.exports = (io) => {
       ORDER BY orden_cola ASC, id ASC
     `).all(turnoA.atraccion_id);
 
-    const idx = lista.findIndex(t => t.id === turnoA.id);
+    // Una combinación se mueve entera, como un solo bloque.
+    const idsBloque = new Set([turnoA.id, ..._companerosEnEspera(turnoA).map(c => c.id)]);
+    const idx = lista.findIndex(t => idsBloque.has(t.id));
     if (idx === -1) {
       return res.status(400).json({ error: 'No se pudo ubicar el turno en la cola' });
-    }
-
-    let nuevoIdx = direccion === 'subir' ? idx - pasos : idx + pasos;
-    nuevoIdx = Math.max(0, Math.min(lista.length - 1, nuevoIdx));
-
-    if (nuevoIdx === idx) {
-      return res.status(400).json({ error: 'No se puede mover en esa dirección' });
     }
 
     // Se conserva el conjunto de valores de orden_cola; solo se reordena
     // qué turno ocupa cada posición dentro de ese conjunto.
     const ordenValores = lista.map(t => t.orden_cola);
-    const [item] = lista.splice(idx, 1);
-    lista.splice(nuevoIdx, 0, item);
+    const bloque = lista.filter(t => idsBloque.has(t.id));
+    const resto  = lista.filter(t => !idsBloque.has(t.id));
+
+    let nuevoIdx = direccion === 'subir' ? idx - pasos : idx + pasos;
+    nuevoIdx = Math.max(0, Math.min(resto.length, nuevoIdx));
+
+    if (nuevoIdx === idx) {
+      return res.status(400).json({ error: 'No se puede mover en esa dirección' });
+    }
+
+    resto.splice(nuevoIdx, 0, ...bloque);
+    lista.splice(0, lista.length, ...resto);
 
     const update = db.prepare('UPDATE turnos SET orden_cola = ? WHERE id = ?');
     db.exec('BEGIN');
@@ -1196,7 +1428,8 @@ module.exports = (io) => {
     db.prepare(`
       UPDATE turnos
       SET estado = 'esperando', called_at = NULL, jugando_desde = NULL,
-          llamado_por = NULL, etapa_actual_id = ?, orden_cola = ?
+          llamado_por = NULL, etapa_actual_id = ?, orden_cola = ?,
+          combinacion_id = NULL
       WHERE id = ?
     `).run(primeraEtapa?.id ?? null, maxOrden + 1, Number(id));
 
