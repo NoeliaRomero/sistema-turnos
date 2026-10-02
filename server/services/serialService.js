@@ -6,8 +6,6 @@
 
 const db = require('../../db/database');
 
-const TIMEOUT_MS = 10000;
-const PREFIJO_RAW = 'RAW_CAPTURADO_POR_CABLE:';
 
 let SerialPort, ReadlineParser;
 try {
@@ -22,18 +20,22 @@ try {
 let port         = null;
 let parser       = null;
 let ioRef        = null;
-let pendiente    = null; // { viperId, timer }
-let aprendizaje  = null; // { timer, resolve, reject }
+let conectando   = null; // Promise - apertura del puerto en curso (evita aperturas simultáneas)
 let conectadoEn  = null; // Date - cuándo se abrió la conexión actual
-let firmwareVer  = null; // versión informada por el Arduino (FIRMWARE:x.y.z)
 let ultimaConexion = null; // Date - última vez que se estableció conexión
 let ultimaPruebaResultado = null;    // 'Exitosa' | 'Fallida' | null
-let ultimaComunicacionExitosa = null; // Date - último PONG/RAW recibido realmente del dispositivo
+let ultimaComunicacionExitosa = null; // Date - última apertura/escritura exitosa del puerto
+let ultimoErrorConexion = null;       // string - motivo de la última falla al abrir el puerto
 
-const PING_STATUS_TIMEOUT_MS = 3000; // timeout corto, sólo para el chequeo de estado (no bloquea la UI)
-const PREFIJO_FIRMWARE = 'FIRMWARE:';
-const PREFIJO_CONFIG   = 'CONFIG:';
-const TIMEOUT_APRENDIZAJE_MS = 15000;
+// El estado del Arduino se determina por la presencia del puerto y por poder
+// abrirlo (no responde a PING). Al transmitir un código sí informa el
+// resultado: "[TX] Transmitiendo..." y luego "[TX] Finalizado.", que se usa
+// como confirmación real del envío de una señal de prueba.
+const TX_FINALIZADO = /^\[TX\]\s*Finalizado/i;
+const TX_ERROR      = /^\[TX\].*(error|fall)/i;
+const TIMEOUT_CONFIRMACION_TX_MS = 5000;
+
+let confirmacionTx = null; // { resolve, reject, timer } - envío de prueba esperando "[TX] Finalizado."
 
 function log(mensaje) {
   console.log(`[SERIAL] ${mensaje}`);
@@ -111,7 +113,23 @@ function conectar(io) {
 
 async function asegurarConexion(io) {
   if (estaConectado()) { ioRef = io || ioRef; return; }
-  await conectar(io);
+  // Si ya hay una apertura en curso (ej. el chequeo periódico de estado),
+  // se reutiliza en lugar de abrir el mismo puerto dos veces.
+  if (!conectando) {
+    conectando = (async () => conectar(io))().finally(() => { conectando = null; });
+  }
+  await conectando;
+}
+
+// Escribe en el puerto y espera a que los datos se vacíen al dispositivo.
+function escribir(datos) {
+  return new Promise((resolve, reject) => {
+    if (!estaConectado()) return reject(new Error('El puerto serial no está abierto.'));
+    port.write(datos, err => {
+      if (err) return reject(err);
+      port.drain(errDrain => (errDrain ? reject(errDrain) : resolve()));
+    });
+  });
 }
 
 function manejarLinea(lineaCruda) {
@@ -123,32 +141,15 @@ function manejarLinea(lineaCruda) {
     return;
   }
 
-  if (linea.startsWith(PREFIJO_RAW)) {
-    log('RAW recibido');
-    const raw = linea.slice(PREFIJO_RAW.length).trim();
-    if (aprendizaje) {
-      resolverAprendizaje(raw);
-    } else {
-      resolverPendiente(raw);
-    }
+  if (confirmacionTx && TX_FINALIZADO.test(linea)) {
+    log(`Recibido: ${linea}`);
+    confirmacionTx.resolve();
     return;
   }
 
-  if (linea === 'PONG') {
-    log('PONG recibido');
-    if (pendientePing) { pendientePing.resolve(); pendientePing = null; }
-    return;
-  }
-
-  if (linea.startsWith(PREFIJO_FIRMWARE)) {
-    firmwareVer = linea.slice(PREFIJO_FIRMWARE.length).trim();
-    log(`Firmware informado: ${firmwareVer}`);
-    return;
-  }
-
-  if (linea.startsWith(PREFIJO_CONFIG)) {
-    log(`Configuración del dispositivo: ${linea.slice(PREFIJO_CONFIG.length).trim()}`);
-    if (pendienteConfig) { pendienteConfig.resolve(linea.slice(PREFIJO_CONFIG.length).trim()); pendienteConfig = null; }
+  if (confirmacionTx && TX_ERROR.test(linea)) {
+    log(`Recibido: ${linea}`);
+    confirmacionTx.reject(new Error(`El Arduino informó un error al transmitir: ${linea}`));
     return;
   }
 
@@ -156,90 +157,79 @@ function manejarLinea(lineaCruda) {
   log(`Recibido: ${linea}`);
 }
 
-let pendientePing  = null; // { resolve }
-let pendienteConfig = null; // { resolve }
-
-function resolverAprendizaje(raw) {
-  if (!aprendizaje) return;
-  const { timer, resolve } = aprendizaje;
-  clearTimeout(timer);
-  aprendizaje = null;
-  log('Código RF aprendido');
-  resolve(raw);
-}
-
-function resolverPendiente(raw) {
-  if (!pendiente) return;
-  const { viperId, timer } = pendiente;
-  clearTimeout(timer);
-  pendiente = null;
-
-  const ahora = new Date().toISOString();
-  db.prepare(`
-    UPDATE vipers
-    SET estado = 'ACTIVO', codigo_raw = ?, fecha_validacion = ?, ultimo_error = NULL, ultima_activacion = ?
-    WHERE id = ?
-  `).run(raw, ahora, ahora, viperId);
-
-  log('Beeper validado');
-  log('Código guardado');
-  registrarEvento({ viperId, accion: 'VALIDAR_VIPER', resultado: 'OK', ackEstado: 'ENTREGADO' });
-  emitirActualizacion(viperId);
-}
-
 function emitirActualizacion(viperId) {
   if (!ioRef) return;
-  const viper = db.prepare('SELECT id, codigo_viper, estado, baudrate, fecha_validacion, ultimo_test, ultimo_error FROM vipers WHERE id = ?').get(viperId);
+  const viper = db.prepare('SELECT id, codigo_viper, apodo, estado, baudrate, fecha_validacion, ultimo_test, ultimo_error FROM vipers WHERE id = ?').get(viperId);
   ioRef.emit('viper:actualizado', viper);
 }
 
-// Envía un mensaje de prueba al Arduino y espera la captura RAW del VIPER indicado.
+// Espera la línea "[TX] Finalizado." del Arduino tras escribir un código.
+function esperarConfirmacionTx() {
+  return new Promise((resolve, reject) => {
+    const terminar = fn => arg => {
+      clearTimeout(confirmacionTx?.timer);
+      confirmacionTx = null;
+      fn(arg);
+    };
+    confirmacionTx = {
+      resolve: terminar(resolve),
+      reject:  terminar(reject),
+      timer:   setTimeout(() => {
+        confirmacionTx = null;
+        reject(new Error('El Arduino no confirmó la transmisión ("[TX] Finalizado.") dentro del tiempo de espera.'));
+      }, TIMEOUT_CONFIRMACION_TX_MS),
+    };
+  });
+}
+
+// Envía el código del beeper al Arduino y espera su confirmación
+// "[TX] Finalizado.". Sólo con esa confirmación el beeper queda ACTIVO; si
+// falla la apertura, la escritura o no llega la confirmación, queda en ERROR
+// con el motivo real. El registro en el historial lo hace la ruta HTTP.
 async function enviarSenal(viperId, mensaje, io) {
   ioRef = io || ioRef;
 
   const viper = db.prepare('SELECT * FROM vipers WHERE id = ?').get(viperId);
   if (!viper) throw new Error('Beeper no encontrado');
+  if (confirmacionTx) throw new Error('Ya hay un envío en curso. Esperá a que el Arduino termine de transmitir.');
 
-  if (pendiente) {
-    throw new Error('Ya hay una validación en curso. Esperá a que finalice antes de iniciar otra.');
-  }
-
-  const ahora = new Date().toISOString();
+  const inicio = new Date().toISOString();
   db.prepare("UPDATE vipers SET estado = 'VALIDANDO', ultimo_test = ?, ultimo_error = NULL WHERE id = ?")
-    .run(ahora, viperId);
+    .run(inicio, viperId);
   emitirActualizacion(viperId);
 
   try {
     await asegurarConexion(io);
+    const confirmado = esperarConfirmacionTx();
+    try {
+      await escribir(mensaje + '\n');
+    } catch (errEscritura) {
+      confirmado.catch(() => {});
+      confirmacionTx?.reject(errEscritura);
+      throw errEscritura;
+    }
+    log('Mensaje enviado, esperando confirmación del Arduino...');
+    await confirmado;
   } catch (err) {
     marcarError(viperId, err.message);
     throw err;
   }
 
-  pendiente = {
-    viperId,
-    timer: setTimeout(() => marcarTimeout(viperId), TIMEOUT_MS),
-  };
+  const ahora = new Date().toISOString();
+  db.prepare(`
+    UPDATE vipers
+    SET estado = 'ACTIVO', activo = 1, codigo_raw = ?, fecha_validacion = ?, ultima_activacion = ?, ultimo_error = NULL
+    WHERE id = ?
+  `).run(mensaje, ahora, ahora, viperId);
 
-  port.write(mensaje + '\n', err => {
-    if (err) {
-      marcarError(viperId, err.message);
-      return;
-    }
-    log('Mensaje enviado');
-  });
-}
-
-function marcarTimeout(viperId) {
-  if (pendiente?.viperId !== viperId) return;
-  pendiente = null;
-  marcarError(viperId, 'No se recibió respuesta del dispositivo.');
+  ultimaComunicacionExitosa = new Date();
+  log('Transmisión confirmada por el Arduino. Beeper activado');
+  emitirActualizacion(viperId);
 }
 
 function marcarError(viperId, mensaje) {
   db.prepare("UPDATE vipers SET estado = 'ERROR', ultimo_error = ? WHERE id = ?").run(mensaje, viperId);
   log(`Error: ${mensaje}`);
-  registrarEvento({ viperId, accion: 'VALIDAR_VIPER', resultado: 'ERROR', ackEstado: 'ERROR', detalle: mensaje });
   emitirActualizacion(viperId);
 }
 
@@ -260,142 +250,103 @@ async function enviarRaw(codigoRaw, io) {
   });
 }
 
-// Envía PING y espera PONG del Arduino (prueba de conexión real, no sólo
-// estado del puerto). Registra el resultado para el diagnóstico.
-async function ping(io, timeoutMs = TIMEOUT_MS) {
+// Busca el puerto configurado entre los puertos presentes en el sistema.
+async function buscarPuertoConfigurado() {
+  const cfg = getConfig();
+  if (!cfg?.puerto) return { cfg, info: null, disponibles: [] };
+  const disponibles = await SerialPort.list();
+  const info = disponibles.find(p => String(p.path).toUpperCase() === String(cfg.puerto).toUpperCase()) || null;
+  return { cfg, info, disponibles };
+}
+
+// Prueba real de conexión sin depender de una respuesta del Arduino:
+// verifica que el puerto exista, lo abre (o confirma que ya está abierto) y
+// escribe un salto de línea inofensivo para comprobar que es escribible.
+async function probarConexion(io) {
   ioRef = io || ioRef;
   try {
-    await asegurarConexion(io);
+    if (!SerialPort) {
+      throw new Error('El módulo serialport no está disponible en este servidor.');
+    }
+    const { cfg, info, disponibles } = await buscarPuertoConfigurado();
+    if (!cfg?.puerto) {
+      throw new Error('No hay un puerto COM configurado. Configurelo en Configuración Serial.');
+    }
+    if (!info) {
+      const lista = disponibles.length ? disponibles.map(p => p.path).join(', ') : 'ninguno';
+      desconectar();
+      throw new Error(`El puerto ${cfg.puerto} no se encuentra conectado al equipo. Puertos disponibles: ${lista}.`);
+    }
+
+    try {
+      await asegurarConexion(io);
+    } catch (err) {
+      throw new Error(`No se pudo abrir el puerto ${cfg.puerto}: ${err.message}. Verificá que no esté en uso por otro programa (ej. el Monitor Serial de Arduino IDE).`);
+    }
+
+    try {
+      await escribir('\n');
+    } catch (err) {
+      throw new Error(`El puerto ${cfg.puerto} está abierto pero no se pudo escribir en él: ${err.message}`);
+    }
+
+    ultimaPruebaResultado = 'Exitosa';
+    ultimaComunicacionExitosa = new Date();
+    ultimoErrorConexion = null;
+    const fabricante = info.manufacturer ? ` (${info.manufacturer})` : '';
+    const mensaje = `Puerto ${cfg.puerto} detectado y abierto correctamente${fabricante}`;
+    log(mensaje);
+    return { puerto: cfg.puerto, fabricante: info.manufacturer || null, mensaje };
   } catch (err) {
     ultimaPruebaResultado = 'Fallida';
+    ultimoErrorConexion = err.message;
     throw err;
   }
-  if (pendientePing) throw new Error('Ya hay una prueba de conexión en curso.');
-
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      pendientePing = null;
-      ultimaPruebaResultado = 'Fallida';
-      reject(new Error('Error de comunicación: no se recibió respuesta del Arduino.'));
-    }, timeoutMs);
-
-    pendientePing = {
-      resolve: () => {
-        clearTimeout(timer);
-        ultimaPruebaResultado = 'Exitosa';
-        ultimaComunicacionExitosa = new Date();
-        resolve(true);
-      },
-    };
-
-    port.write('PING\n', err => {
-      if (err) {
-        clearTimeout(timer);
-        pendientePing = null;
-        ultimaPruebaResultado = 'Fallida';
-        return reject(err);
-      }
-      log('PING enviado');
-    });
-  });
 }
 
-// Determina el estado real de conexión comunicándose efectivamente con el
-// Arduino (abre el puerto si es necesario, envía PING y espera PONG). No se
-// considera "Conectado" sólo porque exista configuración guardada o el
-// puerto esté abierto: se exige una respuesta válida del dispositivo.
+// Determina el estado del Arduino sin esperar respuestas: 'Desconectado' si
+// no hay módulo serial, no hay puerto configurado, el puerto no está presente
+// o no se puede abrir; 'Conectado' si el puerto se abre correctamente.
 async function verificarEstadoReal(io) {
-  if (!SerialPort) return 'Desconectado';
-  const cfg = getConfig();
-  if (!cfg?.puerto) return 'Desconectado';
+  if (!SerialPort) return { estado: 'Desconectado', detalle: 'El módulo serialport no está disponible en este servidor.' };
+
+  let resultado;
+  try {
+    resultado = await buscarPuertoConfigurado();
+  } catch (err) {
+    return { estado: 'Desconectado', detalle: err.message };
+  }
+  const { cfg, info } = resultado;
+  if (!cfg?.puerto) return { estado: 'Desconectado', detalle: 'No hay un puerto COM configurado.' };
+  if (!info) {
+    // El dispositivo se desconectó: liberar el handle viejo para poder reconectar luego.
+    desconectar();
+    return { estado: 'Desconectado', detalle: `El puerto ${cfg.puerto} no se encuentra conectado al equipo.` };
+  }
 
   try {
-    await ping(io, PING_STATUS_TIMEOUT_MS);
-    return 'Conectado';
+    await asegurarConexion(io);
+    ultimaPruebaResultado = 'Exitosa';
+    ultimaComunicacionExitosa = new Date();
+    ultimoErrorConexion = null;
+    return { estado: 'Conectado', detalle: null };
   } catch (err) {
-    if (!estaConectado()) return 'Desconectado';
-    return 'Error de comunicación';
+    ultimaPruebaResultado = 'Fallida';
+    ultimoErrorConexion = err.message;
+    return { estado: 'Desconectado', detalle: `No se pudo abrir ${cfg.puerto}: ${err.message}` };
   }
-}
-
-// Solicita al Arduino que se reinicie remotamente.
-async function reiniciarArduino(io) {
-  ioRef = io || ioRef;
-  await asegurarConexion(io);
-  return new Promise((resolve, reject) => {
-    port.write('REINICIAR\n', err => {
-      if (err) {
-        log(`Error al reiniciar: ${err.message}`);
-        return reject(err);
-      }
-      log('Comando de reinicio enviado');
-      conectadoEn = null;
-      resolve(true);
-    });
-  });
-}
-
-// Consulta la configuración almacenada actualmente en el Arduino.
-async function leerConfiguracionActual(io) {
-  ioRef = io || ioRef;
-  await asegurarConexion(io);
-  if (pendienteConfig) throw new Error('Ya hay una consulta de configuración en curso.');
-
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      pendienteConfig = null;
-      reject(new Error('No se recibió la configuración del Arduino.'));
-    }, TIMEOUT_MS);
-
-    pendienteConfig = { resolve: cfg => { clearTimeout(timer); resolve(cfg); } };
-
-    port.write('LEER_CONFIG\n', err => {
-      if (err) {
-        clearTimeout(timer);
-        pendienteConfig = null;
-        return reject(err);
-      }
-      log('Solicitud de configuración enviada');
-    });
-  });
-}
-
-// Pone al Arduino en modo escucha para aprender un nuevo código RF.
-async function aprenderCodigo(io) {
-  ioRef = io || ioRef;
-  await asegurarConexion(io);
-  if (aprendizaje) throw new Error('Ya hay un aprendizaje de código en curso.');
-  if (pendiente) throw new Error('Hay una validación en curso. Esperá a que finalice.');
-
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      aprendizaje = null;
-      reject(new Error('No se detectó ningún código RF dentro del tiempo de espera.'));
-    }, TIMEOUT_APRENDIZAJE_MS);
-
-    aprendizaje = { timer, resolve, reject };
-
-    port.write('APRENDER\n', err => {
-      if (err) {
-        clearTimeout(timer);
-        aprendizaje = null;
-        return reject(err);
-      }
-      log('Modo aprendizaje iniciado, esperando código RF...');
-    });
-  });
 }
 
 // Estado informativo del Arduino para el panel de diagnóstico. El campo
-// "estado" se determina con una comunicación real (PING/PONG), nunca a
-// partir de la sola existencia de configuración guardada o del puerto abierto.
+// "estado" depende de que el puerto configurado esté presente y se pueda
+// abrir (el Arduino no responde a comandos, no se espera ninguna respuesta).
 async function getEstadoArduino(io) {
   const cfg = getConfig();
-  const estado = await verificarEstadoReal(io);
+  const { estado, detalle } = await verificarEstadoReal(io);
   const tiempoActivoMs = conectadoEn && estado === 'Conectado' ? Date.now() - conectadoEn.getTime() : 0;
   return {
     estado,
-    firmware: firmwareVer,
+    detalle,
     puerto: cfg?.puerto || null,
     puerto_conectado: estado === 'Conectado' ? cfg?.puerto || null : null,
     ultima_conexion: ultimaConexion ? ultimaConexion.toISOString() : null,
@@ -405,6 +356,7 @@ async function getEstadoArduino(io) {
       puerto_conectado: estado === 'Conectado' ? cfg?.puerto || null : null,
       ultima_prueba_resultado: ultimaPruebaResultado,
       ultima_comunicacion_exitosa: ultimaComunicacionExitosa ? ultimaComunicacionExitosa.toISOString() : null,
+      ultimo_error: ultimoErrorConexion,
     },
   };
 }
@@ -426,11 +378,8 @@ module.exports = {
   desconectar,
   enviarSenal,
   enviarRaw,
-  ping,
+  probarConexion,
   verificarEstadoReal,
-  reiniciarArduino,
-  leerConfiguracionActual,
-  aprenderCodigo,
   getEstadoArduino,
   registrarEvento,
 };

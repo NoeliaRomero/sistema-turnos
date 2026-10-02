@@ -8,6 +8,15 @@ function escapeHtml(str) {
     ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 }
 
+// Nombre visible de un beeper: el apodo si tiene; si no, una versión corta del
+// código (el código completo puede ser muy largo y se muestra como tooltip).
+function nombreBeeper(v) {
+  const apodo = String(v?.apodo ?? '').trim();
+  if (apodo) return apodo;
+  const codigo = String(v?.codigo_viper ?? '');
+  return codigo.length > 12 ? codigo.slice(0, 12) + '…' : codigo;
+}
+
 // Formatea minutos de forma legible: 45 → "45 min", 60 → "1 h", 160 → "2 h 40 min"
 function formatMinutos(minutos) {
   const total = Math.max(0, Math.ceil(Number(minutos) || 0));
@@ -77,7 +86,7 @@ async function cargarVipersActivos() {
     const vipers = res.ok ? await res.json() : [];
     sel.innerHTML = '<option value="">Sin beeper físico</option>';
     vipers.forEach(v => {
-      sel.innerHTML += `<option value="${v.id}">${v.codigo_viper}</option>`;
+      sel.innerHTML += `<option value="${v.id}" title="${escapeHtml(v.codigo_viper)}">${escapeHtml(nombreBeeper(v))}</option>`;
     });
   } catch (_) { /* el módulo VIPER es opcional, no debe romper el registro */ }
 }
@@ -902,12 +911,14 @@ function mostrarToast(mensaje, tipo = 'success') {
   }
 
   const id  = 'toast-' + Date.now();
-  const col = { success:'bg-success', danger:'bg-danger', warning:'bg-warning text-dark' }[tipo];
+  // Fondos claros (warning/info) llevan texto y botón de cierre oscuros para que se lean.
+  const claro = tipo === 'warning' || tipo === 'info';
+  const col = { success:'bg-success', danger:'bg-danger', warning:'bg-warning', info:'bg-info' }[tipo] || 'bg-secondary';
   container.insertAdjacentHTML('beforeend', `
-    <div id="${id}" class="toast align-items-center text-white ${col} border-0" role="alert">
+    <div id="${id}" class="toast align-items-center ${col} ${claro ? 'text-dark' : 'text-white'} border-0 shadow" role="alert">
       <div class="d-flex">
         <div class="toast-body fw-semibold">${mensaje}</div>
-        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        <button type="button" class="btn-close ${claro ? '' : 'btn-close-white'} me-2 m-auto" data-bs-dismiss="toast"></button>
       </div>
     </div>`);
   const el = document.getElementById(id);

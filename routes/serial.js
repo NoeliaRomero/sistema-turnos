@@ -12,7 +12,7 @@ router.get('/puertos', requireAuth('admin'), async (req, res) => {
 });
 
 router.get('/config', requireAuth('admin'), (req, res) => {
-  res.json({ ...serialService.getConfig(), conectado: serialService.estaConectado() });
+  res.json(serialService.getConfig());
 });
 
 router.post('/config', requireAuth('admin'), (req, res) => {

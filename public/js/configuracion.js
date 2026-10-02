@@ -12,7 +12,6 @@ const socket = io();
   cargarVipers();
   cargarSerialConfig();
   cargarEstadoArduino();
-  cargarMetricasViper();
   cargarEventosViper();
   setInterval(cargarEstadoArduino, 15000);
 })();
@@ -39,6 +38,7 @@ document.getElementById('configMenu').addEventListener('click', e => {
 
   if (btn.dataset.panel === 'backups')  inicializarPanelBackups();
   if (btn.dataset.panel === 'servidor') cargarEstadoServidor();
+  if (btn.dataset.panel === 'viper')    ajustarAlturaVipers();
 });
 
 // ── Socket.io: log serial + actualización de VIPERs ────────────────────────────
@@ -73,22 +73,36 @@ async function cargarVipers() {
     ? '<tr><td colspan="3" class="text-center text-muted py-4">No hay beepers registrados</td></tr>'
     : vipers.map(v => `
       <tr>
-        <td class="ps-4 fw-semibold">${escapeHtml(v.codigo_viper)}</td>
+        <td class="ps-4 fw-semibold" title="${escapeHtml(v.codigo_viper)}">${escapeHtml(nombreBeeper(v))}</td>
         <td class="text-center">${ESTADO_BADGE[v.estado] || ESTADO_BADGE.PENDIENTE}</td>
         <td class="text-end pe-4">${renderAccion(v)}</td>
       </tr>`).join('');
+  ajustarAlturaVipers();
+}
+
+// Limita la lista a 10 beepers visibles; el resto queda accesible con scroll.
+// Si la sección está oculta (alturas en 0) se mantiene el max-height del CSS.
+const VIPERS_VISIBLES = 10;
+function ajustarAlturaVipers() {
+  const cont = document.getElementById('vipersScroll');
+  const filas = cont?.querySelectorAll('tbody tr');
+  const thead = cont?.querySelector('thead');
+  if (!filas?.length || !filas[0].offsetHeight) return;
+  let alto = thead ? thead.offsetHeight : 0;
+  for (let i = 0; i < Math.min(VIPERS_VISIBLES, filas.length); i++) alto += filas[i].offsetHeight;
+  cont.style.maxHeight = `${alto + 1}px`;
 }
 
 function renderAccion(v) {
   const botones = [];
   if (v.estado === 'PENDIENTE') {
-    botones.push(`<button class="btn btn-sm btn-outline-primary" onclick="abrirEnviarSenal(${v.id})">Enviar señal</button>`);
+    botones.push(`<button class="btn btn-sm btn-outline-primary" onclick="enviarSenal(${v.id})">Enviar señal</button>`);
   } else if (v.estado === 'VALIDANDO') {
     botones.push('<span class="text-muted small fst-italic">Esperando dispositivo…</span>');
   } else if (v.estado === 'ERROR') {
-    botones.push(`<button class="btn btn-sm btn-outline-warning" onclick="abrirEnviarSenal(${v.id})">Reintentar</button>`);
+    botones.push(`<button class="btn btn-sm btn-outline-warning" onclick="enviarSenal(${v.id})">Reintentar</button>`);
   } else if (v.estado === 'ACTIVO') {
-    botones.push('<span class="text-muted small fst-italic me-2">Activado</span>');
+    botones.push(`<button class="btn btn-sm btn-outline-primary" onclick="enviarSenal(${v.id})">Enviar señal</button>`);
   }
   if (v.tiene_codigo) {
     botones.push(`<button class="btn btn-sm btn-outline-secondary" onclick="verCodigo(${v.id})">Ver código</button>`);
@@ -103,44 +117,42 @@ function escapeHtml(str) {
     ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 }
 
-// ── Enviar señal ────────────────────────────────────────────────────────────────
-let viperSeleccionado = null;
-const modalEnviarSenalInst = new bootstrap.Modal(document.getElementById('modalEnviarSenal'));
-
-function abrirEnviarSenal(id) {
-  viperSeleccionado = id;
-  document.getElementById('senalMensaje').value = 'READY_PARA_TEST_DE_CABLE';
-  document.getElementById('senalError').classList.add('d-none');
-  modalEnviarSenalInst.show();
+// Nombre visible de un beeper: el apodo si tiene; si no, una versión corta del
+// código (el código completo puede ser muy largo y se muestra como tooltip).
+function nombreBeeper(v) {
+  const apodo = String(v?.apodo ?? '').trim();
+  if (apodo) return apodo;
+  const codigo = String(v?.codigo_viper ?? '');
+  return codigo.length > 12 ? codigo.slice(0, 12) + '…' : codigo;
 }
 
-document.getElementById('btnConfirmarEnviarSenal').addEventListener('click', async () => {
-  const mensaje = document.getElementById('senalMensaje').value.trim();
-  const errEl   = document.getElementById('senalError');
-  errEl.classList.add('d-none');
+// ── Enviar señal ────────────────────────────────────────────────────────────────
+// Envía directamente el código cargado al agregar el beeper (el servidor usa
+// codigo_viper cuando no se indica otro mensaje).
+// Evita doble envío por clics repetidos mientras se espera la confirmación.
+let envioSenalEnCurso = false;
 
-  if (!mensaje) {
-    errEl.textContent = 'El mensaje a enviar es obligatorio.';
-    errEl.classList.remove('d-none');
-    return;
-  }
+async function enviarSenal(id) {
+  if (envioSenalEnCurso) return;
+  envioSenalEnCurso = true;
+  try {
+    const res = await fetch(`/api/vipers/${id}/enviar-senal`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
 
-  const res = await fetch(`/api/vipers/${viperSeleccionado}/enviar-senal`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mensaje }),
-  });
-
-  if (res.ok) {
-    modalEnviarSenalInst.hide();
-    mostrarToast('Señal enviada, esperando respuesta del dispositivo', 'success');
+    if (res.ok) {
+      mostrarToast('El Arduino confirmó la transmisión. Beeper activo.', 'success');
+    } else {
+      const data = await res.json().catch(() => ({}));
+      mostrarToast(data.error || 'Error al enviar la señal.', 'danger');
+    }
+  } finally {
+    envioSenalEnCurso = false;
     cargarVipers();
-  } else {
-    const data = await res.json();
-    errEl.textContent = data.error || 'Error al enviar la señal.';
-    errEl.classList.remove('d-none');
   }
-});
+}
 
 // ── Ver código ──────────────────────────────────────────────────────────────────
 const modalVerCodigoInst = new bootstrap.Modal(document.getElementById('modalVerCodigo'));
@@ -161,6 +173,7 @@ const modalViperInst = new bootstrap.Modal(document.getElementById('modalViper')
 
 document.getElementById('btnNuevoViper').addEventListener('click', () => {
   document.getElementById('vCodigoViper').value = '';
+  document.getElementById('vApodoViper').value = '';
   document.getElementById('viperError').classList.add('d-none');
   modalViperInst.show();
 });
@@ -183,7 +196,7 @@ document.getElementById('btnGuardarViper').addEventListener('click', async () =>
   const res = await fetch('/api/vipers', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ codigo_viper: codigo }),
+    body: JSON.stringify({ codigo_viper: codigo, apodo: document.getElementById('vApodoViper').value.trim() }),
   });
 
   if (res.ok) {
@@ -206,9 +219,7 @@ function abrirEditarViper(id) {
   if (!v) return;
   viperEditando = id;
   document.getElementById('eCodigoViper').value = v.codigo_viper || '';
-  document.getElementById('eCodigoRf').value = v.codigo_rf || '';
-  document.getElementById('eCanal').value = v.canal || 1;
-  document.getElementById('eEstado').value = v.estado || 'PENDIENTE';
+  document.getElementById('eApodoViper').value = v.apodo || '';
   document.getElementById('editarViperError').classList.add('d-none');
   modalEditarViperInst.show();
 }
@@ -229,9 +240,7 @@ document.getElementById('btnGuardarEdicionViper').addEventListener('click', asyn
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       codigo_viper: codigo,
-      codigo_rf: document.getElementById('eCodigoRf').value.trim(),
-      canal: document.getElementById('eCanal').value,
-      estado: document.getElementById('eEstado').value,
+      apodo: document.getElementById('eApodoViper').value.trim(),
     }),
   });
 
@@ -278,46 +287,20 @@ async function cargarSerialConfig() {
     const cfg     = cfgRes.ok ? await cfgRes.json() : {};
     const puertos = puertosRes.ok ? await puertosRes.json() : [];
 
-    const sel = document.getElementById('selectPuertoCom');
+    // Lista de puertos detectados con el puerto guardado ya seleccionado
+    // (si el Arduino está desenchufado, el guardado igual aparece).
     const lista = puertos.length ? puertos.map(p => p.path) : ['COM1','COM2','COM3','COM4'];
-    sel.innerHTML = lista.map(p => `<option value="${p}">${p}</option>`).join('');
-    if (cfg.puerto && !lista.includes(cfg.puerto)) {
-      sel.insertAdjacentHTML('afterbegin', `<option value="${cfg.puerto}">${cfg.puerto}</option>`);
-    }
+    if (cfg.puerto && !lista.includes(cfg.puerto)) lista.unshift(cfg.puerto);
+    const etiqueta = p => {
+      const info = puertos.find(x => x.path === p);
+      return info?.manufacturer ? `${p} (${info.manufacturer})` : p;
+    };
+    const sel = document.getElementById('vSerialPuerto');
+    sel.innerHTML = lista.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(etiqueta(p))}</option>`).join('');
     if (cfg.puerto) sel.value = cfg.puerto;
-
-    if (cfg.baudios) document.getElementById('selectBaudios').value = String(cfg.baudios);
-
-    const badge = document.getElementById('badgeConexionSerial');
-    if (cfg.conectado) {
-      badge.textContent = 'Conectado';
-      badge.className = 'estado-badge estado-ACTIVO';
-    } else {
-      badge.textContent = 'Desconectado';
-      badge.className = 'estado-badge estado-ERROR';
-    }
-  } catch (_) { /* el panel serial es informativo, no debe romper la pantalla */ }
+    if (cfg.baudios) document.getElementById('vSerialBaudios').value = cfg.baudios;
+  } catch (_) { /* el formulario serial es informativo, no debe romper la pantalla */ }
 }
-
-document.getElementById('formSerialConfig').addEventListener('submit', async e => {
-  e.preventDefault();
-  const puerto  = document.getElementById('selectPuertoCom').value;
-  const baudios = document.getElementById('selectBaudios').value;
-
-  const res = await fetch('/api/serial/config', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ puerto, baudios }),
-  });
-
-  if (res.ok) {
-    mostrarToast('Configuración serial guardada', 'success');
-    cargarSerialConfig();
-  } else {
-    const data = await res.json();
-    mostrarToast(data.error || 'Error al guardar la configuración', 'danger');
-  }
-});
 
 // ── Configuración Serial (dentro del panel VIPER) ────────────────────────────
 document.getElementById('formSerialConfigViper').addEventListener('submit', async e => {
@@ -357,10 +340,11 @@ async function cargarEstadoArduino() {
   const data = await res.json();
 
   const badge = document.getElementById('arduinoEstado');
-  badge.textContent = data.estado;
-  badge.className = 'estado-badge ' + (data.estado === 'Conectado' ? 'estado-ACTIVO' : 'estado-ERROR');
+  const activo = data.estado === 'Conectado';
+  badge.textContent = activo ? 'Activo' : 'Desconectado';
+  badge.className = 'estado-badge ' + (activo ? 'estado-ACTIVO' : 'estado-ERROR');
+  badge.title = data.detalle || '';
 
-  document.getElementById('arduinoFirmware').textContent = data.firmware || '–';
   document.getElementById('arduinoPuerto').textContent = data.puerto || '–';
   document.getElementById('arduinoUltimaConexion').textContent = data.ultima_conexion
     ? new Date(data.ultima_conexion).toLocaleTimeString() : '–';
@@ -387,104 +371,14 @@ function mostrarResultadoDiagnostico(texto, tipo = 'info') {
 document.getElementById('btnProbarConexion').addEventListener('click', async () => {
   mostrarResultadoDiagnostico('Probando conexión...', 'info');
   const res = await fetch('/api/vipers/ping', { method: 'POST' });
+  const data = await res.json().catch(() => ({}));
   if (res.ok) {
-    mostrarResultadoDiagnostico('✓ Conexión correcta', 'success');
+    mostrarResultadoDiagnostico(`✓ ${data.mensaje || 'Puerto abierto correctamente'}`, 'success');
   } else {
-    const data = await res.json();
-    mostrarResultadoDiagnostico(`✗ Error de comunicación\n${data.detalle || data.error || ''}`, 'danger');
+    mostrarResultadoDiagnostico(`✗ ${data.error || 'No se pudo verificar el puerto.'}`, 'danger');
   }
   cargarEstadoArduino();
 });
-
-document.getElementById('btnReiniciarArduino').addEventListener('click', async () => {
-  if (!confirm('¿Reiniciar el Arduino de forma remota?')) return;
-  mostrarResultadoDiagnostico('Reiniciando Arduino...', 'info');
-  const res = await fetch('/api/vipers/reiniciar-arduino', { method: 'POST' });
-  if (res.ok) {
-    mostrarResultadoDiagnostico('✓ Comando de reinicio enviado', 'success');
-  } else {
-    const data = await res.json();
-    mostrarResultadoDiagnostico(`✗ Error al reiniciar\n${data.error || ''}`, 'danger');
-  }
-  cargarEstadoArduino();
-});
-
-document.getElementById('btnLeerConfig').addEventListener('click', async () => {
-  mostrarResultadoDiagnostico('Consultando configuración del Arduino...', 'info');
-  const res = await fetch('/api/vipers/leer-configuracion');
-  if (res.ok) {
-    const data = await res.json();
-    mostrarResultadoDiagnostico(data.configuracion || '(sin datos)', 'secondary');
-  } else {
-    const data = await res.json();
-    mostrarResultadoDiagnostico(`✗ Error\n${data.error || ''}`, 'danger');
-  }
-});
-
-// ── Aprendizaje de Código VIPER ───────────────────────────────────────────────
-const modalAsociarRfInst = new bootstrap.Modal(document.getElementById('modalAsociarRf'));
-
-document.getElementById('btnAprenderViper').addEventListener('click', async () => {
-  mostrarResultadoDiagnostico('Arduino en modo escucha, esperando código RF...', 'info');
-  const res = await fetch('/api/vipers/aprender', { method: 'POST' });
-  if (!res.ok) {
-    const data = await res.json();
-    mostrarResultadoDiagnostico(`✗ Error\n${data.error || ''}`, 'danger');
-    return;
-  }
-  const data = await res.json();
-  mostrarResultadoDiagnostico(`Código detectado:\n${data.codigo}`, 'success');
-
-  const vipersRes = await fetch('/api/vipers');
-  const vipers = vipersRes.ok ? await vipersRes.json() : [];
-  const select = document.getElementById('rfAsociarViperId');
-  select.innerHTML = vipers.map(v => `<option value="${v.id}">${escapeHtml(v.codigo_viper)}</option>`).join('');
-
-  document.getElementById('rfCodigoDetectado').value = data.codigo;
-  document.getElementById('rfAsociarError').classList.add('d-none');
-  modalAsociarRfInst.show();
-});
-
-document.getElementById('btnConfirmarAsociarRf').addEventListener('click', async () => {
-  const viperId = document.getElementById('rfAsociarViperId').value;
-  const codigo  = document.getElementById('rfCodigoDetectado').value;
-  const errEl   = document.getElementById('rfAsociarError');
-  errEl.classList.add('d-none');
-
-  if (!viperId) {
-    errEl.textContent = 'Seleccioná un beeper para asociar el código.';
-    errEl.classList.remove('d-none');
-    return;
-  }
-
-  const res = await fetch(`/api/vipers/${viperId}/codigo-rf`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ codigo_rf: codigo }),
-  });
-
-  if (res.ok) {
-    modalAsociarRfInst.hide();
-    mostrarToast('Código RF asociado correctamente', 'success');
-  } else {
-    const data = await res.json();
-    errEl.textContent = data.error || 'Error al asociar el código.';
-    errEl.classList.remove('d-none');
-  }
-});
-
-// ── Métricas del sistema ──────────────────────────────────────────────────────
-async function cargarMetricasViper() {
-  const res = await fetch('/api/vipers/metricas');
-  if (!res.ok) return;
-  const m = await res.json();
-  document.getElementById('metRegistrados').textContent = m.vipers_registrados;
-  document.getElementById('metActivos').textContent = m.vipers_activos;
-  document.getElementById('metLlamadasHoy').textContent = m.llamadas_hoy;
-  document.getElementById('metLlamadasMes').textContent = m.llamadas_mes;
-  document.getElementById('metUltimoActivado').textContent = m.ultimo_viper_activado || '–';
-  document.getElementById('metTasaExito').textContent = m.tasa_exito != null ? `${m.tasa_exito}%` : '–';
-}
 
 // ── Historial de Eventos ──────────────────────────────────────────────────────
 const ACK_LABEL = {
@@ -513,15 +407,15 @@ async function cargarEventosViper() {
         <td class="small">${new Date(ev.created_at).toLocaleString()}</td>
         <td class="small">${escapeHtml(ev.usuario_nombre || '–')}</td>
         <td class="small">${escapeHtml(ev.accion)}</td>
-        <td class="small">${escapeHtml(ev.codigo_viper || '–')}</td>
+        <td class="small"${ev.codigo_viper ? ` title="${escapeHtml(ev.codigo_viper)}"` : ''}>${ev.codigo_viper ? escapeHtml(nombreBeeper(ev)) : '–'}</td>
         <td class="small">${ev.ack_estado ? (ACK_LABEL[ev.ack_estado] || ev.ack_estado) : (ev.resultado || '–')}</td>
       </tr>`).join('');
 }
 
 document.getElementById('btnFiltrarEventos').addEventListener('click', cargarEventosViper);
 
-// Refrescar métricas y eventos cuando cambia el estado de un VIPER
-socket.on('viper:actualizado', () => { cargarMetricasViper(); cargarEventosViper(); });
+// Refrescar eventos cuando cambia el estado de un VIPER
+socket.on('viper:actualizado', () => cargarEventosViper());
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 // Tope de carteles visibles a la vez — evita que clickear rápido y seguido un
@@ -539,12 +433,14 @@ function mostrarToast(mensaje, tipo = 'success') {
   }
 
   const id  = 'toast-' + Date.now();
-  const col = { success:'bg-success', danger:'bg-danger', warning:'bg-warning text-dark', info:'bg-info text-dark' }[tipo];
+  // Fondos claros (warning/info) llevan texto y botón de cierre oscuros para que se lean.
+  const claro = tipo === 'warning' || tipo === 'info';
+  const col = { success:'bg-success', danger:'bg-danger', warning:'bg-warning', info:'bg-info' }[tipo] || 'bg-secondary';
   container.insertAdjacentHTML('beforeend', `
-    <div id="${id}" class="toast align-items-center text-white ${col} border-0" role="alert">
+    <div id="${id}" class="toast align-items-center ${col} ${claro ? 'text-dark' : 'text-white'} border-0 shadow" role="alert">
       <div class="d-flex">
         <div class="toast-body fw-semibold">${mensaje}</div>
-        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        <button type="button" class="btn-close ${claro ? '' : 'btn-close-white'} me-2 m-auto" data-bs-dismiss="toast"></button>
       </div>
     </div>`);
   const el = document.getElementById(id);
@@ -1057,7 +953,8 @@ async function cargarEstadoServidor() {
 
 async function reiniciarServidor() {
   if (!confirm('¿Reiniciar el servidor? La aplicación se cerrará y volverá a abrirse automáticamente.')) return;
-  const btn = document.getElementById('btnReiniciarServidor') || document.getElementById('btnReiniciarDirecto');
+  const btn = document.getElementById('btnReiniciarServidor');
+  const contenidoOriginal = btn?.innerHTML;
   if (btn) {
     btn.disabled = true;
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Reiniciando…';
@@ -1068,16 +965,13 @@ async function reiniciarServidor() {
   setTimeout(() => {
     if (btn) {
       btn.disabled = false;
-      btn.innerHTML = '<i class="bi bi-arrow-clockwise me-1"></i>Reiniciar';
+      btn.innerHTML = contenidoOriginal;
     }
     mostrarToast('Si la aplicación no se reinició, cerrá y volvé a abrirla manualmente.', 'warning');
   }, 5000);
 }
 
-['btnReiniciarServidor', 'btnReiniciarDirecto'].forEach(id => {
-  const el = document.getElementById(id);
-  if (el) el.addEventListener('click', reiniciarServidor);
-});
+document.getElementById('btnReiniciarServidor')?.addEventListener('click', reiniciarServidor);
 
 document.getElementById('btnGuardarPuerto').addEventListener('click', async () => {
   const input = document.getElementById('inputPuertoNuevo');

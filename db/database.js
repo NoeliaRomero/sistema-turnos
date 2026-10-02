@@ -113,6 +113,7 @@ db.exec(`
   "ALTER TABLE vipers      ADD COLUMN canal                   INTEGER DEFAULT 1",
   "ALTER TABLE vipers      ADD COLUMN fecha_creacion          DATETIME",
   "ALTER TABLE vipers      ADD COLUMN ultima_activacion       DATETIME",
+  "ALTER TABLE vipers      ADD COLUMN apodo                   TEXT",
   "ALTER TABLE turnos      ADD COLUMN orden_cola              INTEGER",
   "ALTER TABLE atracciones ADD COLUMN usa_subcategorias       INTEGER DEFAULT 0",
   "ALTER TABLE turnos      ADD COLUMN subcategoria_id         INTEGER REFERENCES juego_subcategorias(id)",
@@ -247,6 +248,28 @@ if (db.prepare("SELECT COUNT(*) AS c FROM usuarios WHERE rol='admin'").get().c =
     "INSERT INTO usuarios (nombre, username, password_hash, rol) VALUES (?,?,?,?)"
   ).run('Administrador', 'admin', hash, 'admin');
   console.log('Usuario admin creado  →  usuario: admin  |  contraseña: admin123');
+}
+
+// ── Precarga de beepers ───────────────────────────────────────────────────────
+// Se ejecuta una sola vez por instalación: carga en Configuración los beepers
+// de server/config/beeperCodes.js que todavía no existan (comparando el código
+// exacto). Si después se elimina alguno a mano, no se vuelve a crear.
+try { db.exec('ALTER TABLE configuracion_general ADD COLUMN beepers_precargados INTEGER NOT NULL DEFAULT 0'); } catch (_) {}
+
+if (!db.prepare('SELECT beepers_precargados FROM configuracion_general WHERE id = 1').get()?.beepers_precargados) {
+  const { BEEPER_CODES } = require('../server/config/beeperCodes');
+  const existe   = db.prepare('SELECT id FROM vipers WHERE codigo_viper = ?');
+  const insertar = db.prepare(
+    "INSERT INTO vipers (codigo_viper, apodo, activo, estado, fecha_creacion) VALUES (?, ?, 0, 'PENDIENTE', datetime('now','localtime'))"
+  );
+  let creados = 0;
+  for (const [numero, codigo] of Object.entries(BEEPER_CODES)) {
+    if (existe.get(codigo)) continue;
+    insertar.run(codigo, `Beeper ${numero}`);
+    creados++;
+  }
+  db.prepare('UPDATE configuracion_general SET beepers_precargados = 1 WHERE id = 1').run();
+  if (creados) console.log(`Beepers precargados: ${creados}`);
 }
 
 module.exports = db;

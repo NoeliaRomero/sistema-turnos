@@ -312,7 +312,8 @@ module.exports = (io) => {
              ea.nombre  AS etapa_actual_nombre,
              ea.orden   AS etapa_actual_orden,
              sc.nombre  AS subcategoria_nombre,
-             v.codigo_viper AS viper_codigo
+             v.codigo_viper AS viper_codigo,
+             v.apodo        AS viper_apodo
       FROM turnos t
       JOIN atracciones a ON t.atraccion_id = a.id
       LEFT JOIN usuarios ul    ON t.llamado_por    = ul.id

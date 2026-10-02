@@ -10,6 +10,22 @@ function escapeHtml(str) {
     ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c]);
 }
 
+// Nombre visible de un beeper: el apodo si tiene; si no, una versión corta del
+// código (el código completo puede ser muy largo y se muestra como tooltip).
+function nombreBeeper(v) {
+  const apodo = String(v?.apodo ?? '').trim();
+  if (apodo) return apodo;
+  const codigo = String(v?.codigo_viper ?? '');
+  return codigo.length > 12 ? codigo.slice(0, 12) + '…' : codigo;
+}
+
+// Etiqueta del beeper físico asociado a un turno (apodo o código corto + tooltip)
+function etiquetaBeeperTurno(t) {
+  if (!t.viper_codigo) return '';
+  const nombre = nombreBeeper({ apodo: t.viper_apodo, codigo_viper: t.viper_codigo });
+  return `<span class="atraccion-tag" style="background:#ede9fe;color:#5b21b6" title="${escapeHtml(t.viper_codigo)}"><i class="bi bi-broadcast me-1"></i>${escapeHtml(nombre)}</span>`;
+}
+
 // ── Auth ──────────────────────────────────────────────────────────────────────
 async function init() {
   const res = await fetch('/api/auth/me');
@@ -115,7 +131,7 @@ function cardEsperando(t) {
               ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${t.subcategoria_nombre}</span>` : ''}
               <span class="duracion-tag"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
               ${t.duracion_minutos ? `<span class="duracion-tag"><i class="bi bi-clock me-1"></i>${t.duracion_minutos} min</span>` : ''}
-              ${t.viper_codigo ? `<span class="atraccion-tag" style="background:#ede9fe;color:#5b21b6"><i class="bi bi-broadcast me-1"></i>${t.viper_codigo}</span>` : ''}
+              ${etiquetaBeeperTurno(t)}
               <span class="hora-tag">${formatHora(t.created_at)}</span>
             </div>
           </div>
@@ -166,7 +182,7 @@ function cardLlamado(t) {
               <span class="atraccion-tag">${escapeHtml(t.atraccion_nombre)}</span>
               ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>` : ''}
               <span class="duracion-tag"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
-              ${t.viper_codigo ? `<span class="atraccion-tag" style="background:#ede9fe;color:#5b21b6"><i class="bi bi-broadcast me-1"></i>${escapeHtml(t.viper_codigo)}</span>` : ''}
+              ${etiquetaBeeperTurno(t)}
               <span class="badge bg-warning text-dark px-2">
                 <i class="bi bi-bell-fill me-1"></i>Llamado
               </span>
@@ -238,7 +254,7 @@ function cardJugando(t) {
               ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>` : ''}
               <span class="duracion-tag"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
               ${duracion ? `<span class="duracion-tag"><i class="bi bi-clock me-1"></i>${duracion} min est.</span>` : ''}
-              ${t.viper_codigo ? `<span class="atraccion-tag" style="background:#ede9fe;color:#5b21b6"><i class="bi bi-broadcast me-1"></i>${escapeHtml(t.viper_codigo)}</span>` : ''}
+              ${etiquetaBeeperTurno(t)}
               <span class="badge bg-primary text-white px-2">
                 <i class="bi bi-play-circle me-1"></i>Jugando
               </span>
@@ -357,12 +373,14 @@ function mostrarToast(mensaje, tipo = 'success') {
   }
 
   const id  = 'toast-' + Date.now();
-  const col = { success:'bg-success', danger:'bg-danger', warning:'bg-warning text-dark', info:'bg-info text-dark' }[tipo];
+  // Fondos claros (warning/info) llevan texto y botón de cierre oscuros para que se lean.
+  const claro = tipo === 'warning' || tipo === 'info';
+  const col = { success:'bg-success', danger:'bg-danger', warning:'bg-warning', info:'bg-info' }[tipo] || 'bg-secondary';
   container.insertAdjacentHTML('beforeend', `
-    <div id="${id}" class="toast align-items-center text-white ${col} border-0" role="alert">
+    <div id="${id}" class="toast align-items-center ${col} ${claro ? 'text-dark' : 'text-white'} border-0 shadow" role="alert">
       <div class="d-flex">
         <div class="toast-body fw-semibold">${mensaje}</div>
-        <button type="button" class="btn-close btn-close-white me-2 m-auto" data-bs-dismiss="toast"></button>
+        <button type="button" class="btn-close ${claro ? '' : 'btn-close-white'} me-2 m-auto" data-bs-dismiss="toast"></button>
       </div>
     </div>`);
   const el = document.getElementById(id);
