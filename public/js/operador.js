@@ -101,8 +101,17 @@ function renderTurnos() {
     ? activos.map(cardActivo).join('') : vacio('Ningún turno activo');
 }
 
-// Bug 12: En cola no hay botón "Llamar" — el sistema llama automáticamente
+// El botón "Llamar" solo aparece si el operador tiene permiso_llamar_turno
+// (lo activa el Administrador) y el turno es de su propia atracción asignada.
 function cardEsperando(t) {
+  const esAsignado = me.atraccion_id === t.atraccion_id || me.rol === 'admin';
+  const llamarBtn  = (me.permiso_llamar_turno && esAsignado)
+    ? `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="llamarTurnoOperador(${t.id},this)">
+         <i class="bi bi-megaphone me-1"></i>Llamar
+       </button>`
+    : `<span class="badge bg-warning text-dark px-3 py-2">
+         <i class="bi bi-hourglass-split me-1"></i>En espera
+       </span>`;
   return `
     <div class="turno-card esperando" id="turno-${t.id}">
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
@@ -121,9 +130,7 @@ function cardEsperando(t) {
           </div>
         </div>
         <div class="d-flex gap-2">
-          <span class="badge bg-warning text-dark px-3 py-2">
-            <i class="bi bi-hourglass-split me-1"></i>En espera
-          </span>
+          ${llamarBtn}
         </div>
       </div>
     </div>`;
@@ -145,14 +152,20 @@ function cardLlamado(t) {
   const restoMin      = Math.floor(restoMs / 60000);
   const restoSeg      = Math.floor((restoMs % 60000) / 1000);
 
-  const esAsignado = me.atraccion_id === t.atraccion_id || me.rol === 'admin';
-  const cancelBtn  = (me.permiso_cancelar_turno && esAsignado)
+  const esAsignado  = me.atraccion_id === t.atraccion_id || me.rol === 'admin';
+  const cancelBtn   = (me.permiso_cancelar_turno && esAsignado)
     ? `<button class="btn btn-danger btn-sm px-3 fw-bold" onclick="cancelarTurno(${t.id})">
          <i class="bi bi-person-x me-1"></i>No Llegó
        </button>` : '';
-  const llegoBtn   = esAsignado
+  const llegoBtn    = esAsignado
     ? `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="llegoTurno(${t.id},this)">
          <i class="bi bi-check-circle me-1"></i>Llegó
+       </button>` : '';
+  // Mientras no se marque "Llegó" se puede volver a llamar (resuena el mismo
+  // biper/VIPER del mismo turno, sin duplicar nada ni crear otro registro).
+  const llamarDeNuevoBtn = (me.permiso_llamar_turno && esAsignado)
+    ? `<button class="btn btn-outline-primary btn-sm px-3 fw-bold" onclick="llamarTurnoOperador(${t.id},this)">
+         <i class="bi bi-megaphone me-1"></i>Llamar nuevamente
        </button>` : '';
 
   return `
@@ -179,6 +192,7 @@ function cardLlamado(t) {
         </div>
         <div class="d-flex gap-2 flex-wrap">
           ${llegoBtn}
+          ${llamarDeNuevoBtn}
           ${cancelBtn}
         </div>
       </div>
@@ -306,13 +320,44 @@ async function llegoTurno(id, btn) {
   }
 }
 
+// Llama (o vuelve a llamar) un turno. Sirve tanto para el primer llamado desde
+// "En Cola" como para "Llamar nuevamente" mientras sigue en estado 'llamado'.
+async function llamarTurnoOperador(id, btn, force = false) {
+  if (btn) { btn.disabled = true; }
+  try {
+    const res = await fetch(`/api/turnos/${id}/llamar`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(force ? { force: true } : {}),
+    });
+    const data = await res.json();
+    if (!res.ok) { mostrarToast(data.error || 'No se pudo llamar al grupo', 'danger'); return; }
+
+    if (data.advertencia === 'biper_en_otro_juego') {
+      const resto = data.tiempo_restante > 0 ? ` (~${data.tiempo_restante} min restantes)` : '';
+      if (confirm(`El beeper ${data.biper_numero} está jugando en "${data.juego_origen}"${resto}. ¿Llamarlo igualmente?`)) {
+        await llamarTurnoOperador(id, btn, true);
+      }
+      return;
+    }
+    if (data.advertencia === 'capacidad_excedida') {
+      if (confirm(`Se superaría la capacidad máxima (quedarían ${data.totalPersonas}/${data.maximoPermitido} personas). ¿Llamar igualmente?`)) {
+        await llamarTurnoOperador(id, btn, true);
+      }
+      return;
+    }
+    mostrarToast(`Beeper ${data.biper_numero} llamado`, 'success');
+  } finally {
+    if (btn) { btn.disabled = false; }
+  }
+}
+
 async function cancelarTurno(id) {
-  if (!confirm('¿Marcar como "No llegó"? El turno quedará cancelado.')) return;
+  if (!confirm('¿Marcar como "No llegó"? El turno volverá al final de la cola de espera.')) return;
   const res = await fetch(`/api/turnos/${id}/cancelar`, { method: 'PUT' });
   if (!res.ok) { const d = await res.json(); mostrarToast(d.error || 'Sin permiso para cancelar', 'danger'); return; }
-  mostrarToast('Turno cancelado — No llegó', 'warning');
-  turnos = turnos.filter(x => x.id !== id);
-  renderTurnos();
+  mostrarToast('Marcado como "No llegó" — el turno volvió al final de la cola', 'warning');
+  await cargarTurnos();
 }
 
 // ── Socket ────────────────────────────────────────────────────────────────────
