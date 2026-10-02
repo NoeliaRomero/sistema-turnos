@@ -95,15 +95,31 @@ function getSincronizar() {
   } catch { return false; }
 }
 
+// Un "hermano combinado" es otro turno activo que juega EN LA MISMA ETAPA que
+// éste (además de la misma atracción/subcategoría). Antes, al no filtrar por
+// etapa, un turno que ya había avanzado a una etapa siguiente seguía
+// "combinado" con uno nuevo que recién entraba a la primera etapa — por eso
+// la etapa anterior nunca quedaba realmente libre. Si el juego no usa etapas
+// (etapa_actual_id siempre null), el filtro no se aplica y el comportamiento
+// queda exactamente igual que antes.
 function _hermanosCombinados(turno) {
+  const filtraEtapa = turno.etapa_actual_id != null;
+  const etapaSql    = filtraEtapa ? ' AND t.etapa_actual_id = ?' : '';
+
   if (turno.subcategoria_id) {
+    const params = filtraEtapa
+      ? [turno.atraccion_id, turno.subcategoria_id, turno.id, turno.etapa_actual_id]
+      : [turno.atraccion_id, turno.subcategoria_id, turno.id];
     return db.prepare(
-      "SELECT t.*, ea.orden AS etapa_actual_orden FROM turnos t LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id WHERE t.atraccion_id=? AND t.subcategoria_id=? AND t.estado IN ('llamado','jugando') AND t.id!=?"
-    ).all(turno.atraccion_id, turno.subcategoria_id, turno.id);
+      `SELECT t.*, ea.orden AS etapa_actual_orden FROM turnos t LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id WHERE t.atraccion_id=? AND t.subcategoria_id=? AND t.estado IN ('llamado','jugando') AND t.id!=?${etapaSql}`
+    ).all(...params);
   }
+  const params = filtraEtapa
+    ? [turno.atraccion_id, turno.id, turno.etapa_actual_id]
+    : [turno.atraccion_id, turno.id];
   return db.prepare(
-    "SELECT t.*, ea.orden AS etapa_actual_orden FROM turnos t LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id WHERE t.atraccion_id=? AND t.subcategoria_id IS NULL AND t.estado IN ('llamado','jugando') AND t.id!=?"
-  ).all(turno.atraccion_id, turno.id);
+    `SELECT t.*, ea.orden AS etapa_actual_orden FROM turnos t LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id WHERE t.atraccion_id=? AND t.subcategoria_id IS NULL AND t.estado IN ('llamado','jugando') AND t.id!=?${etapaSql}`
+  ).all(...params);
 }
 
 // ── Cierre de turno (finalizado / no_llego / cancelado) ──────────────────────
@@ -135,6 +151,9 @@ module.exports = (io) => {
 
   // Timers de transición llamado → jugando
   const timerLlamado = new Map();
+
+  // Timers de llamado automático del siguiente turno, uno por atracción.
+  const timerAutoLlamado = new Map();
 
   // Timer 5 min: llamado → jugando
   function _iniciarTimerJugando(turnoId) {
@@ -478,24 +497,24 @@ module.exports = (io) => {
     res.status(201).json(turno);
   });
 
-  // ── Llamar turno (manual, con subcategorías, Combinar y VIPER) ───────────────
-  // Admin siempre puede. Recepción y Operador necesitan permiso_llamar_turno
-  // (el operador además solo sobre turnos de su propia atracción asignada).
-  router.put('/:id/llamar', requireAuth('admin','recepcion','operador'), requirePermission('permiso_llamar_turno'), (req, res) => {
-    const { id } = req.params;
-    const force = req.body?.force === true;
-    const usuario = req.session.usuario;
+  // ── Núcleo de "llamar turno" ───────────────────────────────────────────────────
+  // Compartido entre el llamado manual (HTTP) y el llamado automático del
+  // siguiente turno: misma lógica, mismas validaciones, sin duplicar nada.
+  // Devuelve { status, body } en vez de escribir en `res`, para que ambos
+  // disparadores puedan usarlo por igual.
+  function _ejecutarLlamado(turnoId, usuario, { force = false } = {}) {
+    const id = Number(turnoId);
 
     const turnoActual = db.prepare(
       "SELECT * FROM turnos WHERE id=? AND estado IN ('esperando','llamado')"
-    ).get(Number(id));
+    ).get(id);
     if (!turnoActual) {
-      return res.status(400).json({ error: 'El turno no existe o ya no está disponible para llamar' });
+      return { status: 400, body: { error: 'El turno no existe o ya no está disponible para llamar' } };
     }
 
     if (usuario.rol === 'operador' && usuario.atraccion_id &&
         usuario.atraccion_id !== turnoActual.atraccion_id) {
-      return res.status(403).json({ error: 'Solo podés llamar turnos de tu juego asignado' });
+      return { status: 403, body: { error: 'Solo podés llamar turnos de tu juego asignado' } };
     }
 
     // Llamado repetido: el turno ya está en 'llamado' (todavía no se marcó
@@ -503,7 +522,7 @@ module.exports = (io) => {
     // subcategoría, etapa o capacidad — ya se cumplieron en el primer llamado,
     // y el turno sigue siendo el mismo (mismo VIPER/beeper, sin duplicar nada).
     const esReLlamado = turnoActual.estado === 'llamado';
-    var atraccionInfo;
+    let atraccionInfo;
 
     if (!esReLlamado) {
       // Detectar modo "combinar": ya hay grupos del mismo juego+subcategoría en llamado/jugando
@@ -539,9 +558,9 @@ module.exports = (io) => {
 
         if (primero && primero.id !== turnoActual.id) {
           console.log(`[LLAMAR] RECHAZADO: no es primero en cola (primero=${primero.id})`);
-          return res.status(400).json({
+          return { status: 400, body: {
             error: 'Debe llamarse primero al grupo que llegó antes en la cola'
-          });
+          } };
         }
       }
 
@@ -561,13 +580,13 @@ module.exports = (io) => {
           const elapsed   = conflictoViper.called_at
             ? Math.floor((Date.now() - new Date(conflictoViper.called_at).getTime()) / 60000) : 0;
           const restante  = Math.max(0, conflictoViper.duracion_minutos - elapsed);
-          return res.status(200).json({
+          return { status: 200, body: {
             advertencia:    'biper_en_otro_juego',
             biper_numero:   turnoActual.biper_numero,
             juego_origen:   conflictoViper.atraccion_nombre,
             nombre_cliente: conflictoViper.nombre_cliente,
             tiempo_restante: restante,
-          });
+          } };
         }
       }
 
@@ -592,39 +611,41 @@ module.exports = (io) => {
         }
         console.log(`[LLAMAR] conflictoSubcat=${conflictoSubcat} → ${conflictoSubcat > 0 ? 'RECHAZADO: subcategoría distinta activa' : 'OK'}`);
         if (conflictoSubcat > 0) {
-          return res.status(400).json({
+          return { status: 400, body: {
             error: 'No se pueden mezclar subcategorías: solo grupos de la misma subcategoría pueden jugar juntos'
-          });
+          } };
         }
       }
 
-      // Validación de etapa: no llamar si los grupos activos ya avanzaron de etapa
+      // Validación de etapa: la ocupación es POR ETAPA, no por el juego/sesión
+      // completa. Un turno activo que ya avanzó a la etapa siguiente libera la
+      // etapa anterior — solo bloquea si hay otro turno activo ocupando
+      // exactamente la misma etapa en la que entraría este turno.
       if (atraccionInfo?.usa_etapas) {
-        let avanzados;
-        if (atraccionInfo?.usa_subcategorias && turnoActual.subcategoria_id) {
-          avanzados = db.prepare(`
-            SELECT COUNT(*) AS c
-            FROM turnos t
-            LEFT JOIN juego_etapas e ON t.etapa_actual_id = e.id
-            WHERE t.atraccion_id = ? AND t.estado IN ('llamado','jugando')
-              AND t.subcategoria_id = ? AND COALESCE(e.orden, 1) > 1
-          `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id).c;
-        } else if (!atraccionInfo?.usa_subcategorias) {
-          avanzados = db.prepare(`
-            SELECT COUNT(*) AS c
-            FROM turnos t
-            LEFT JOIN juego_etapas e ON t.etapa_actual_id = e.id
-            WHERE t.atraccion_id = ? AND t.estado IN ('llamado','jugando')
-              AND COALESCE(e.orden, 1) > 1
-          `).get(turnoActual.atraccion_id).c;
-        } else {
-          avanzados = 0;
+        const etapaDeEntrada = turnoActual.etapa_actual_id || db.prepare(`
+          SELECT id FROM juego_etapas WHERE juego_id = ? AND activa = 1 ORDER BY orden ASC LIMIT 1
+        `).get(turnoActual.atraccion_id)?.id;
+
+        let etapaOcupada = 0;
+        if (etapaDeEntrada) {
+          if (atraccionInfo?.usa_subcategorias && turnoActual.subcategoria_id) {
+            etapaOcupada = db.prepare(`
+              SELECT COUNT(*) AS c FROM turnos
+              WHERE atraccion_id = ? AND estado IN ('llamado','jugando')
+                AND subcategoria_id = ? AND etapa_actual_id = ?
+            `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id, etapaDeEntrada).c;
+          } else if (!atraccionInfo?.usa_subcategorias) {
+            etapaOcupada = db.prepare(`
+              SELECT COUNT(*) AS c FROM turnos
+              WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND etapa_actual_id = ?
+            `).get(turnoActual.atraccion_id, etapaDeEntrada).c;
+          }
         }
-        console.log(`[LLAMAR] avanzadosEtapa=${avanzados} → ${avanzados > 0 ? 'RECHAZADO: grupos en etapa > 1' : 'OK'}`);
-        if (avanzados > 0) {
-          return res.status(400).json({
-            error: 'No se puede llamar: los grupos que están jugando ya avanzaron de etapa'
-          });
+        console.log(`[LLAMAR] etapaDeEntrada=${etapaDeEntrada ?? 'ninguna'} etapaOcupada=${etapaOcupada} → ${etapaOcupada > 0 ? 'RECHAZADO: etapa ocupada' : 'OK'}`);
+        if (etapaOcupada > 0) {
+          return { status: 400, body: {
+            error: 'No se puede llamar: ya hay un grupo en esa etapa'
+          } };
         }
       }
 
@@ -652,13 +673,13 @@ module.exports = (io) => {
         const maximoPermitido = atraccionInfo?.max_miembros || 20;
 
         if (totalPersonas > maximoPermitido) {
-          return res.status(200).json({
+          return { status: 200, body: {
             advertencia: 'capacidad_excedida',
             personasJugando,
             personasGrupo,
             totalPersonas,
             maximoPermitido,
-          });
+          } };
         }
       }
     }
@@ -722,7 +743,55 @@ module.exports = (io) => {
     // Iniciar timer de transición llamado → jugando
     _iniciarTimerJugando(turno.id);
 
-    res.json(turno);
+    // Si el juego tiene llamado automático habilitado, programar el intento
+    // del siguiente turno (misma lógica de validación, reutilizada).
+    _programarLlamadoAutomatico(turno.atraccion_id);
+
+    return { status: 200, body: turno };
+  }
+
+  // Intenta llamar automáticamente al siguiente turno en espera de una
+  // atracción, pasado el tiempo configurado — solo si esa atracción tiene
+  // `llamado_automatico` habilitado. Usa el mismo `_ejecutarLlamado` que el
+  // llamado manual, así que respeta exactamente las mismas validaciones
+  // (cola, subcategorías, etapa, capacidad, VIPER). Si la atracción no tiene
+  // la función activada, no hace nada — el comportamiento queda igual que hoy.
+  function _programarLlamadoAutomatico(atraccionId) {
+    const atraccion = db.prepare(
+      'SELECT llamado_automatico, tiempo_entre_llamados_segundos FROM atracciones WHERE id = ?'
+    ).get(atraccionId);
+    if (!atraccion?.llamado_automatico || !atraccion.tiempo_entre_llamados_segundos) return;
+
+    if (timerAutoLlamado.has(atraccionId)) clearTimeout(timerAutoLlamado.get(atraccionId));
+
+    const handle = setTimeout(() => {
+      timerAutoLlamado.delete(atraccionId);
+
+      const siguiente = db.prepare(`
+        SELECT id FROM turnos WHERE atraccion_id = ? AND estado = 'esperando'
+        ORDER BY orden_cola ASC, id ASC LIMIT 1
+      `).get(atraccionId);
+      if (!siguiente) return;
+
+      // No hay una sesión humana detrás de un llamado automático: no aplica
+      // el chequeo de atracción asignada del operador y no se registra
+      // llamado_por (queda null, igual que cualquier columna sin asignar).
+      const usuarioSistema = { id: null, rol: 'sistema', atraccion_id: null };
+      const resultado = _ejecutarLlamado(siguiente.id, usuarioSistema, {});
+      const exito = resultado.status === 200 && !resultado.body?.advertencia;
+      console.log(`[AUTO-LLAMAR] atraccion=${atraccionId} turno=${siguiente.id} → ${exito ? 'llamado' : 'no llamado: ' + (resultado.body?.advertencia || resultado.body?.error || 'rechazado')}`);
+    }, atraccion.tiempo_entre_llamados_segundos * 1000);
+
+    timerAutoLlamado.set(atraccionId, handle);
+  }
+
+  // ── Llamar turno (manual, con subcategorías, Combinar y VIPER) ───────────────
+  // Admin siempre puede. Recepción y Operador necesitan permiso_llamar_turno
+  // (el operador además solo sobre turnos de su propia atracción asignada).
+  router.put('/:id/llamar', requireAuth('admin','recepcion','operador'), requirePermission('permiso_llamar_turno'), (req, res) => {
+    const force     = req.body?.force === true;
+    const resultado = _ejecutarLlamado(req.params.id, req.session.usuario, { force });
+    res.status(resultado.status).json(resultado.body);
   });
 
   // ── Avanzar / finalizar etapa (operador) ──────────────────────────────────────

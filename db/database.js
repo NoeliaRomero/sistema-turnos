@@ -121,6 +121,8 @@ db.exec(`
   "ALTER TABLE juego_etapas ADD COLUMN activa                 INTEGER DEFAULT 1",
   "ALTER TABLE turnos      ADD COLUMN jugando_desde           DATETIME DEFAULT NULL",
   "ALTER TABLE turnos      ADD COLUMN creado_por              INTEGER REFERENCES usuarios(id)",
+  "ALTER TABLE atracciones ADD COLUMN llamado_automatico              INTEGER DEFAULT 0",
+  "ALTER TABLE atracciones ADD COLUMN tiempo_entre_llamados_segundos  INTEGER DEFAULT NULL",
 ].forEach(sql => { try { db.exec(sql); } catch (_) {} });
 
 // Inicializar orden_cola para turnos existentes sin valor

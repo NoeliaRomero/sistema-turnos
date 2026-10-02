@@ -180,6 +180,21 @@
           </div>
         </div>
 
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="jLlamadoAutomatico">
+            <label class="form-check-label fw-semibold" for="jLlamadoAutomatico">Llamado automático del siguiente turno</label>
+          </div>
+          <div class="form-text">Si está activado, al liberarse un lugar el sistema llama solo al siguiente turno en espera, respetando las mismas reglas que un llamado manual (cola, subcategorías, etapas, capacidad y VIPER)</div>
+        </div>
+        <div class="mb-3 d-none" id="wrapTiempoAutoLlamado">
+          <label class="form-label fw-semibold" for="jTiempoAutoLlamado">Tiempo entre llamados <span class="text-danger">*</span></label>
+          <div class="input-group" style="max-width:220px">
+            <input type="number" class="form-control" id="jTiempoAutoLlamado" min="1" max="600" value="10">
+            <span class="input-group-text">segundos</span>
+          </div>
+        </div>
+
         <div class="mb-3" id="activoWrap" style="display:none">
           <div class="form-check form-switch">
             <input class="form-check-input" type="checkbox" id="jActivo" checked>

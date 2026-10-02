@@ -546,6 +546,9 @@ function limpiarModalJuego() {
   document.getElementById('jActivo').checked    = true;
   document.getElementById('jUsaEtapas').checked = false;
   document.getElementById('jUsaSubcategorias').checked = false;
+  document.getElementById('jLlamadoAutomatico').checked = false;
+  document.getElementById('jTiempoAutoLlamado').value   = '10';
+  document.getElementById('wrapTiempoAutoLlamado').classList.add('d-none');
   document.getElementById('listaEtapas').innerHTML = '';
   document.getElementById('listaSubcategorias').innerHTML = '';
   document.getElementById('totalDuracion').textContent = '0 minutos';
@@ -584,6 +587,10 @@ document.getElementById('jUsaSubcategorias').addEventListener('change', function
   }
 });
 
+document.getElementById('jLlamadoAutomatico').addEventListener('change', function () {
+  document.getElementById('wrapTiempoAutoLlamado').classList.toggle('d-none', !this.checked);
+});
+
 document.getElementById('btnAgregarSubcategoria').addEventListener('click', () => {
   document.getElementById('listaSubcategorias').appendChild(crearFilaSubcategoria());
 });
@@ -601,6 +608,9 @@ async function editarJuego(id) {
   document.getElementById('jMaxMiembros').value = j.max_miembros || 20;
   document.getElementById('jActivo').checked    = !!j.activa;
   document.getElementById('activoWrap').style.display = 'block';
+  document.getElementById('jLlamadoAutomatico').checked = !!j.llamado_automatico;
+  document.getElementById('jTiempoAutoLlamado').value   = j.tiempo_entre_llamados_segundos || 10;
+  document.getElementById('wrapTiempoAutoLlamado').classList.toggle('d-none', !j.llamado_automatico);
   if (j.usa_etapas) {
     document.getElementById('jUsaEtapas').checked = true;
     document.getElementById('wrapDuracionManual').classList.add('d-none');
@@ -640,7 +650,16 @@ async function _guardarJuego() { {
   if (!nombre) { errEl.textContent = 'El nombre es requerido'; errEl.classList.remove('d-none'); return; }
   if (minM < 1 || maxM < minM) { errEl.textContent = 'El rango de personas no es válido'; errEl.classList.remove('d-none'); return; }
 
-  let payload = { nombre, activa, min_miembros: minM, max_miembros: maxM, usa_etapas: usaEtapas, usa_subcategorias: usaSubcategorias };
+  const llamadoAutomatico = document.getElementById('jLlamadoAutomatico').checked;
+  const tiempoAutoLlamado = parseInt(document.getElementById('jTiempoAutoLlamado').value, 10);
+  if (llamadoAutomatico && (!tiempoAutoLlamado || tiempoAutoLlamado < 1)) {
+    errEl.textContent = 'El tiempo entre llamados debe ser mayor a 0 segundos'; errEl.classList.remove('d-none'); return;
+  }
+
+  let payload = {
+    nombre, activa, min_miembros: minM, max_miembros: maxM, usa_etapas: usaEtapas, usa_subcategorias: usaSubcategorias,
+    llamado_automatico: llamadoAutomatico, tiempo_entre_llamados_segundos: llamadoAutomatico ? tiempoAutoLlamado : null,
+  };
 
   if (usaEtapas) {
     const filas = document.querySelectorAll('#listaEtapas .etapa-row');

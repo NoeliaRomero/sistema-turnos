@@ -71,7 +71,8 @@ router.get('/:id/subcategorias', requireAuth('admin', 'operador', 'recepcion'), 
 // Crear juego
 router.post('/', requirePermission('permiso_gestionar_juegos'), (req, res) => {
   const { nombre, duracion_minutos, min_miembros, max_miembros,
-          usa_etapas, etapas, usa_subcategorias, subcategorias } = req.body;
+          usa_etapas, etapas, usa_subcategorias, subcategorias,
+          llamado_automatico, tiempo_entre_llamados_segundos } = req.body;
   if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre es requerido' });
 
   const dup = db.prepare("SELECT id FROM atracciones WHERE nombre = ? COLLATE NOCASE").get(nombre.trim());
@@ -93,9 +94,20 @@ router.post('/', requirePermission('permiso_gestionar_juegos'), (req, res) => {
   const maxM     = parseInt(max_miembros) || 20;
   const duracion = usaEtapas ? 0 : (parseInt(duracion_minutos) || 30);
 
+  // Llamado automático: apagado por defecto; si se activa, requiere un tiempo
+  // entre llamados entero y mayor a cero (misma validación que otros campos numéricos).
+  const llamadoAutomatico = llamado_automatico ? 1 : 0;
+  let tiempoEntreLlamados = null;
+  if (llamadoAutomatico) {
+    tiempoEntreLlamados = parseInt(tiempo_entre_llamados_segundos, 10);
+    if (!Number.isInteger(tiempoEntreLlamados) || tiempoEntreLlamados <= 0) {
+      return res.status(400).json({ error: 'El tiempo entre llamados debe ser un número entero mayor a cero.' });
+    }
+  }
+
   const result = db.prepare(
-    'INSERT INTO atracciones (nombre, duracion_minutos, min_miembros, max_miembros, usa_etapas, usa_subcategorias) VALUES (?,?,?,?,?,?)'
-  ).run(nombre.trim(), duracion, minM, maxM, usaEtapas, usaSubs);
+    'INSERT INTO atracciones (nombre, duracion_minutos, min_miembros, max_miembros, usa_etapas, usa_subcategorias, llamado_automatico, tiempo_entre_llamados_segundos) VALUES (?,?,?,?,?,?,?,?)'
+  ).run(nombre.trim(), duracion, minM, maxM, usaEtapas, usaSubs, llamadoAutomatico, tiempoEntreLlamados);
 
   const juegoId = Number(result.lastInsertRowid);
 
@@ -124,7 +136,8 @@ router.post('/', requirePermission('permiso_gestionar_juegos'), (req, res) => {
 // Editar juego
 router.put('/:id', requirePermission('permiso_gestionar_juegos'), (req, res) => {
   const { nombre, duracion_minutos, activa, min_miembros, max_miembros,
-          usa_etapas, etapas, usa_subcategorias, subcategorias } = req.body;
+          usa_etapas, etapas, usa_subcategorias, subcategorias,
+          llamado_automatico, tiempo_entre_llamados_segundos } = req.body;
   if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre es requerido' });
 
   const dup = db.prepare("SELECT id FROM atracciones WHERE nombre = ? COLLATE NOCASE AND id != ?")
@@ -147,8 +160,19 @@ router.put('/:id', requirePermission('permiso_gestionar_juegos'), (req, res) => 
   const maxM     = parseInt(max_miembros) || 20;
   const duracion = usaEtapas ? 0 : (parseInt(duracion_minutos) || 30);
 
-  db.prepare("UPDATE atracciones SET nombre=?, duracion_minutos=?, activa=?, min_miembros=?, max_miembros=?, usa_etapas=?, usa_subcategorias=? WHERE id=?")
-    .run(nombre.trim(), duracion, activa == null ? 1 : (Number(activa) ? 1 : 0), minM, maxM, usaEtapas, usaSubs, req.params.id);
+  // Llamado automático: apagado por defecto; si se activa, requiere un tiempo
+  // entre llamados entero y mayor a cero (misma validación que otros campos numéricos).
+  const llamadoAutomatico = llamado_automatico ? 1 : 0;
+  let tiempoEntreLlamados = null;
+  if (llamadoAutomatico) {
+    tiempoEntreLlamados = parseInt(tiempo_entre_llamados_segundos, 10);
+    if (!Number.isInteger(tiempoEntreLlamados) || tiempoEntreLlamados <= 0) {
+      return res.status(400).json({ error: 'El tiempo entre llamados debe ser un número entero mayor a cero.' });
+    }
+  }
+
+  db.prepare("UPDATE atracciones SET nombre=?, duracion_minutos=?, activa=?, min_miembros=?, max_miembros=?, usa_etapas=?, usa_subcategorias=?, llamado_automatico=?, tiempo_entre_llamados_segundos=? WHERE id=?")
+    .run(nombre.trim(), duracion, activa == null ? 1 : (Number(activa) ? 1 : 0), minM, maxM, usaEtapas, usaSubs, llamadoAutomatico, tiempoEntreLlamados, req.params.id);
 
   db.prepare('DELETE FROM juego_etapas WHERE juego_id = ?').run(req.params.id);
   if (usaEtapas) {
