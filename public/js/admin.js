@@ -210,11 +210,8 @@ async function cargarUsuarios() {
     const perms = [];
     if (u.rol === 'admin') {
       perms.push('<span class="perm-badge">Todos</span>');
-    } else if (u.rol === 'operador') {
-      perms.push('<span class="perm-badge me-1"><i class="bi bi-megaphone"></i> Llamar</span>');
-      if (u.permiso_cancelar_turno   && adminMe?.feature_cancelar_turno) perms.push('<span class="perm-badge me-1"><i class="bi bi-x-circle"></i> Cancelar</span>');
-      if (u.permiso_gestionar_juegos && adminMe?.feature_juegos)         perms.push('<span class="perm-badge"><i class="bi bi-controller"></i> Juegos</span>');
     } else {
+      // Recepcionista y Operador comparten el mismo esquema de permisos.
       if (u.permiso_llamar_turno     && adminMe?.feature_llamar_turno)   perms.push('<span class="perm-badge me-1"><i class="bi bi-megaphone"></i> Llamar</span>');
       if (u.permiso_cancelar_turno   && adminMe?.feature_cancelar_turno) perms.push('<span class="perm-badge me-1"><i class="bi bi-x-circle"></i> Cancelar</span>');
       if (u.permiso_gestionar_juegos && adminMe?.feature_juegos)         perms.push('<span class="perm-badge"><i class="bi bi-controller"></i> Juegos</span>');
@@ -287,8 +284,8 @@ function actualizarCamposRol() {
   const rowCancelar = document.getElementById('uPermisoCancelar').closest('.form-check');
   const rowJuegos   = document.getElementById('uPermisoJuegos').closest('.form-check');
 
-  // "Llamar" no aplica a operadores (siempre lo tienen) y requiere feature_llamar_turno
-  if (rowLlamar)   rowLlamar.style.display   = (rol === 'operador' || !adminMe?.feature_llamar_turno)   ? 'none' : '';
+  // "Llamar" aplica tanto a Recepción como a Operador y requiere feature_llamar_turno
+  if (rowLlamar)   rowLlamar.style.display   = (!adminMe?.feature_llamar_turno) ? 'none' : '';
   if (rowCancelar) rowCancelar.style.display = (!adminMe?.feature_cancelar_turno) ? 'none' : '';
   if (rowJuegos)   rowJuegos.style.display   = (!adminMe?.feature_juegos)         ? 'none' : '';
 

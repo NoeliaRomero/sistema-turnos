@@ -244,6 +244,15 @@ function renderJuegoPane(j) {
              <i class="bi bi-x-octagon me-1"></i>Cancelar
            </button>`
         : '';
+      // Mientras el grupo siga en estado 'llamado' (todavía no marcó "Llegó" el
+      // operador) se puede volver a llamar al mismo turno/beeper las veces que
+      // haga falta — reutiliza el mismo flujo de llamado (con sus confirmaciones).
+      const btnLlamarNuevamente = (me?.permiso_llamar_turno && t.estado === 'llamado')
+        ? `<button class="btn btn-outline-success btn-sm fw-bold px-3"
+             onclick="_ejecutarLlamar(${t.id})">
+             <i class="bi bi-megaphone me-1"></i>Llamar nuevamente
+           </button>`
+        : '';
       // Info de etapa para recepción
       let etapaHtml = '';
       if (t.etapa_actual_nombre) {
@@ -284,6 +293,7 @@ function renderJuegoPane(j) {
             <div class="fw-semibold text-primary">${formatMinutos(t.tiempo_restante)} restantes</div>
             <div class="text-muted small">${formatMinutos(t.tiempo_transcurrido)} transcurridos</div>
           </div>
+          ${btnLlamarNuevamente}
           ${btnCancelarTurno}
           ${btnFinalizar}
         </div>

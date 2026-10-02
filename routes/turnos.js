@@ -479,178 +479,196 @@ module.exports = (io) => {
   });
 
   // ── Llamar turno (manual, con subcategorías, Combinar y VIPER) ───────────────
-  router.put('/:id/llamar', requireAuth('admin','recepcion'), requirePermission('permiso_llamar_turno'), (req, res) => {
+  // Admin siempre puede. Recepción y Operador necesitan permiso_llamar_turno
+  // (el operador además solo sobre turnos de su propia atracción asignada).
+  router.put('/:id/llamar', requireAuth('admin','recepcion','operador'), requirePermission('permiso_llamar_turno'), (req, res) => {
     const { id } = req.params;
     const force = req.body?.force === true;
+    const usuario = req.session.usuario;
 
     const turnoActual = db.prepare(
-      "SELECT * FROM turnos WHERE id=? AND estado='esperando'"
+      "SELECT * FROM turnos WHERE id=? AND estado IN ('esperando','llamado')"
     ).get(Number(id));
     if (!turnoActual) {
-      return res.status(400).json({ error: 'El turno no existe o ya fue llamado' });
+      return res.status(400).json({ error: 'El turno no existe o ya no está disponible para llamar' });
     }
 
-    // Detectar modo "combinar": ya hay grupos del mismo juego+subcategoría en llamado/jugando
-    const modoCombinable = (() => {
-      if (turnoActual.subcategoria_id) {
+    if (usuario.rol === 'operador' && usuario.atraccion_id &&
+        usuario.atraccion_id !== turnoActual.atraccion_id) {
+      return res.status(403).json({ error: 'Solo podés llamar turnos de tu juego asignado' });
+    }
+
+    // Llamado repetido: el turno ya está en 'llamado' (todavía no se marcó
+    // "Llegó"). Se reenvía la señal sin repetir las validaciones de cola,
+    // subcategoría, etapa o capacidad — ya se cumplieron en el primer llamado,
+    // y el turno sigue siendo el mismo (mismo VIPER/beeper, sin duplicar nada).
+    const esReLlamado = turnoActual.estado === 'llamado';
+    var atraccionInfo;
+
+    if (!esReLlamado) {
+      // Detectar modo "combinar": ya hay grupos del mismo juego+subcategoría en llamado/jugando
+      const modoCombinable = (() => {
+        if (turnoActual.subcategoria_id) {
+          return db.prepare(
+            "SELECT COUNT(*) AS c FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id = ?"
+          ).get(turnoActual.atraccion_id, turnoActual.subcategoria_id).c > 0;
+        }
         return db.prepare(
-          "SELECT COUNT(*) AS c FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id = ?"
-        ).get(turnoActual.atraccion_id, turnoActual.subcategoria_id).c > 0;
+          "SELECT COUNT(*) AS c FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando')"
+        ).get(turnoActual.atraccion_id).c > 0;
+      })();
+
+      console.log(`[LLAMAR] turno=${turnoActual.id} atraccion=${turnoActual.atraccion_id} subcat=${turnoActual.subcategoria_id ?? 'ninguna'} modoCombinable=${modoCombinable}`);
+
+      // Verificar que sea el primero en la cola solo cuando no hay nadie activo aún
+      if (!modoCombinable) {
+        let primero;
+        if (turnoActual.subcategoria_id) {
+          primero = db.prepare(`
+            SELECT id FROM turnos
+            WHERE atraccion_id = ? AND subcategoria_id = ? AND estado = 'esperando'
+            ORDER BY orden_cola ASC, id ASC LIMIT 1
+          `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id);
+        } else {
+          primero = db.prepare(`
+            SELECT id FROM turnos
+            WHERE atraccion_id = ? AND subcategoria_id IS NULL AND estado = 'esperando'
+            ORDER BY orden_cola ASC, id ASC LIMIT 1
+          `).get(turnoActual.atraccion_id);
+        }
+
+        if (primero && primero.id !== turnoActual.id) {
+          console.log(`[LLAMAR] RECHAZADO: no es primero en cola (primero=${primero.id})`);
+          return res.status(400).json({
+            error: 'Debe llamarse primero al grupo que llegó antes en la cola'
+          });
+        }
       }
-      return db.prepare(
-        "SELECT COUNT(*) AS c FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando')"
-      ).get(turnoActual.atraccion_id).c > 0;
-    })();
 
-    console.log(`[LLAMAR] turno=${turnoActual.id} atraccion=${turnoActual.atraccion_id} subcat=${turnoActual.subcategoria_id ?? 'ninguna'} modoCombinable=${modoCombinable}`);
-
-    // Verificar que sea el primero en la cola solo cuando no hay nadie activo aún
-    if (!modoCombinable) {
-      let primero;
-      if (turnoActual.subcategoria_id) {
-        primero = db.prepare(`
-          SELECT id FROM turnos
-          WHERE atraccion_id = ? AND subcategoria_id = ? AND estado = 'esperando'
-          ORDER BY orden_cola ASC, id ASC LIMIT 1
-        `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id);
-      } else {
-        primero = db.prepare(`
-          SELECT id FROM turnos
-          WHERE atraccion_id = ? AND subcategoria_id IS NULL AND estado = 'esperando'
-          ORDER BY orden_cola ASC, id ASC LIMIT 1
-        `).get(turnoActual.atraccion_id);
-      }
-
-      if (primero && primero.id !== turnoActual.id) {
-        console.log(`[LLAMAR] RECHAZADO: no es primero en cola (primero=${primero.id})`);
-        return res.status(400).json({
-          error: 'Debe llamarse primero al grupo que llegó antes en la cola'
-        });
-      }
-    }
-
-    // Validación de biper en otro juego (omitible con force=true)
-    if (!force) {
-      const conflictoViper = db.prepare(`
-        SELECT t.id, t.nombre_cliente, t.biper_numero, t.called_at,
-               a.nombre AS atraccion_nombre, a.duracion_minutos
-        FROM turnos t
-        JOIN atracciones a ON t.atraccion_id = a.id
-        WHERE t.biper_numero = ?
-          AND t.atraccion_id != ?
-          AND t.estado IN ('llamado','jugando')
-      `).get(turnoActual.biper_numero, turnoActual.atraccion_id);
-
-      if (conflictoViper) {
-        const elapsed   = conflictoViper.called_at
-          ? Math.floor((Date.now() - new Date(conflictoViper.called_at).getTime()) / 60000) : 0;
-        const restante  = Math.max(0, conflictoViper.duracion_minutos - elapsed);
-        return res.status(200).json({
-          advertencia:    'biper_en_otro_juego',
-          biper_numero:   turnoActual.biper_numero,
-          juego_origen:   conflictoViper.atraccion_nombre,
-          nombre_cliente: conflictoViper.nombre_cliente,
-          tiempo_restante: restante,
-        });
-      }
-    }
-
-    const atraccionInfo = db.prepare(
-      'SELECT max_miembros, usa_subcategorias, usa_etapas FROM atracciones WHERE id = ?'
-    ).get(turnoActual.atraccion_id);
-
-    // Validación de subcategoría: bloquear si hay grupos de distinta subcategoría activos
-    if (atraccionInfo?.usa_subcategorias) {
-      let conflictoSubcat;
-      if (turnoActual.subcategoria_id) {
-        conflictoSubcat = db.prepare(`
-          SELECT COUNT(*) AS c FROM turnos
-          WHERE atraccion_id = ? AND estado IN ('llamado','jugando')
-            AND (subcategoria_id IS NULL OR subcategoria_id != ?)
-        `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id).c;
-      } else {
-        conflictoSubcat = db.prepare(`
-          SELECT COUNT(*) AS c FROM turnos
-          WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id IS NOT NULL
-        `).get(turnoActual.atraccion_id).c;
-      }
-      console.log(`[LLAMAR] conflictoSubcat=${conflictoSubcat} → ${conflictoSubcat > 0 ? 'RECHAZADO: subcategoría distinta activa' : 'OK'}`);
-      if (conflictoSubcat > 0) {
-        return res.status(400).json({
-          error: 'No se pueden mezclar subcategorías: solo grupos de la misma subcategoría pueden jugar juntos'
-        });
-      }
-    }
-
-    // Validación de etapa: no llamar si los grupos activos ya avanzaron de etapa
-    if (atraccionInfo?.usa_etapas) {
-      let avanzados;
-      if (atraccionInfo?.usa_subcategorias && turnoActual.subcategoria_id) {
-        avanzados = db.prepare(`
-          SELECT COUNT(*) AS c
+      // Validación de biper en otro juego (omitible con force=true)
+      if (!force) {
+        const conflictoViper = db.prepare(`
+          SELECT t.id, t.nombre_cliente, t.biper_numero, t.called_at,
+                 a.nombre AS atraccion_nombre, a.duracion_minutos
           FROM turnos t
-          LEFT JOIN juego_etapas e ON t.etapa_actual_id = e.id
-          WHERE t.atraccion_id = ? AND t.estado IN ('llamado','jugando')
-            AND t.subcategoria_id = ? AND COALESCE(e.orden, 1) > 1
-        `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id).c;
-      } else if (!atraccionInfo?.usa_subcategorias) {
-        avanzados = db.prepare(`
-          SELECT COUNT(*) AS c
-          FROM turnos t
-          LEFT JOIN juego_etapas e ON t.etapa_actual_id = e.id
-          WHERE t.atraccion_id = ? AND t.estado IN ('llamado','jugando')
-            AND COALESCE(e.orden, 1) > 1
-        `).get(turnoActual.atraccion_id).c;
-      } else {
-        avanzados = 0;
-      }
-      console.log(`[LLAMAR] avanzadosEtapa=${avanzados} → ${avanzados > 0 ? 'RECHAZADO: grupos en etapa > 1' : 'OK'}`);
-      if (avanzados > 0) {
-        return res.status(400).json({
-          error: 'No se puede llamar: los grupos que están jugando ya avanzaron de etapa'
-        });
-      }
-    }
+          JOIN atracciones a ON t.atraccion_id = a.id
+          WHERE t.biper_numero = ?
+            AND t.atraccion_id != ?
+            AND t.estado IN ('llamado','jugando')
+        `).get(turnoActual.biper_numero, turnoActual.atraccion_id);
 
-    // Validación de capacidad (omitible con force=true)
-    if (!force) {
-      let personasJugando;
-      if (atraccionInfo?.usa_subcategorias && turnoActual.subcategoria_id) {
-        ({ personasJugando } = db.prepare(`
-          SELECT COALESCE(SUM(cantidad_miembros), 0) AS personasJugando
-          FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id = ?
-        `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id));
-      } else if (atraccionInfo?.usa_subcategorias) {
-        ({ personasJugando } = db.prepare(`
-          SELECT COALESCE(SUM(cantidad_miembros), 0) AS personasJugando
-          FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id IS NULL
-        `).get(turnoActual.atraccion_id));
-      } else {
-        ({ personasJugando } = db.prepare(`
-          SELECT COALESCE(SUM(cantidad_miembros), 0) AS personasJugando
-          FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando')
-        `).get(turnoActual.atraccion_id));
+        if (conflictoViper) {
+          const elapsed   = conflictoViper.called_at
+            ? Math.floor((Date.now() - new Date(conflictoViper.called_at).getTime()) / 60000) : 0;
+          const restante  = Math.max(0, conflictoViper.duracion_minutos - elapsed);
+          return res.status(200).json({
+            advertencia:    'biper_en_otro_juego',
+            biper_numero:   turnoActual.biper_numero,
+            juego_origen:   conflictoViper.atraccion_nombre,
+            nombre_cliente: conflictoViper.nombre_cliente,
+            tiempo_restante: restante,
+          });
+        }
       }
-      const personasGrupo   = turnoActual.cantidad_miembros || 1;
-      const totalPersonas   = personasJugando + personasGrupo;
-      const maximoPermitido = atraccionInfo?.max_miembros || 20;
 
-      if (totalPersonas > maximoPermitido) {
-        return res.status(200).json({
-          advertencia: 'capacidad_excedida',
-          personasJugando,
-          personasGrupo,
-          totalPersonas,
-          maximoPermitido,
-        });
+      atraccionInfo = db.prepare(
+        'SELECT max_miembros, usa_subcategorias, usa_etapas FROM atracciones WHERE id = ?'
+      ).get(turnoActual.atraccion_id);
+
+      // Validación de subcategoría: bloquear si hay grupos de distinta subcategoría activos
+      if (atraccionInfo?.usa_subcategorias) {
+        let conflictoSubcat;
+        if (turnoActual.subcategoria_id) {
+          conflictoSubcat = db.prepare(`
+            SELECT COUNT(*) AS c FROM turnos
+            WHERE atraccion_id = ? AND estado IN ('llamado','jugando')
+              AND (subcategoria_id IS NULL OR subcategoria_id != ?)
+          `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id).c;
+        } else {
+          conflictoSubcat = db.prepare(`
+            SELECT COUNT(*) AS c FROM turnos
+            WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id IS NOT NULL
+          `).get(turnoActual.atraccion_id).c;
+        }
+        console.log(`[LLAMAR] conflictoSubcat=${conflictoSubcat} → ${conflictoSubcat > 0 ? 'RECHAZADO: subcategoría distinta activa' : 'OK'}`);
+        if (conflictoSubcat > 0) {
+          return res.status(400).json({
+            error: 'No se pueden mezclar subcategorías: solo grupos de la misma subcategoría pueden jugar juntos'
+          });
+        }
+      }
+
+      // Validación de etapa: no llamar si los grupos activos ya avanzaron de etapa
+      if (atraccionInfo?.usa_etapas) {
+        let avanzados;
+        if (atraccionInfo?.usa_subcategorias && turnoActual.subcategoria_id) {
+          avanzados = db.prepare(`
+            SELECT COUNT(*) AS c
+            FROM turnos t
+            LEFT JOIN juego_etapas e ON t.etapa_actual_id = e.id
+            WHERE t.atraccion_id = ? AND t.estado IN ('llamado','jugando')
+              AND t.subcategoria_id = ? AND COALESCE(e.orden, 1) > 1
+          `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id).c;
+        } else if (!atraccionInfo?.usa_subcategorias) {
+          avanzados = db.prepare(`
+            SELECT COUNT(*) AS c
+            FROM turnos t
+            LEFT JOIN juego_etapas e ON t.etapa_actual_id = e.id
+            WHERE t.atraccion_id = ? AND t.estado IN ('llamado','jugando')
+              AND COALESCE(e.orden, 1) > 1
+          `).get(turnoActual.atraccion_id).c;
+        } else {
+          avanzados = 0;
+        }
+        console.log(`[LLAMAR] avanzadosEtapa=${avanzados} → ${avanzados > 0 ? 'RECHAZADO: grupos en etapa > 1' : 'OK'}`);
+        if (avanzados > 0) {
+          return res.status(400).json({
+            error: 'No se puede llamar: los grupos que están jugando ya avanzaron de etapa'
+          });
+        }
+      }
+
+      // Validación de capacidad (omitible con force=true)
+      if (!force) {
+        let personasJugando;
+        if (atraccionInfo?.usa_subcategorias && turnoActual.subcategoria_id) {
+          ({ personasJugando } = db.prepare(`
+            SELECT COALESCE(SUM(cantidad_miembros), 0) AS personasJugando
+            FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id = ?
+          `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id));
+        } else if (atraccionInfo?.usa_subcategorias) {
+          ({ personasJugando } = db.prepare(`
+            SELECT COALESCE(SUM(cantidad_miembros), 0) AS personasJugando
+            FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id IS NULL
+          `).get(turnoActual.atraccion_id));
+        } else {
+          ({ personasJugando } = db.prepare(`
+            SELECT COALESCE(SUM(cantidad_miembros), 0) AS personasJugando
+            FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando')
+          `).get(turnoActual.atraccion_id));
+        }
+        const personasGrupo   = turnoActual.cantidad_miembros || 1;
+        const totalPersonas   = personasJugando + personasGrupo;
+        const maximoPermitido = atraccionInfo?.max_miembros || 20;
+
+        if (totalPersonas > maximoPermitido) {
+          return res.status(200).json({
+            advertencia: 'capacidad_excedida',
+            personasJugando,
+            personasGrupo,
+            totalPersonas,
+            maximoPermitido,
+          });
+        }
       }
     }
 
     // Backfill: si el juego usa etapas pero el turno nunca tuvo una asignada
     // (ej. se creó antes de que se configuraran las etapas del juego), se le
-    // asigna la primera etapa recién ahora, al llamarlo.
+    // asigna la primera etapa recién ahora, al llamarlo. En un re-llamado no
+    // hace falta: si no tenía etapa antes, sigue sin tenerla ahora.
     let etapaParaIniciar = turnoActual.etapa_actual_id;
-    if (atraccionInfo?.usa_etapas && !etapaParaIniciar) {
+    if (!esReLlamado && atraccionInfo?.usa_etapas && !etapaParaIniciar) {
       const primeraEtapa = db.prepare(`
         SELECT id FROM juego_etapas
         WHERE juego_id = ? AND activa = 1
@@ -670,14 +688,14 @@ module.exports = (io) => {
       UPDATE turnos
       SET estado='llamado', called_at=datetime('now','localtime'), llamado_por=?
       WHERE id=?
-    `).run(req.session.usuario.id, id);
+    `).run(usuario.id, id);
 
     if (etapaParaIniciar) {
       db.prepare(`
         UPDATE turno_etapas_historial
         SET iniciada_at = datetime('now','localtime'), iniciada_por = ?
         WHERE turno_id = ? AND etapa_id = ? AND iniciada_at IS NULL
-      `).run(req.session.usuario.id, id, etapaParaIniciar);
+      `).run(usuario.id, id, etapaParaIniciar);
     }
 
     const turno = conEtapaSig(db.prepare(SELECT_TURNO).get(Number(id)));
@@ -1053,7 +1071,9 @@ module.exports = (io) => {
     res.json({ ok: true });
   });
 
-  // ── No Llegó (estado diferenciado de cancelado) ───────────────────────────────
+  // ── No Llegó: el turno vuelve a "esperando", al final de la cola ─────────────
+  // No se cierra ni desaparece — puede volver a ser llamado las veces que haga
+  // falta. Conserva atracción, subcategoría, cantidad de miembros, biper y VIPER.
   router.put('/:id/cancelar', requirePermission('permiso_cancelar_turno'), (req, res) => {
     const { id } = req.params;
     const usuario = req.session.usuario;
@@ -1079,8 +1099,47 @@ module.exports = (io) => {
       timerLlamado.delete(Number(id));
     }
 
-    const turno = _cerrarTurno(Number(id), 'no_llego', usuario.id);
-    io.emit('turno:finalizado', turno);
+    // Descartar el progreso de etapa del intento abandonado (si lo hubo) —
+    // el turno vuelve a arrancar desde la primera etapa, igual que al crearse.
+    db.prepare(
+      'DELETE FROM turno_etapas_historial WHERE turno_id = ? AND finalizada_at IS NULL'
+    ).run(Number(id));
+
+    const juego = db.prepare(
+      'SELECT usa_etapas FROM atracciones WHERE id = ?'
+    ).get(turnoActual.atraccion_id);
+
+    let primeraEtapa = null;
+    if (juego?.usa_etapas) {
+      primeraEtapa = db.prepare(`
+        SELECT * FROM juego_etapas
+        WHERE juego_id = ? AND activa = 1
+        ORDER BY orden ASC LIMIT 1
+      `).get(turnoActual.atraccion_id);
+    }
+
+    // Va al final de la cola de espera de su atracción (misma regla que usa
+    // /mover: toda la cola de la atracción, sin distinguir subcategoría).
+    const { maxOrden } = db.prepare(
+      "SELECT COALESCE(MAX(orden_cola), 0) AS maxOrden FROM turnos WHERE atraccion_id = ? AND estado = 'esperando'"
+    ).get(turnoActual.atraccion_id);
+
+    db.prepare(`
+      UPDATE turnos
+      SET estado = 'esperando', called_at = NULL, jugando_desde = NULL,
+          llamado_por = NULL, etapa_actual_id = ?, orden_cola = ?
+      WHERE id = ?
+    `).run(primeraEtapa?.id ?? null, maxOrden + 1, Number(id));
+
+    if (primeraEtapa) {
+      db.prepare(`
+        INSERT INTO turno_etapas_historial (turno_id, etapa_id, etapa_nombre, etapa_orden)
+        VALUES (?,?,?,?)
+      `).run(Number(id), primeraEtapa.id, primeraEtapa.nombre, primeraEtapa.orden);
+    }
+
+    const turno = conEtapaSig(db.prepare(SELECT_TURNO).get(Number(id)));
+    io.emit('turno:reordenado', { atraccion_id: turnoActual.atraccion_id });
     res.json(turno);
   });
 
