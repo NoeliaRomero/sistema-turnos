@@ -582,16 +582,34 @@ module.exports = (io) => {
     const companerosId = new Set(companeros.map(c => c.id));
 
     if (!esReLlamado) {
+      atraccionInfo = db.prepare(
+        'SELECT max_miembros, usa_subcategorias, usa_etapas FROM atracciones WHERE id = ?'
+      ).get(turnoActual.atraccion_id);
+
+      // Etapa por la que entraría este turno (solo en juegos con etapas).
+      const etapaDeEntrada = atraccionInfo?.usa_etapas
+        ? (turnoActual.etapa_actual_id || db.prepare(`
+            SELECT id FROM juego_etapas WHERE juego_id = ? AND activa = 1 ORDER BY orden ASC LIMIT 1
+          `).get(turnoActual.atraccion_id)?.id)
+        : null;
+
+      // En juegos con etapas, un grupo que ya avanzó más allá de la etapa de
+      // entrada (ej. pasó de "charla" a "en pista") ya está jugando: deja de
+      // contar para la cola, las subcategorías y la capacidad del siguiente.
+      // Un turno activo sin etapa asignada se considera en la entrada.
+      const filtroEntrada = etapaDeEntrada ? ' AND (etapa_actual_id = ? OR etapa_actual_id IS NULL)' : '';
+      const paramsEntrada = etapaDeEntrada ? [etapaDeEntrada] : [];
+
       // Detectar modo "combinar": ya hay grupos del mismo juego+subcategoría en llamado/jugando
       const modoCombinable = (() => {
         if (turnoActual.subcategoria_id) {
           return db.prepare(
-            "SELECT COUNT(*) AS c FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id = ?"
-          ).get(turnoActual.atraccion_id, turnoActual.subcategoria_id).c > 0;
+            `SELECT COUNT(*) AS c FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id = ?${filtroEntrada}`
+          ).get(turnoActual.atraccion_id, turnoActual.subcategoria_id, ...paramsEntrada).c > 0;
         }
         return db.prepare(
-          "SELECT COUNT(*) AS c FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando')"
-        ).get(turnoActual.atraccion_id).c > 0;
+          `SELECT COUNT(*) AS c FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando')${filtroEntrada}`
+        ).get(turnoActual.atraccion_id, ...paramsEntrada).c > 0;
       })();
 
       console.log(`[LLAMAR] turno=${turnoActual.id} atraccion=${turnoActual.atraccion_id} subcat=${turnoActual.subcategoria_id ?? 'ninguna'} modoCombinable=${modoCombinable}`);
@@ -657,10 +675,6 @@ module.exports = (io) => {
         }
       }
 
-      atraccionInfo = db.prepare(
-        'SELECT max_miembros, usa_subcategorias, usa_etapas FROM atracciones WHERE id = ?'
-      ).get(turnoActual.atraccion_id);
-
       // Validación de subcategoría: bloquear si hay grupos de distinta subcategoría activos
       if (atraccionInfo?.usa_subcategorias) {
         let conflictoSubcat;
@@ -668,13 +682,13 @@ module.exports = (io) => {
           conflictoSubcat = db.prepare(`
             SELECT COUNT(*) AS c FROM turnos
             WHERE atraccion_id = ? AND estado IN ('llamado','jugando')
-              AND (subcategoria_id IS NULL OR subcategoria_id != ?)
-          `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id).c;
+              AND (subcategoria_id IS NULL OR subcategoria_id != ?)${filtroEntrada}
+          `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id, ...paramsEntrada).c;
         } else {
           conflictoSubcat = db.prepare(`
             SELECT COUNT(*) AS c FROM turnos
-            WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id IS NOT NULL
-          `).get(turnoActual.atraccion_id).c;
+            WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id IS NOT NULL${filtroEntrada}
+          `).get(turnoActual.atraccion_id, ...paramsEntrada).c;
         }
         console.log(`[LLAMAR] conflictoSubcat=${conflictoSubcat} → ${conflictoSubcat > 0 ? 'RECHAZADO: subcategoría distinta activa' : 'OK'}`);
         if (conflictoSubcat > 0) {
@@ -689,10 +703,6 @@ module.exports = (io) => {
       // etapa anterior — solo bloquea si hay otro turno activo ocupando
       // exactamente la misma etapa en la que entraría este turno.
       if (atraccionInfo?.usa_etapas) {
-        const etapaDeEntrada = turnoActual.etapa_actual_id || db.prepare(`
-          SELECT id FROM juego_etapas WHERE juego_id = ? AND activa = 1 ORDER BY orden ASC LIMIT 1
-        `).get(turnoActual.atraccion_id)?.id;
-
         let etapaOcupada = 0;
         if (etapaDeEntrada) {
           if (atraccionInfo?.usa_subcategorias && turnoActual.subcategoria_id) {
@@ -725,18 +735,18 @@ module.exports = (io) => {
         if (atraccionInfo?.usa_subcategorias && turnoActual.subcategoria_id) {
           ({ personasJugando } = db.prepare(`
             SELECT COALESCE(SUM(cantidad_miembros), 0) AS personasJugando
-            FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id = ?
-          `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id));
+            FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id = ?${filtroEntrada}
+          `).get(turnoActual.atraccion_id, turnoActual.subcategoria_id, ...paramsEntrada));
         } else if (atraccionInfo?.usa_subcategorias) {
           ({ personasJugando } = db.prepare(`
             SELECT COALESCE(SUM(cantidad_miembros), 0) AS personasJugando
-            FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id IS NULL
-          `).get(turnoActual.atraccion_id));
+            FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando') AND subcategoria_id IS NULL${filtroEntrada}
+          `).get(turnoActual.atraccion_id, ...paramsEntrada));
         } else {
           ({ personasJugando } = db.prepare(`
             SELECT COALESCE(SUM(cantidad_miembros), 0) AS personasJugando
-            FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando')
-          `).get(turnoActual.atraccion_id));
+            FROM turnos WHERE atraccion_id = ? AND estado IN ('llamado','jugando')${filtroEntrada}
+          `).get(turnoActual.atraccion_id, ...paramsEntrada));
         }
         const personasGrupo   = [turnoActual, ...companeros]
           .reduce((s, t) => s + (t.cantidad_miembros || 1), 0);
