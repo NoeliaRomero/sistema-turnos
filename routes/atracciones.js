@@ -47,6 +47,54 @@ function guardarSubcategorias(juegoId, subcategoriasArr) {
   });
 }
 
+function vueltasDeJuego(juegoId) {
+  return db.prepare(
+    'SELECT id, cantidad, orden FROM juego_vueltas WHERE juego_id = ? ORDER BY orden'
+  ).all(juegoId);
+}
+
+// Normaliza y valida la lista de vueltas enviada por el editor.
+// Acepta objetos { id?, cantidad } (o números sueltos). Devuelve { lista } o { error }.
+function normalizarVueltas(vueltasArr) {
+  const lista = [];
+  for (const v of vueltasArr) {
+    const esObj = v && typeof v === 'object';
+    const n     = Number(esObj ? v.cantidad : v);
+    if (!Number.isInteger(n) || n <= 0) {
+      return { error: 'Las vueltas deben ser números enteros mayores a cero' };
+    }
+    if (lista.some(x => x.cantidad === n)) {
+      return { error: `La cantidad de vueltas ${n} está repetida` };
+    }
+    lista.push({ id: esObj && v.id ? Number(v.id) : null, cantidad: n });
+  }
+  return { lista };
+}
+
+// Igual que guardarSubcategorias: actualiza por id (editar una opción conserva
+// su id), inserta las nuevas y borra las que ya no vinieron. Los turnos guardan
+// el VALOR de vueltas (no una FK), así que borrar opciones no afecta el historial.
+function guardarVueltas(juegoId, lista) {
+  const existentes  = vueltasDeJuego(juegoId);
+  const idsEnviados = lista.filter(v => v.id).map(v => v.id);
+
+  existentes.forEach(v => {
+    if (!idsEnviados.includes(v.id)) {
+      db.prepare('DELETE FROM juego_vueltas WHERE id = ?').run(v.id);
+    }
+  });
+
+  lista.forEach((v, i) => {
+    if (v.id) {
+      db.prepare('UPDATE juego_vueltas SET cantidad = ?, orden = ? WHERE id = ? AND juego_id = ?')
+        .run(v.cantidad, i + 1, v.id, juegoId);
+    } else {
+      db.prepare('INSERT INTO juego_vueltas (juego_id, cantidad, orden) VALUES (?,?,?)')
+        .run(juegoId, v.cantidad, i + 1);
+    }
+  });
+}
+
 // Listar activas
 router.get('/', requireAuth('admin', 'operador', 'recepcion'), (req, res) => {
   res.json(db.prepare('SELECT * FROM atracciones WHERE activa = 1 ORDER BY nombre').all());
@@ -59,6 +107,7 @@ router.get('/todas', requirePermission('permiso_gestionar_juegos'), (req, res) =
     ...j,
     etapas:        j.usa_etapas        ? etapasDeJuego(j.id)        : [],
     subcategorias: j.usa_subcategorias ? subcategoriasDeJuego(j.id) : [],
+    vueltas:       j.usa_vueltas       ? vueltasDeJuego(j.id)       : [],
   }));
   res.json(result);
 });
@@ -68,10 +117,16 @@ router.get('/:id/subcategorias', requireAuth('admin', 'operador', 'recepcion'), 
   res.json(subcategoriasDeJuego(Number(req.params.id)));
 });
 
+// Listar opciones de vueltas de un juego
+router.get('/:id/vueltas', requireAuth('admin', 'operador', 'recepcion'), (req, res) => {
+  res.json(vueltasDeJuego(Number(req.params.id)));
+});
+
 // Crear juego
 router.post('/', requirePermission('permiso_gestionar_juegos'), (req, res) => {
   const { nombre, duracion_minutos, min_miembros, max_miembros,
           usa_etapas, etapas, usa_subcategorias, subcategorias,
+          usa_vueltas, vueltas,
           llamado_automatico, tiempo_entre_llamados_segundos } = req.body;
   if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre es requerido' });
 
@@ -90,6 +145,17 @@ router.post('/', requirePermission('permiso_gestionar_juegos'), (req, res) => {
     return res.status(400).json({ error: 'Debe agregar al menos una subcategoría' });
   }
 
+  const usaVueltas = usa_vueltas ? 1 : 0;
+  let vueltasLista = [];
+  if (usaVueltas) {
+    const norm = normalizarVueltas(Array.isArray(vueltas) ? vueltas : []);
+    if (norm.error) return res.status(400).json({ error: norm.error });
+    if (norm.lista.length === 0) {
+      return res.status(400).json({ error: 'Debe agregar al menos una opción de vueltas' });
+    }
+    vueltasLista = norm.lista;
+  }
+
   const minM     = parseInt(min_miembros) || 1;
   const maxM     = parseInt(max_miembros) || 20;
   const duracion = usaEtapas ? 0 : (parseInt(duracion_minutos) || 30);
@@ -106,8 +172,8 @@ router.post('/', requirePermission('permiso_gestionar_juegos'), (req, res) => {
   }
 
   const result = db.prepare(
-    'INSERT INTO atracciones (nombre, duracion_minutos, min_miembros, max_miembros, usa_etapas, usa_subcategorias, llamado_automatico, tiempo_entre_llamados_segundos) VALUES (?,?,?,?,?,?,?,?)'
-  ).run(nombre.trim(), duracion, minM, maxM, usaEtapas, usaSubs, llamadoAutomatico, tiempoEntreLlamados);
+    'INSERT INTO atracciones (nombre, duracion_minutos, min_miembros, max_miembros, usa_etapas, usa_subcategorias, usa_vueltas, llamado_automatico, tiempo_entre_llamados_segundos) VALUES (?,?,?,?,?,?,?,?,?)'
+  ).run(nombre.trim(), duracion, minM, maxM, usaEtapas, usaSubs, usaVueltas, llamadoAutomatico, tiempoEntreLlamados);
 
   const juegoId = Number(result.lastInsertRowid);
 
@@ -124,12 +190,15 @@ router.post('/', requirePermission('permiso_gestionar_juegos'), (req, res) => {
     subsArr.forEach((s, i) => insertSub.run(juegoId, s.nombre.trim(), i + 1));
   }
 
+  if (usaVueltas) guardarVueltas(juegoId, vueltasLista);
+
   const juego = db.prepare('SELECT * FROM atracciones WHERE id = ?').get(juegoId);
   io.emit('juego:actualizado', { accion: 'creado', id: juegoId });
   res.status(201).json({
     ...juego,
     etapas:        usaEtapas ? etapasDeJuego(juegoId)        : [],
     subcategorias: usaSubs   ? subcategoriasDeJuego(juegoId) : [],
+    vueltas:       usaVueltas ? vueltasDeJuego(juegoId)      : [],
   });
 });
 
@@ -137,6 +206,7 @@ router.post('/', requirePermission('permiso_gestionar_juegos'), (req, res) => {
 router.put('/:id', requirePermission('permiso_gestionar_juegos'), (req, res) => {
   const { nombre, duracion_minutos, activa, min_miembros, max_miembros,
           usa_etapas, etapas, usa_subcategorias, subcategorias,
+          usa_vueltas, vueltas,
           llamado_automatico, tiempo_entre_llamados_segundos } = req.body;
   if (!nombre?.trim()) return res.status(400).json({ error: 'El nombre es requerido' });
 
@@ -156,6 +226,17 @@ router.put('/:id', requirePermission('permiso_gestionar_juegos'), (req, res) => 
     return res.status(400).json({ error: 'Debe agregar al menos una subcategoría' });
   }
 
+  const usaVueltas = usa_vueltas ? 1 : 0;
+  let vueltasLista = [];
+  if (usaVueltas) {
+    const norm = normalizarVueltas(Array.isArray(vueltas) ? vueltas : []);
+    if (norm.error) return res.status(400).json({ error: norm.error });
+    if (norm.lista.length === 0) {
+      return res.status(400).json({ error: 'Debe agregar al menos una opción de vueltas' });
+    }
+    vueltasLista = norm.lista;
+  }
+
   const minM     = parseInt(min_miembros) || 1;
   const maxM     = parseInt(max_miembros) || 20;
   const duracion = usaEtapas ? 0 : (parseInt(duracion_minutos) || 30);
@@ -171,8 +252,8 @@ router.put('/:id', requirePermission('permiso_gestionar_juegos'), (req, res) => 
     }
   }
 
-  db.prepare("UPDATE atracciones SET nombre=?, duracion_minutos=?, activa=?, min_miembros=?, max_miembros=?, usa_etapas=?, usa_subcategorias=?, llamado_automatico=?, tiempo_entre_llamados_segundos=? WHERE id=?")
-    .run(nombre.trim(), duracion, activa == null ? 1 : (Number(activa) ? 1 : 0), minM, maxM, usaEtapas, usaSubs, llamadoAutomatico, tiempoEntreLlamados, req.params.id);
+  db.prepare("UPDATE atracciones SET nombre=?, duracion_minutos=?, activa=?, min_miembros=?, max_miembros=?, usa_etapas=?, usa_subcategorias=?, usa_vueltas=?, llamado_automatico=?, tiempo_entre_llamados_segundos=? WHERE id=?")
+    .run(nombre.trim(), duracion, activa == null ? 1 : (Number(activa) ? 1 : 0), minM, maxM, usaEtapas, usaSubs, usaVueltas, llamadoAutomatico, tiempoEntreLlamados, req.params.id);
 
   db.prepare('DELETE FROM juego_etapas WHERE juego_id = ?').run(req.params.id);
   if (usaEtapas) {
@@ -188,6 +269,13 @@ router.put('/:id', requirePermission('permiso_gestionar_juegos'), (req, res) => 
   } else {
     db.prepare("UPDATE turnos SET subcategoria_id = NULL WHERE atraccion_id = ? AND subcategoria_id IS NOT NULL").run(req.params.id);
     db.prepare("DELETE FROM juego_subcategorias WHERE juego_id = ?").run(req.params.id);
+  }
+
+  // Los turnos conservan su valor de vueltas aunque cambien/desaparezcan las opciones
+  if (usaVueltas) {
+    guardarVueltas(Number(req.params.id), vueltasLista);
+  } else {
+    db.prepare("DELETE FROM juego_vueltas WHERE juego_id = ?").run(req.params.id);
   }
 
   io.emit('juego:actualizado', { accion: 'editado', id: Number(req.params.id) });
@@ -217,6 +305,7 @@ router.delete('/:id', requirePermission('permiso_gestionar_juegos'), (req, res) 
   db.prepare('UPDATE usuarios SET atraccion_id = NULL WHERE atraccion_id = ?').run(id);
   db.prepare('DELETE FROM juego_etapas WHERE juego_id = ?').run(id);
   db.prepare('DELETE FROM juego_subcategorias WHERE juego_id = ?').run(id);
+  db.prepare('DELETE FROM juego_vueltas WHERE juego_id = ?').run(id);
   db.prepare('DELETE FROM atracciones WHERE id = ?').run(id);
 
   io.emit('juego:actualizado', { accion: 'eliminado', id });

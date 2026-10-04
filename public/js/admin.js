@@ -462,6 +462,7 @@ async function cargarJuegos() {
         ${escapeHtml(j.nombre)}
         ${j.usa_etapas ? `<span class="etapas-badge ms-2"><i class="bi bi-layers me-1"></i>${j.etapas.length} etapas</span>` : ''}
         ${j.usa_subcategorias ? `<span class="subcategorias-badge ms-2"><i class="bi bi-diagram-3 me-1"></i>${j.subcategorias.length} subcategorías</span>` : ''}
+        ${j.usa_vueltas ? `<span class="vueltas-badge ms-2"><i class="bi bi-arrow-repeat me-1"></i>${(j.vueltas || []).map(v => v.cantidad).join(' / ')} vueltas</span>` : ''}
       </td>
       <td><span class="duracion-badge"><i class="bi bi-clock me-1"></i>${j.duracion_minutos} min</span></td>
       <td><span class="text-muted small"><i class="bi bi-people me-1"></i>${j.min_miembros || 1}–${j.max_miembros || 20}</span></td>
@@ -537,6 +538,29 @@ function crearFilaSubcategoria(id = '', nombre = '') {
   return div;
 }
 
+// Fila editable de una opción de vueltas (ej. 5, 10, 15)
+function crearFilaVuelta(id = '', cantidad = '') {
+  const div = document.createElement('div');
+  div.className = 'vuelta-row';
+  div.dataset.id = id;
+  div.innerHTML = `
+    <input type="number" class="form-control vuelta-cantidad" placeholder="Cantidad de vueltas" min="1" step="1" value="${cantidad === '' ? '' : Number(cantidad)}">
+    <span class="text-muted small">vueltas</span>
+    <button type="button" class="btn btn-outline-secondary btn-move" title="Subir"><i class="bi bi-arrow-up"></i></button>
+    <button type="button" class="btn btn-outline-secondary btn-move" title="Bajar"><i class="bi bi-arrow-down"></i></button>
+    <button type="button" class="btn btn-outline-danger btn-eliminar-vuelta" title="Eliminar"><i class="bi bi-trash"></i></button>`;
+  div.querySelector('[title="Subir"]').addEventListener('click', () => {
+    const prev = div.previousElementSibling;
+    if (prev) div.parentNode.insertBefore(div, prev);
+  });
+  div.querySelector('[title="Bajar"]').addEventListener('click', () => {
+    const next = div.nextElementSibling;
+    if (next) div.parentNode.insertBefore(next, div);
+  });
+  div.querySelector('.btn-eliminar-vuelta').addEventListener('click', () => div.remove());
+  return div;
+}
+
 function limpiarModalJuego() {
   document.getElementById('juegoId').value      = '';
   document.getElementById('jNombre').value      = '';
@@ -546,15 +570,18 @@ function limpiarModalJuego() {
   document.getElementById('jActivo').checked    = true;
   document.getElementById('jUsaEtapas').checked = false;
   document.getElementById('jUsaSubcategorias').checked = false;
+  document.getElementById('jUsaVueltas').checked = false;
   document.getElementById('jLlamadoAutomatico').checked = false;
   document.getElementById('jTiempoAutoLlamado').value   = '10';
   document.getElementById('wrapTiempoAutoLlamado').classList.add('d-none');
   document.getElementById('listaEtapas').innerHTML = '';
   document.getElementById('listaSubcategorias').innerHTML = '';
+  document.getElementById('listaVueltas').innerHTML = '';
   document.getElementById('totalDuracion').textContent = '0 minutos';
   document.getElementById('wrapDuracionManual').classList.remove('d-none');
   document.getElementById('seccionEtapas').classList.add('d-none');
   document.getElementById('seccionSubcategorias').classList.add('d-none');
+  document.getElementById('seccionVueltas').classList.add('d-none');
   document.getElementById('activoWrap').style.display = 'none';
   document.getElementById('juegoError').classList.add('d-none');
 }
@@ -595,6 +622,17 @@ document.getElementById('btnAgregarSubcategoria').addEventListener('click', () =
   document.getElementById('listaSubcategorias').appendChild(crearFilaSubcategoria());
 });
 
+document.getElementById('jUsaVueltas').addEventListener('change', function () {
+  document.getElementById('seccionVueltas').classList.toggle('d-none', !this.checked);
+  if (this.checked && document.getElementById('listaVueltas').children.length === 0) {
+    document.getElementById('listaVueltas').appendChild(crearFilaVuelta());
+  }
+});
+
+document.getElementById('btnAgregarVuelta').addEventListener('click', () => {
+  document.getElementById('listaVueltas').appendChild(crearFilaVuelta());
+});
+
 async function editarJuego(id) {
   const res    = await fetch('/api/atracciones/todas');
   const juegos = await res.json();
@@ -627,6 +665,12 @@ async function editarJuego(id) {
     const listaSubs = document.getElementById('listaSubcategorias');
     (j.subcategorias || []).forEach(s => listaSubs.appendChild(crearFilaSubcategoria(s.id, s.nombre)));
   }
+  if (j.usa_vueltas) {
+    document.getElementById('jUsaVueltas').checked = true;
+    document.getElementById('seccionVueltas').classList.remove('d-none');
+    const listaVueltas = document.getElementById('listaVueltas');
+    (j.vueltas || []).forEach(v => listaVueltas.appendChild(crearFilaVuelta(v.id, v.cantidad)));
+  }
   modalJuego().show();
 }
 
@@ -656,8 +700,10 @@ async function _guardarJuego() { {
     errEl.textContent = 'El tiempo entre llamados debe ser mayor a 0 segundos'; errEl.classList.remove('d-none'); return;
   }
 
+  const usaVueltas = document.getElementById('jUsaVueltas').checked;
   let payload = {
     nombre, activa, min_miembros: minM, max_miembros: maxM, usa_etapas: usaEtapas, usa_subcategorias: usaSubcategorias,
+    usa_vueltas: usaVueltas,
     llamado_automatico: llamadoAutomatico, tiempo_entre_llamados_segundos: llamadoAutomatico ? tiempoAutoLlamado : null,
   };
 
@@ -686,6 +732,19 @@ async function _guardarJuego() { {
     }));
     if (subcategorias.some(s => !s.nombre)) { errEl.textContent = 'Todas las subcategorías deben tener nombre'; errEl.classList.remove('d-none'); return; }
     payload.subcategorias = subcategorias;
+  }
+
+  if (usaVueltas) {
+    const filasV = document.querySelectorAll('#listaVueltas .vuelta-row');
+    if (!filasV.length) { errEl.textContent = 'Debe agregar al menos una opción de vueltas'; errEl.classList.remove('d-none'); return; }
+    const vueltas = Array.from(filasV).map(fila => ({
+      id:       fila.dataset.id || undefined,
+      cantidad: Number(fila.querySelector('.vuelta-cantidad').value),
+    }));
+    const cantidades = vueltas.map(v => v.cantidad);
+    if (cantidades.some(n => !Number.isInteger(n) || n < 1)) { errEl.textContent = 'Las vueltas deben ser números enteros mayores a cero'; errEl.classList.remove('d-none'); return; }
+    if (new Set(cantidades).size !== cantidades.length) { errEl.textContent = 'No se puede repetir la misma cantidad de vueltas'; errEl.classList.remove('d-none'); return; }
+    payload.vueltas = vueltas;
   }
 
   const url    = id ? `/api/atracciones/${id}` : '/api/atracciones';

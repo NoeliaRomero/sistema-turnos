@@ -138,6 +138,7 @@ function cardEsperando(t) {
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
               <span class="atraccion-tag">${t.atraccion_nombre}</span>
               ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${t.subcategoria_nombre}</span>` : ''}
+              ${t.vueltas != null ? `<span class="atraccion-tag" style="background:#e0f2fe;color:#075985"><i class="bi bi-arrow-repeat me-1"></i>${Number(t.vueltas)} vueltas</span>` : ''}
               <span class="duracion-tag"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
               ${t.duracion_minutos ? `<span class="duracion-tag"><i class="bi bi-clock me-1"></i>${t.duracion_minutos} min</span>` : ''}
               ${etiquetaBeeperTurno(t)}
@@ -194,6 +195,7 @@ function cardLlamado(t) {
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
               <span class="atraccion-tag">${escapeHtml(t.atraccion_nombre)}</span>
               ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>` : ''}
+              ${t.vueltas != null ? `<span class="atraccion-tag" style="background:#e0f2fe;color:#075985"><i class="bi bi-arrow-repeat me-1"></i>${Number(t.vueltas)} vueltas</span>` : ''}
               <span class="duracion-tag"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
               ${etiquetaBeeperTurno(t)}
               <span class="badge bg-warning text-dark px-2">
@@ -266,6 +268,7 @@ function cardJugando(t) {
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
               <span class="atraccion-tag">${escapeHtml(t.atraccion_nombre)}</span>
               ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>` : ''}
+              ${t.vueltas != null ? `<span class="atraccion-tag" style="background:#e0f2fe;color:#075985"><i class="bi bi-arrow-repeat me-1"></i>${Number(t.vueltas)} vueltas</span>` : ''}
               <span class="duracion-tag"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
               ${duracion ? `<span class="duracion-tag"><i class="bi bi-clock me-1"></i>${duracion} min est.</span>` : ''}
               ${etiquetaBeeperTurno(t)}

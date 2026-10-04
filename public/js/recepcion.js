@@ -69,7 +69,7 @@ async function cargarAtracciones() {
   atracciones.forEach(a => {
     const minM = a.min_miembros || 1;
     const maxM = a.max_miembros || 30;
-    sel.innerHTML += `<option value="${a.id}" data-duracion="${a.duracion_minutos}" data-min-miembros="${minM}" data-max-miembros="${maxM}" data-usa-subcategorias="${a.usa_subcategorias || 0}">${escapeHtml(a.nombre)} (${formatMinutos(a.duracion_minutos)})</option>`;
+    sel.innerHTML += `<option value="${a.id}" data-duracion="${a.duracion_minutos}" data-min-miembros="${minM}" data-max-miembros="${maxM}" data-usa-subcategorias="${a.usa_subcategorias || 0}" data-usa-vueltas="${a.usa_vueltas || 0}">${escapeHtml(a.nombre)} (${formatMinutos(a.duracion_minutos)})</option>`;
   });
   // Al recargar por un cambio de juego, conservar lo que la recepcionista ya había elegido
   if (seleccionPrevia && atracciones.some(a => String(a.id) === seleccionPrevia)) {
@@ -131,6 +131,25 @@ document.getElementById('selectJuego').addEventListener('change', async () => {
     wrapSub.classList.remove('d-none');
   } else {
     wrapSub.classList.add('d-none');
+  }
+
+  // Manejar vueltas (independiente de las subcategorías)
+  const wrapVueltas = document.getElementById('wrapVueltas');
+  const selVueltas  = document.getElementById('selectVueltas');
+  selVueltas.innerHTML = '<option value="">Seleccionar vueltas…</option>';
+  const usaVueltas = opt?.dataset.usaVueltas === '1';
+
+  if (juegoId && usaVueltas) {
+    try {
+      const r       = await fetch(`/api/atracciones/${juegoId}/vueltas`);
+      const vueltas = r.ok ? await r.json() : [];
+      vueltas.forEach(v => {
+        selVueltas.innerHTML += `<option value="${v.cantidad}">${v.cantidad} vueltas</option>`;
+      });
+    } catch (_) {}
+    wrapVueltas.classList.remove('d-none');
+  } else {
+    wrapVueltas.classList.add('d-none');
   }
 
   actualizarEsperaEstimada();
@@ -265,9 +284,9 @@ function renderJuegoPane(j) {
             ${sigTexto}
           </div>`;
       }
-      const subcatHtml = t.subcategoria_nombre
+      const subcatHtml = (t.subcategoria_nombre
         ? `<span class="badge bg-success bg-opacity-75 ms-1"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>`
-        : '';
+        : '') + _vueltasBadge(t);
       // El badge de estado refleja el estado real: 'llamado' es la ventana previa
       // (5 min) antes de pasar a 'jugando' — no es lo mismo, sobre todo si el juego
       // usa etapas y todavía está en la primera (ej. "En charla").
@@ -341,9 +360,9 @@ function renderJuegoPane(j) {
       // cualquiera puede sumarse. "Combinar" une grupos en espera sin llamarlos.
       let btnLlamar = '';
       if (me?.permiso_llamar_turno) {
-        const hayJugandoMismaSubcat = j.usa_subcategorias
-          ? j.jugando.some(g => g.subcategoria_id === t.subcategoria_id)
-          : j.jugando.length > 0;
+        const hayJugandoMismaSubcat = j.jugando.some(g =>
+          (!j.usa_subcategorias || g.subcategoria_id === t.subcategoria_id) &&
+          (!j.usa_vueltas || (g.vueltas ?? null) === (t.vueltas ?? null)));
 
         // Una tarjeta ya combinada no vuelve a ofrecer "Combinar"
         const puedeCombinar = !combo && subcatList.some(x =>
@@ -383,9 +402,9 @@ function renderJuegoPane(j) {
         class="form-control form-control-sm py-0 px-1 text-center" style="width:42px" title="Escribí el puesto deseado y presioná Enter"
         onkeydown="if(event.key==='Enter'){event.preventDefault();moverAPosicion(${t.id},${t.posicion},this.value);}">`;
 
-      const subcatEsperaHtml = t.subcategoria_nombre
+      const subcatEsperaHtml = (t.subcategoria_nombre
         ? `<span class="badge bg-success bg-opacity-75"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>`
-        : '';
+        : '') + _vueltasBadge(t);
 
       // Editar / eliminar son por grupo: en una combinación se reemplazan por
       // "Separar" (después se puede editar o eliminar cada grupo suelto).
@@ -500,6 +519,8 @@ document.getElementById('formRegistro').addEventListener('submit', async e => {
   const opt           = document.getElementById('selectJuego').selectedOptions[0];
   const usaSubs       = opt?.dataset.usaSubcategorias === '1';
   const subcategoria_id = usaSubs ? (document.getElementById('selectSubcategoria').value || null) : null;
+  const usaVueltas    = opt?.dataset.usaVueltas === '1';
+  const vueltas       = usaVueltas ? (parseInt(document.getElementById('selectVueltas').value, 10) || null) : null;
 
   if (!atraccion_id || !biper_numero || !nombre_cliente) {
     mostrarToast('Completá juego, beeper y nombre del grupo', 'warning'); return;
@@ -507,13 +528,16 @@ document.getElementById('formRegistro').addEventListener('submit', async e => {
   if (usaSubs && !subcategoria_id) {
     mostrarToast('Seleccioná una subcategoría para este juego', 'warning'); return;
   }
+  if (usaVueltas && !vueltas) {
+    mostrarToast('Seleccioná la cantidad de vueltas para este juego', 'warning'); return;
+  }
   const minM = parseInt(opt?.dataset.minMiembros) || 1;
   const maxM = parseInt(opt?.dataset.maxMiembros) || 30;
   if (cantidad_miembros < minM || cantidad_miembros > maxM) {
     mostrarToast(`Este juego requiere entre ${minM} y ${maxM} personas`, 'warning'); return;
   }
 
-  await enviarRegistro({ atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id, subcategoria_id });
+  await enviarRegistro({ atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id, subcategoria_id, vueltas });
 });
 
 async function enviarRegistro(payload) {
@@ -545,6 +569,8 @@ async function enviarRegistro(payload) {
   document.getElementById('tiempoEsperaWrap').classList.add('d-none');
   document.getElementById('wrapSubcategoria').classList.add('d-none');
   document.getElementById('selectSubcategoria').innerHTML = '<option value="">Seleccionar subcategoría…</option>';
+  document.getElementById('wrapVueltas').classList.add('d-none');
+  document.getElementById('selectVueltas').innerHTML = '<option value="">Seleccionar vueltas…</option>';
   await cargarCola();
   await asignarBiperAutomatico();
 }
@@ -749,6 +775,13 @@ function _beepersEnOtroJuego(juegoId) {
   return mapa;
 }
 
+// Badge "N vueltas" para las tarjetas (vacío si el turno no tiene vueltas)
+function _vueltasBadge(t) {
+  return t.vueltas != null
+    ? `<span class="badge bg-info text-dark"><i class="bi bi-arrow-repeat me-1"></i>${Number(t.vueltas)} vueltas</span>`
+    : '';
+}
+
 function abrirCombinar(juegoId, turnoId) {
   const juego = colaData.find(j => j.id === juegoId);
   const base  = juego?.cola.find(t => t.id === turnoId);
@@ -767,7 +800,8 @@ function abrirCombinar(juegoId, turnoId) {
     seleccion: new Set(),
   };
 
-  const subcatTxt = base.subcategoria_nombre ? ` (${escapeHtml(base.subcategoria_nombre)})` : '';
+  const subcatTxt = (base.subcategoria_nombre ? ` (${escapeHtml(base.subcategoria_nombre)})` : '')
+    + (juego.usa_vueltas && base.vueltas != null ? ` · ${base.vueltas} vueltas` : '');
   document.getElementById('combinarIntro').innerHTML =
     `Elegí con qué grupos en espera combinar a <strong>${escapeHtml(base.nombre_cliente || 'Sin nombre')}</strong> en <strong>${escapeHtml(juego.nombre)}</strong>${subcatTxt}. Quedan juntos en la cola y se llaman todos a la vez cuando les toque.`;
 
@@ -813,7 +847,10 @@ function _renderCombinar() {
     const otroJ   = c.enOtroJuego.get(String(t.biper_numero));
     const enOtraCombi = !!_comboDe(c.juego, t);
     const noEntra = !marcado && (t.cantidad_miembros || 0) > libres;
-    const motivo  = enOtraCombi ? 'Ya está combinado con otro grupo'
+    // Grupos con distinta cantidad de vueltas nunca corren juntos
+    const otrasVueltas = c.juego.usa_vueltas && (t.vueltas ?? null) !== (c.base.vueltas ?? null);
+    const motivo  = otrasVueltas ? `Otra cantidad de vueltas${t.vueltas != null ? ` (${t.vueltas})` : ''}`
+                  : enOtraCombi ? 'Ya está combinado con otro grupo'
                   : otroJ ? `Jugando en ${escapeHtml(otroJ)}`
                   : noEntra ? 'Supera el máximo de personas' : '';
     filas.push(_filaCombinar(t, { marcado, disabled: !marcado && !!motivo, motivo }));
@@ -898,6 +935,7 @@ function moverAPosicion(id, posActual, posDestinoRaw) {
 let _editarTurnoId      = null;
 let _editarAtraccionId  = null;
 let _editarUsaSubs      = false;
+let _editarUsaVueltas   = false;
 
 const modalEditar = () => bootstrap.Modal.getOrCreateInstance(document.getElementById('modalEditarTurno'));
 
@@ -906,7 +944,7 @@ async function pedirEditarTurno(id) {
   let turno = null;
   for (const j of colaData) {
     turno = j.cola.find(t => t.id === id);
-    if (turno) { _editarAtraccionId = j.id; _editarUsaSubs = !!j.usa_subcategorias; break; }
+    if (turno) { _editarAtraccionId = j.id; _editarUsaSubs = !!j.usa_subcategorias; _editarUsaVueltas = !!j.usa_vueltas; break; }
   }
   if (!turno) { mostrarToast('No se encontró el turno', 'danger'); return; }
 
@@ -942,6 +980,28 @@ async function pedirEditarTurno(id) {
     wrapSub.classList.add('d-none');
   }
 
+  const wrapVueltas = document.getElementById('editarVueltasWrap');
+  const selVueltas  = document.getElementById('editarSelectVueltas');
+  if (_editarUsaVueltas) {
+    try {
+      const res     = await fetch(`/api/atracciones/${_editarAtraccionId}/vueltas`);
+      const vueltas = await res.json();
+      // Si el turno tiene un valor que ya no está entre las opciones, se lo
+      // muestra igual para no cambiarlo sin querer al guardar.
+      const opciones = vueltas.map(v => v.cantidad);
+      if (turno.vueltas != null && !opciones.includes(turno.vueltas)) opciones.unshift(turno.vueltas);
+      selVueltas.innerHTML = (turno.vueltas == null ? '<option value="">Seleccionar vueltas…</option>' : '') +
+        opciones.map(n =>
+          `<option value="${n}" ${n === turno.vueltas ? 'selected' : ''}>${n} vueltas</option>`
+        ).join('');
+      wrapVueltas.classList.remove('d-none');
+    } catch (_) {
+      wrapVueltas.classList.add('d-none');
+    }
+  } else {
+    wrapVueltas.classList.add('d-none');
+  }
+
   modalEditar().show();
 }
 
@@ -972,6 +1032,9 @@ document.getElementById('btnConfirmarEditar').addEventListener('click', async ()
   const body = { cantidad_miembros };
   if (_editarUsaSubs) {
     body.subcategoria_id = document.getElementById('editarSelectSubcategoria').value || null;
+  }
+  if (_editarUsaVueltas && !document.getElementById('editarVueltasWrap').classList.contains('d-none')) {
+    body.vueltas = parseInt(document.getElementById('editarSelectVueltas').value, 10) || null;
   }
 
   const btn = document.getElementById('btnConfirmarEditar');

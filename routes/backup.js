@@ -135,7 +135,7 @@ async function crearBackupInterno(tipo = 'manual') {
     timestamp:      new Date().toISOString(),
     tablas: [
       'atracciones', 'usuarios', 'turnos', 'vipers',
-      'juego_etapas', 'juego_subcategorias', 'turno_etapas_historial',
+      'juego_etapas', 'juego_subcategorias', 'juego_vueltas', 'turno_etapas_historial',
       'viper_eventos', 'configuracion_serial', 'configuracion_rf',
       'configuracion_general', 'configuracion_backup',
     ],
@@ -502,6 +502,7 @@ router.post('/exportar/csv', requireAuth('admin', 'superadmin'), async (req, res
           t.finished_at,
           a.nombre         AS juego,
           sc.nombre        AS subcategoria,
+          t.vueltas,
           t.nombre_cliente AS familia,
           t.cantidad_miembros,
           t.biper_numero,
@@ -520,12 +521,12 @@ router.post('/exportar/csv', requireAuth('admin', 'superadmin'), async (req, res
       `).all(...params);
 
       csv += csvRow(['ID','Fecha Registro','Fecha Llamado','Inicio Juego','Fecha Finalización',
-        'Juego','Subcategoría','Familia','Cantidad Miembros','Beeper','Código Beeper',
+        'Juego','Subcategoría','Vueltas','Familia','Cantidad Miembros','Beeper','Código Beeper',
         'Estado','Registrado por','Finalizado por']);
       filas.forEach(r => csv += csvRow([
         r.id, formatFecha(r.created_at), formatFecha(r.called_at),
         formatFecha(r.jugando_desde), formatFecha(r.finished_at),
-        r.juego, r.subcategoria, r.familia, r.cantidad_miembros,
+        r.juego, r.subcategoria, r.vueltas, r.familia, r.cantidad_miembros,
         r.biper_numero, r.viper, estadoLegible(r.estado), r.creado_por, r.finalizado_por,
       ]));
 
@@ -545,14 +546,14 @@ router.post('/exportar/csv', requireAuth('admin', 'superadmin'), async (req, res
     } else if (tipo === 'juegos') {
       const filas = db.prepare(`
         SELECT id, nombre, duracion_minutos, min_miembros, max_miembros,
-               usa_etapas, usa_subcategorias, activa
+               usa_etapas, usa_subcategorias, usa_vueltas, activa
         FROM atracciones ORDER BY nombre
       `).all();
       csv += csvRow(['ID','Nombre','Duración (min)','Mín. Miembros','Máx. Miembros',
-        'Usa Etapas','Usa Subcategorías','Activa']);
+        'Usa Etapas','Usa Subcategorías','Usa Vueltas','Activa']);
       filas.forEach(r => csv += csvRow([
         r.id, r.nombre, r.duracion_minutos, r.min_miembros, r.max_miembros,
-        r.usa_etapas ? 'Sí' : 'No', r.usa_subcategorias ? 'Sí' : 'No', r.activa ? 'Sí' : 'No',
+        r.usa_etapas ? 'Sí' : 'No', r.usa_subcategorias ? 'Sí' : 'No', r.usa_vueltas ? 'Sí' : 'No', r.activa ? 'Sí' : 'No',
       ]));
 
     } else if (tipo === 'vipers') {
@@ -667,7 +668,7 @@ router.post('/exportar/xlsx', requireAuth('admin', 'superadmin'), async (req, re
     // Hoja: Turnos
     const turnos = db.prepare(`
       SELECT t.id, t.created_at, t.called_at, t.jugando_desde, t.finished_at,
-             a.nombre AS juego, sc.nombre AS subcategoria, t.nombre_cliente,
+             a.nombre AS juego, sc.nombre AS subcategoria, t.vueltas, t.nombre_cliente,
              t.cantidad_miembros, t.biper_numero, v.codigo_viper, t.estado,
              uc.nombre AS creado_por, uf.nombre AS finalizado_por
       FROM turnos t
@@ -681,19 +682,19 @@ router.post('/exportar/xlsx', requireAuth('admin', 'superadmin'), async (req, re
     `).all(...paramsTurnos);
 
     agregarHoja('Turnos',
-      ['ID','Fecha','Llamado','Inicio','Finalización','Juego','Subcategoría','Familia','Miembros','Beeper','Código Beeper','Estado','Creado por','Finalizado por'],
-      turnos.map(r => [r.id, fechaCelda(r.created_at), fechaCelda(r.called_at), fechaCelda(r.jugando_desde), fechaCelda(r.finished_at), r.juego, r.subcategoria, r.nombre_cliente, r.cantidad_miembros, r.biper_numero, r.codigo_viper, estadoLegible(r.estado), r.creado_por, r.finalizado_por]),
+      ['ID','Fecha','Llamado','Inicio','Finalización','Juego','Subcategoría','Vueltas','Familia','Miembros','Beeper','Código Beeper','Estado','Creado por','Finalizado por'],
+      turnos.map(r => [r.id, fechaCelda(r.created_at), fechaCelda(r.called_at), fechaCelda(r.jugando_desde), fechaCelda(r.finished_at), r.juego, r.subcategoria, r.vueltas, r.nombre_cliente, r.cantidad_miembros, r.biper_numero, r.codigo_viper, estadoLegible(r.estado), r.creado_por, r.finalizado_por]),
       [1, 2, 3, 4]
     );
 
     // Hoja: Juegos
     const juegos = db.prepare(`
-      SELECT id, nombre, duracion_minutos, min_miembros, max_miembros, usa_etapas, usa_subcategorias, activa
+      SELECT id, nombre, duracion_minutos, min_miembros, max_miembros, usa_etapas, usa_subcategorias, usa_vueltas, activa
       FROM atracciones ORDER BY nombre
     `).all();
     agregarHoja('Juegos',
-      ['ID','Nombre','Duración (min)','Mín. Miembros','Máx. Miembros','Usa Etapas','Usa Subcategorías','Activa'],
-      juegos.map(r => [r.id, r.nombre, r.duracion_minutos, r.min_miembros, r.max_miembros, r.usa_etapas ? 'Sí' : 'No', r.usa_subcategorias ? 'Sí' : 'No', r.activa ? 'Sí' : 'No'])
+      ['ID','Nombre','Duración (min)','Mín. Miembros','Máx. Miembros','Usa Etapas','Usa Subcategorías','Usa Vueltas','Activa'],
+      juegos.map(r => [r.id, r.nombre, r.duracion_minutos, r.min_miembros, r.max_miembros, r.usa_etapas ? 'Sí' : 'No', r.usa_subcategorias ? 'Sí' : 'No', r.usa_vueltas ? 'Sí' : 'No', r.activa ? 'Sí' : 'No'])
     );
 
     // Hoja: Usuarios (sin contraseñas)

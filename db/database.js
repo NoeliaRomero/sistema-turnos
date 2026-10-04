@@ -125,6 +125,10 @@ db.exec(`
   "ALTER TABLE atracciones ADD COLUMN tiempo_entre_llamados_segundos  INTEGER DEFAULT NULL",
   // Grupos en espera combinados por recepción: se llaman todos juntos
   "ALTER TABLE turnos      ADD COLUMN combinacion_id          INTEGER DEFAULT NULL",
+  // Vueltas (ej. Karting): opciones por juego y valor elegido por turno.
+  // Se guarda el VALOR (no FK) para que el historial sobreviva al borrar opciones.
+  "ALTER TABLE atracciones ADD COLUMN usa_vueltas             INTEGER DEFAULT 0",
+  "ALTER TABLE turnos      ADD COLUMN vueltas                 INTEGER DEFAULT NULL",
 ].forEach(sql => { try { db.exec(sql); } catch (_) {} });
 
 // Inicializar orden_cola para turnos existentes sin valor
@@ -184,6 +188,16 @@ db.exec(`
     id       INTEGER PRIMARY KEY AUTOINCREMENT,
     juego_id INTEGER NOT NULL REFERENCES atracciones(id) ON DELETE CASCADE,
     nombre   TEXT    NOT NULL,
+    orden    INTEGER NOT NULL DEFAULT 1
+  );
+`);
+
+// ── Tabla juego_vueltas ───────────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS juego_vueltas (
+    id       INTEGER PRIMARY KEY AUTOINCREMENT,
+    juego_id INTEGER NOT NULL REFERENCES atracciones(id) ON DELETE CASCADE,
+    cantidad INTEGER NOT NULL,
     orden    INTEGER NOT NULL DEFAULT 1
   );
 `);

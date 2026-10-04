@@ -43,6 +43,11 @@
     .sub-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
     .sub-row input[type="text"] { flex:1; }
     .sub-row .btn-move           { padding:4px 8px; font-size:.8rem; }
+    .vueltas-badge { background:#e0f2fe; color:#075985; font-size:.75rem; font-weight:600; padding:2px 8px; border-radius:20px; }
+    #seccionVueltas { background:#f0f9ff; border-radius:10px; padding:16px; border:1px solid #bae6fd; }
+    .vuelta-row { display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+    .vuelta-row input[type="number"] { flex:1; }
+    .vuelta-row .btn-move            { padding:4px 8px; font-size:.8rem; }
   </style>
 </head>
 <body>
@@ -368,6 +373,13 @@
           </div>
           <div class="form-text">Si está activado, al registrar un grupo se deberá seleccionar una subcategoría (ej: nivel de dificultad, modalidad, horario, etc.)</div>
         </div>
+        <div class="mb-3">
+          <div class="form-check form-switch">
+            <input class="form-check-input" type="checkbox" id="jUsaVueltas">
+            <label class="form-check-label fw-semibold" for="jUsaVueltas">¿Este juego usa vueltas?</label>
+          </div>
+          <div class="form-text">Si está activado, al registrar un grupo se deberá elegir la cantidad de vueltas (ej: Karting 5, 10 o 15 vueltas). Grupos con distinta cantidad de vueltas no corren juntos.</div>
+        </div>
         <div class="mb-3" id="wrapDuracionManual">
           <label class="form-label fw-semibold" for="jDuracion">Duración estimada (minutos) <span class="text-danger">*</span></label>
           <div class="input-group input-group-lg">
@@ -384,6 +396,15 @@
             </button>
           </div>
           <div id="listaSubcategorias"></div>
+        </div>
+        <div class="mb-3 d-none" id="seccionVueltas">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <span class="fw-semibold">Opciones de vueltas</span>
+            <button type="button" class="btn btn-outline-info btn-sm" id="btnAgregarVuelta">
+              <i class="bi bi-plus-lg me-1"></i>Agregar opción
+            </button>
+          </div>
+          <div id="listaVueltas"></div>
         </div>
         <div class="mb-3 d-none" id="seccionEtapas">
           <div class="d-flex justify-content-between align-items-center mb-2">

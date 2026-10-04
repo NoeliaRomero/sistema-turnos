@@ -233,21 +233,46 @@ function marcarError(viperId, mensaje) {
   emitirActualizacion(viperId);
 }
 
+// Los llamados se encolan: cada código espera a que el Arduino termine de
+// transmitir el anterior ("[TX] Finalizado."). Al llamar una combinación
+// salen varios beepers seguidos, y escribirlos pegados podía perder alguno.
+let colaRaw = Promise.resolve();
+
 // Transmite el código RAW de un VIPER ya activo (usado al llamar un turno).
-async function enviarRaw(codigoRaw, io) {
+function enviarRaw(codigoRaw, io) {
+  const envio = colaRaw.then(() => _transmitirRaw(codigoRaw, io));
+  colaRaw = envio.catch(() => {});
+  return envio;
+}
+
+async function _transmitirRaw(codigoRaw, io) {
   ioRef = io || ioRef;
   await asegurarConexion(io);
-  return new Promise((resolve, reject) => {
-    port.write(codigoRaw + '\n', err => {
-      if (err) {
-        log(`Error al transmitir RAW: ${err.message}`);
-        return reject(err);
-      }
-      log('RAW transmitido');
-      log('Transmisión exitosa');
-      resolve();
+  const confirmado = confirmacionTx ? null : esperarConfirmacionTx();
+  try {
+    await new Promise((resolve, reject) => {
+      port.write(codigoRaw + '\n', err => {
+        if (err) {
+          log(`Error al transmitir RAW: ${err.message}`);
+          return reject(err);
+        }
+        log('RAW transmitido');
+        resolve();
+      });
     });
-  });
+  } catch (err) {
+    confirmado?.catch(() => {});
+    confirmacionTx?.reject(err);
+    throw err;
+  }
+  // Sin confirmación (Arduino viejo o tardío) no se bloquea la cola: pasado el
+  // tiempo de espera se sigue con el próximo beeper igual.
+  if (confirmado) {
+    await confirmado.then(
+      () => log('Transmisión exitosa'),
+      err => log(`Sin confirmación del Arduino: ${err.message}`)
+    );
+  }
 }
 
 // Busca el puerto configurado entre los puertos presentes en el sistema.
