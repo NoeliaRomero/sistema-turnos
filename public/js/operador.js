@@ -59,7 +59,7 @@ async function cargarAtracciones() {
   const sel         = document.getElementById('filtroAtraccion');
 
   atracciones.forEach(a => {
-    sel.innerHTML += `<option value="${a.id}">${a.nombre}</option>`;
+    sel.innerHTML += `<option value="${a.id}">${escapeHtml(a.nombre)}</option>`;
   });
 
   // Operador ve solo su juego, selector bloqueado
@@ -132,12 +132,12 @@ function cardEsperando(t) {
     <div class="turno-card esperando" id="turno-${t.id}">
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div class="d-flex align-items-center gap-3">
-          <div class="biper-num">${t.biper_numero}</div>
+          <div class="biper-num">${escapeHtml(t.biper_numero)}</div>
           <div>
-            <div class="fw-semibold">${t.nombre_cliente || '<span class="text-muted">Sin nombre</span>'}</div>
+            <div class="fw-semibold">${t.nombre_cliente ? escapeHtml(t.nombre_cliente) : '<span class="text-muted">Sin nombre</span>'}</div>
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
-              <span class="atraccion-tag">${t.atraccion_nombre}</span>
-              ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${t.subcategoria_nombre}</span>` : ''}
+              <span class="atraccion-tag">${escapeHtml(t.atraccion_nombre)}</span>
+              ${t.subcategoria_nombre ? `<span class="atraccion-tag" style="background:#d1fae5;color:#065f46"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>` : ''}
               ${t.vueltas != null ? `<span class="atraccion-tag" style="background:#e0f2fe;color:#075985"><i class="bi bi-arrow-repeat me-1"></i>${Number(t.vueltas)} vueltas</span>` : ''}
               <span class="duracion-tag"><i class="bi bi-people me-1"></i>${t.cantidad_miembros} persona${t.cantidad_miembros !== 1 ? 's' : ''}</span>
               ${t.duracion_minutos ? `<span class="duracion-tag"><i class="bi bi-clock me-1"></i>${t.duracion_minutos} min</span>` : ''}
@@ -189,7 +189,7 @@ function cardLlamado(t) {
     <div class="turno-card llamado" id="turno-${t.id}">
       <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
         <div class="d-flex align-items-center gap-3">
-          <div class="biper-num">${t.biper_numero}</div>
+          <div class="biper-num">${escapeHtml(t.biper_numero)}</div>
           <div>
             <div class="fw-semibold">${t.nombre_cliente ? escapeHtml(t.nombre_cliente) : '<span class="text-muted">Sin nombre</span>'}</div>
             <div class="d-flex align-items-center gap-2 mt-1 flex-wrap">
@@ -382,7 +382,7 @@ async function cancelarTurno(id) {
 // ── Socket ────────────────────────────────────────────────────────────────────
 socket.on('turno:nuevo', t => {
   turnos.push(t); renderTurnos(); destacar(t.id);
-  mostrarToast(`Nuevo turno – Beeper ${t.biper_numero} (${t.atraccion_nombre})`, 'info');
+  mostrarToast(`Nuevo turno – Beeper ${escapeHtml(t.biper_numero)} (${escapeHtml(t.atraccion_nombre)})`, 'info');
 });
 socket.on('turno:llamado',        t => { upsert(t); renderTurnos(); });
 socket.on('turno:jugando',        t => { upsert(t); renderTurnos(); });

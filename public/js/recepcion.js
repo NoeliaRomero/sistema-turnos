@@ -26,14 +26,19 @@ function formatMinutos(minutos) {
   return m ? `${h} h ${m} min` : `${h} h`;
 }
 
-// Escapa para uso en atributos onclick (HTML + JS string con comillas simples)
+// Escapa para uso en atributos onclick (HTML + JS string con comillas simples).
+// Primero el escapado de JS (la barra invertida antes que la comilla: si no,
+// un nombre con "\" escapa la comilla y rompe el string) y después el de HTML
+// del atributo.
 function esc(s) {
   return String(s == null ? '' : s)
+    .replace(/\\/g, '\\\\')
+    .replace(/'/g, "\\'")
+    .replace(/[\r\n]/g, ' ')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, "\\'");
+    .replace(/"/g, '&quot;');
 }
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
@@ -214,7 +219,7 @@ function renderCola() {
       <button class="nav-link px-3 py-2 ${esActivo ? 'active' : ''}"
         data-bs-toggle="tab" data-bs-target="#tab-${j.id}"
         data-juego-id="${j.id}" role="tab">
-        <i class="bi bi-controller me-1"></i>${j.nombre}${badgeJ}${badgeE}
+        <i class="bi bi-controller me-1"></i>${escapeHtml(j.nombre)}${badgeJ}${badgeE}
       </button>
     </li>`;
   }).join('');
@@ -562,7 +567,7 @@ async function enviarRegistro(payload) {
 
   if (!res.ok) { mostrarToast(data.error || 'Error al registrar', 'danger'); return; }
 
-  mostrarToast(`✅ ${payload.nombre_cliente} – Beeper ${data.biper_numero} registrado`, 'success');
+  mostrarToast(`✅ ${escapeHtml(payload.nombre_cliente)} – Beeper ${data.biper_numero} registrado`, 'success');
   document.getElementById('formRegistro').reset();
   document.getElementById('inputMiembros').value = '1';
   document.getElementById('duracionJuego').textContent = '';
@@ -595,7 +600,7 @@ document.getElementById('btnConfFinalizarSi').addEventListener('click', async (e
     const res  = await fetch(`/api/turnos/${_pendingFinalizarId}/finalizar`, { method: 'PUT' });
     const data = await res.json();
     if (!res.ok) { mostrarToast(data.error || 'Error al finalizar', 'danger'); }
-    else         { mostrarToast(`✅ Turno de ${_pendingFinalizarNombre} finalizado`, 'success'); }
+    else         { mostrarToast(`✅ Turno de ${escapeHtml(_pendingFinalizarNombre)} finalizado`, 'success'); }
     _pendingFinalizarId = _pendingFinalizarNombre = null;
     await cargarCola();
   } finally {
@@ -627,7 +632,7 @@ document.getElementById('btnConfCancelarTurnoSi').addEventListener('click', asyn
     const res  = await fetch(`/api/turnos/${_pendingCancelarTurnoId}/cancelar-turno`, { method: 'PUT' });
     const data = await res.json();
     if (!res.ok) { mostrarToast(data.error || 'Error al cancelar', 'danger'); }
-    else         { mostrarToast(`Turno de ${_pendingCancelarTurnoNombre} cancelado`, 'warning'); }
+    else         { mostrarToast(`Turno de ${escapeHtml(_pendingCancelarTurnoNombre)} cancelado`, 'warning'); }
     _pendingCancelarTurnoId = _pendingCancelarTurnoNombre = null;
     await cargarCola();
   } finally {
@@ -738,7 +743,7 @@ async function _ejecutarLlamar(id, force = false) {
     const beepers = [data, ...data.combinados].map(t => t.biper_numero).join(', ');
     mostrarToast(`📣 Combinación llamada a jugar – beepers ${beepers}`, 'success');
   } else {
-    mostrarToast(`📣 Beeper ${data.biper_numero} – ${data.nombre_cliente || 'Grupo'} llamado a jugar`, 'success');
+    mostrarToast(`📣 Beeper ${data.biper_numero} – ${escapeHtml(data.nombre_cliente || 'Grupo')} llamado a jugar`, 'success');
   }
   await cargarCola();
   } finally {
@@ -1119,12 +1124,12 @@ socket.on('recepcion:notificacion', (data) => {
   const siguienteTxt = data.siguiente
     ? `<div class="notif-siguiente">
          <i class="bi bi-arrow-right-circle me-1"></i>
-         <strong>Siguiente:</strong> ${data.siguiente.nombre_cliente}
-         &nbsp;·&nbsp; Beeper <strong>${data.siguiente.biper_numero}</strong>
+         <strong>Siguiente:</strong> ${escapeHtml(data.siguiente.nombre_cliente)}
+         &nbsp;·&nbsp; Beeper <strong>${escapeHtml(data.siguiente.biper_numero)}</strong>
          &nbsp;·&nbsp; ${data.siguiente.cantidad_miembros} persona${data.siguiente.cantidad_miembros !== 1 ? 's' : ''}
        </div>`
     : `<div class="notif-siguiente text-muted">
-         <i class="bi bi-inbox me-1"></i>Sin grupos en espera para ${data.atraccion}
+         <i class="bi bi-inbox me-1"></i>Sin grupos en espera para ${escapeHtml(data.atraccion)}
        </div>`;
 
   const toastId = 'notif-' + Date.now();
@@ -1132,13 +1137,13 @@ socket.on('recepcion:notificacion', (data) => {
     <div id="${toastId}" class="toast notif-operador border-0" role="alert" aria-live="assertive">
       <div class="toast-header notif-header border-0">
         <i class="bi bi-person-check-fill me-2"></i>
-        <strong class="me-auto">Turno finalizado — ${data.atraccion}</strong>
+        <strong class="me-auto">Turno finalizado — ${escapeHtml(data.atraccion)}</strong>
         <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
       </div>
       <div class="toast-body">
-        <span class="notif-op">Op. ${data.operador}</span> finalizó a
-        <strong>${data.familiaFinalizada}</strong>
-        (Beeper&nbsp;<strong>${data.biper_finalizado}</strong>)
+        <span class="notif-op">Op. ${escapeHtml(data.operador)}</span> finalizó a
+        <strong>${escapeHtml(data.familiaFinalizada)}</strong>
+        (Beeper&nbsp;<strong>${escapeHtml(data.biper_finalizado)}</strong>)
         ${siguienteTxt}
       </div>
     </div>`);

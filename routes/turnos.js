@@ -446,7 +446,7 @@ module.exports = (io) => {
   }
 
   router.post('/', requireAuth('admin','recepcion'), (req, res) => {
-    const { atraccion_id, biper_numero, nombre_cliente, cantidad_miembros, viper_id, subcategoria_id, vueltas } = req.body;
+    const { atraccion_id, nombre_cliente, cantidad_miembros, viper_id, subcategoria_id, vueltas } = req.body;
 
     // ── Validar atraccion_id: debe ser un entero positivo ─────────────────────
     const atraccionId = Number(atraccion_id);
@@ -454,9 +454,17 @@ module.exports = (io) => {
       return res.status(400).json({ error: 'El identificador de atracción es inválido.' });
     }
 
-    if (!biper_numero) {
+    // El beeper tiene que ser solo dígitos: se guarda normalizado ("07" → "7")
+    // y nunca texto arbitrario (antes "7<img ...>" pasaba porque parseInt
+    // ignora lo que sigue al número, y se mostraba tal cual en el operador).
+    const biperTexto = String(req.body.biper_numero ?? '').trim();
+    if (!biperTexto) {
       return res.status(400).json({ error: 'El juego y el número de beeper son requeridos' });
     }
+    if (!/^\d+$/.test(biperTexto)) {
+      return res.status(400).json({ error: 'El número de beeper es inválido' });
+    }
+    const biper_numero = String(parseInt(biperTexto, 10));
     if (!existeBeeper(biper_numero)) {
       return res.status(400).json({ error: `El beeper ${biper_numero} no existe` });
     }
