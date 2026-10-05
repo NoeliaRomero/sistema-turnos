@@ -8,7 +8,8 @@
     "dev": "nodemon server.js",
     "electron:start": "electron .",
     "build:win": "electron-builder --win --x64",
-    "build:linux": "electron-builder --linux --x64"
+    "build:linux": "electron-builder --linux --x64",
+    "test:e2e": "playwright test"
   },
   "build": {
     "appId": "ar.com.sistemauniversal.plus",
@@ -32,7 +33,11 @@
       "!tools/*.lic",
       "!.git/**",
       "!*.md",
-      "!.env*"
+      "!.env*",
+      "!tests/**",
+      "!playwright.config.ts",
+      "!playwright-report/**",
+      "!test-results/**"
     ],
     "asar": true,
     "npmRebuild": false,
@@ -85,6 +90,7 @@
     "socket.io": "^4.7.4"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "bootstrap": "^5.3.2",
     "bootstrap-icons": "^1.11.3",
     "chart.js": "^4.4.2",

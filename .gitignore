@@ -27,3 +27,8 @@ tools/*.lic
 
 # Electron build output
 dist*/
+
+# Playwright E2E
+playwright-report/
+test-results/
+tests/.db/
