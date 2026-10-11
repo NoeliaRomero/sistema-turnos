@@ -178,7 +178,7 @@ function renderOperadoresChart(llamados, finalizados) {
 function renderTablaOperadores(ops) {
   const tbody = document.getElementById('tablaOps');
   if (!ops.length) {
-    tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">Sin datos de operadores</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Sin datos de operadores</td></tr>';
     return;
   }
   tbody.innerHTML = ops.map(op => `
@@ -188,7 +188,18 @@ function renderTablaOperadores(ops) {
       <td class="text-center"><span class="badge bg-primary rounded-pill">${op.llamados}</span></td>
       <td class="text-center"><span class="badge bg-success rounded-pill">${op.finalizados}</span></td>
       <td class="text-center">${op.tiempo_promedio ? `${op.tiempo_promedio} min` : '—'}</td>
+      <td class="text-center">${op.demora_total > 0
+        ? `<span class="badge bg-danger rounded-pill" title="${op.turnos_demorados} turno(s) finalizados fuera de tiempo">${formatearMinutos(op.demora_total)}</span>`
+        : '<span class="text-muted">—</span>'}</td>
     </tr>`).join('');
+}
+
+// 125.5 → "2 h 05 min"; 8.3 → "8 min"
+function formatearMinutos(min) {
+  const total = Math.round(min);
+  if (total < 60) return `${total} min`;
+  const h = Math.floor(total / 60);
+  return `${h} h ${String(total % 60).padStart(2, '0')} min`;
 }
 
 // ── Usuarios ──────────────────────────────────────────────────────────────────

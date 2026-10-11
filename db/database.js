@@ -171,6 +171,12 @@ db.exec(`
   );
 `);
 
+// Índices para las estadísticas de demora por etapa (routes/stats.js)
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_teh_turno ON turno_etapas_historial(turno_id);
+  CREATE INDEX IF NOT EXISTS idx_teh_etapa ON turno_etapas_historial(etapa_id);
+`);
+
 // ── Tabla configuracion_general ───────────────────────────────────────────────
 db.exec(`
   CREATE TABLE IF NOT EXISTS configuracion_general (
