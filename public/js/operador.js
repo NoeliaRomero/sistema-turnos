@@ -279,7 +279,7 @@ function cardJugando(t) {
               <span class="timer-badge ${vencido ? 'timer-vencido' : ''}"
                     data-base="${baseTime}" data-duracion="${duracion}" data-tipo="jugando"
                     id="timer-${t.id}">
-                <i class="bi bi-stopwatch me-1"></i>${elapsed} min en juego
+                <i class="bi bi-stopwatch me-1"></i>${formatearMinutos(elapsed)} en juego
               </span>
             </div>
             ${etapaHtml}
@@ -303,7 +303,7 @@ function actualizarTimers() {
     const elapsed  = tiempoTranscurrido(el.dataset.base);
     const duracion = parseInt(el.dataset.duracion) || 0;
     const vencido  = duracion > 0 && elapsed > duracion;
-    el.innerHTML   = `<i class="bi bi-stopwatch me-1"></i>${elapsed} min en juego`;
+    el.innerHTML   = `<i class="bi bi-stopwatch me-1"></i>${formatearMinutos(elapsed)} en juego`;
     el.className   = `timer-badge ${vencido ? 'timer-vencido' : ''}`;
   });
 
@@ -404,6 +404,12 @@ function destacar(id) {
 function tiempoTranscurrido(dt) {
   if (!dt) return 0;
   return Math.floor((Date.now() - new Date(dt).getTime()) / 60000);
+}
+
+// 267 → "4 h 27 min"; 45 → "45 min"
+function formatearMinutos(min) {
+  if (min < 60) return `${min} min`;
+  return `${Math.floor(min / 60)} h ${String(min % 60).padStart(2, '0')} min`;
 }
 function formatHora(dt) {
   if (!dt) return '';
