@@ -110,6 +110,9 @@ io.engine.use(sessionMiddleware);
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ── Sesión admin solo desde la PC principal (ver middleware/solo-local.js) ────
+app.use('/api', require('./middleware/solo-local').adminSoloPcPrincipal);
+
 // ── Módulo de licencia (requiere estar antes del enforcement middleware) ───────
 const licenciaModule = require('./routes/licencia');
 

@@ -3,6 +3,7 @@ const router    = express.Router();
 const bcrypt    = require('bcryptjs');
 const db        = require('../db/database');
 const presencia = require('../services/presencia');
+const { esPcPrincipal, MSG_ADMIN_SOLO_PC_PRINCIPAL } = require('../middleware/solo-local');
 
 router.post('/login', (req, res) => {
   const { username, password } = req.body;
@@ -20,6 +21,10 @@ router.post('/login', (req, res) => {
 
   const esAdmin      = user.rol === 'admin';
   const esSuperadmin = user.rol === 'superadmin';
+
+  if (esAdmin && !esPcPrincipal(req)) {
+    return res.status(403).json({ error: MSG_ADMIN_SOLO_PC_PRINCIPAL });
+  }
 
   req.session.usuario = {
     id:                      user.id,

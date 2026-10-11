@@ -13,10 +13,16 @@
  *  7. Cerrar el proceso limpiamente al cerrar la ventana.
  */
 
-const { app, BrowserWindow, dialog, shell, Menu, ipcMain } = require('electron');
-const path = require('path');
-const fs   = require('fs');
-const net  = require('net');
+const { app, BrowserWindow, dialog, shell, Menu, ipcMain, session } = require('electron');
+const path   = require('path');
+const fs     = require('fs');
+const net    = require('net');
+const crypto = require('crypto');
+
+// Token por arranque que identifica a esta ventana ante el servidor: solo con
+// él se puede abrir la sesión de administrador (middleware/solo-local.js).
+// Se fija antes de require('./server') y nunca sale de este proceso.
+process.env.DESKTOP_TOKEN = crypto.randomBytes(32).toString('hex');
 
 // Fijar el nombre ANTES de getPath('userData') para que el directorio de datos
 // sea consistente entre desarrollo y producción: AppData\Roaming\SistemaUniversal
@@ -161,6 +167,15 @@ async function crearVentana() {
 
   // Mostrar una vez que el contenido esté listo
   mainWindow.once('ready-to-show', () => mainWindow.show());
+
+  // Adjuntar el token de escritorio solo a los requests hacia el servidor local
+  const origenLocal = `http://127.0.0.1:${puerto}/`;
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    if (details.url.startsWith(origenLocal)) {
+      details.requestHeaders['X-Desktop-Token'] = process.env.DESKTOP_TOKEN;
+    }
+    callback({ requestHeaders: details.requestHeaders });
+  });
 
   // Cargar la app
   mainWindow.loadURL(`http://127.0.0.1:${puerto}`);
