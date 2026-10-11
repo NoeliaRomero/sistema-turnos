@@ -75,6 +75,16 @@ router.get('/', (req, res) => {
     GROUP BY u.id ORDER BY total DESC
   `).all();
 
+  // Llamados manuales por usuario (mismo criterio que la columna Llamados).
+  const llamadosPorOp = db.prepare(`
+    SELECT u.nombre,
+           COUNT(DISTINCT COALESCE('c' || t.combinacion_id, 't' || t.id)) AS total
+    FROM turnos t
+    JOIN usuarios u ON t.llamado_por = u.id
+    WHERE t.llamado_por IS NOT NULL AND ${wT}
+    GROUP BY u.id ORDER BY total DESC
+  `).all();
+
   const finalizadosPorOp = db.prepare(`
     SELECT u.nombre, COUNT(*) AS total
     FROM turnos t
@@ -227,6 +237,7 @@ router.get('/', (req, res) => {
     porDia,
     porHora,
     creadosPorOp,
+    llamadosPorOp,
     finalizadosPorOp,
     tablaOperadores
   });
