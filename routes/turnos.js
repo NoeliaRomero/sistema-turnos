@@ -2,7 +2,7 @@ const express = require('express');
 const cron = require('node-cron');
 const db = require('../db/database');
 const { requireAuth, requirePermission } = require('../middleware/auth');
-const { requierePuesto } = require('../services/puestos');
+const { requierePuesto, requiereEtapaPropia } = require('../services/puestos');
 const serialService = require('../server/services/serialService');
 const { getCodigoBeeper, existeBeeper } = require('../server/config/beeperCodes');
 
@@ -988,7 +988,7 @@ module.exports = (io) => {
   });
 
   // ── Avanzar / finalizar etapa (operador) ──────────────────────────────────────
-  router.put('/:id/finalizar', requireAuth('admin','operador','recepcion'), requierePuesto, (req, res) => {
+  router.put('/:id/finalizar', requireAuth('admin','operador','recepcion'), requierePuesto, requiereEtapaPropia, (req, res) => {
     const { id } = req.params;
     const usuario = req.session.usuario;
 
@@ -1146,7 +1146,7 @@ module.exports = (io) => {
   });
 
   // ── Llegó (operador confirma llegada, llamado → jugando) ─────────────────────
-  router.put('/:id/llegar', requireAuth('admin','operador'), requierePuesto, (req, res) => {
+  router.put('/:id/llegar', requireAuth('admin','operador'), requierePuesto, requiereEtapaPropia, (req, res) => {
     const { id } = req.params;
     const usuario = req.session.usuario;
 
@@ -1479,7 +1479,7 @@ module.exports = (io) => {
   // ── No Llegó: el turno vuelve a "esperando", al final de la cola ─────────────
   // No se cierra ni desaparece — puede volver a ser llamado las veces que haga
   // falta. Conserva atracción, subcategoría, cantidad de miembros, biper y VIPER.
-  router.put('/:id/cancelar', requirePermission('permiso_cancelar_turno'), requierePuesto, (req, res) => {
+  router.put('/:id/cancelar', requirePermission('permiso_cancelar_turno'), requierePuesto, requiereEtapaPropia, (req, res) => {
     const { id } = req.params;
     const usuario = req.session.usuario;
 

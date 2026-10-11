@@ -17,6 +17,9 @@ function etapasDelJuego(atraccion) {
 module.exports = (io) => {
   const router = express.Router();
 
+  // Las pantallas de operador actualizan qué botones pueden usar
+  puestos.setNotificador(() => io.emit('puestos:cambio'));
+
   function avisarPuestoCerrado(usuarioId, motivo, extra = {}) {
     io.to(`usuario:${usuarioId}`).emit('puesto:cerrado', { motivo, ...extra });
   }

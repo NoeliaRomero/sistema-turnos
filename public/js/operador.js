@@ -121,11 +121,11 @@ function renderTurnos() {
 // El botón "Llamar" solo aparece si el operador tiene permiso_llamar_turno
 // (lo activa el Administrador) y el turno es de su propia atracción asignada.
 function cardEsperando(t) {
-  const esAsignado = (me.atraccion_id === t.atraccion_id || me.rol === 'admin') && !modoLectura;
+  const esAsignado = me.atraccion_id === t.atraccion_id || me.rol === 'admin';
   const llamarBtn  = (me.permiso_llamar_turno && esAsignado)
-    ? `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="llamarTurnoOperador(${t.id},this)">
+    ? conBloqueo(`<button class="btn btn-success btn-sm px-3 fw-bold" onclick="llamarTurnoOperador(${t.id},this)">
          <i class="bi bi-megaphone me-1"></i>Llamar
-       </button>`
+       </button>`, motivoBloqueo(t, { etapa: false }))
     : `<span class="badge bg-warning text-dark px-3 py-2">
          <i class="bi bi-hourglass-split me-1"></i>En espera
        </span>`;
@@ -170,21 +170,21 @@ function cardLlamado(t) {
   const restoMin      = Math.floor(restoMs / 60000);
   const restoSeg      = Math.floor((restoMs % 60000) / 1000);
 
-  const esAsignado  = (me.atraccion_id === t.atraccion_id || me.rol === 'admin') && !modoLectura;
+  const esAsignado  = me.atraccion_id === t.atraccion_id || me.rol === 'admin';
   const cancelBtn   = (me.permiso_cancelar_turno && esAsignado)
-    ? `<button class="btn btn-danger btn-sm px-3 fw-bold" onclick="cancelarTurno(${t.id})">
+    ? conBloqueo(`<button class="btn btn-danger btn-sm px-3 fw-bold" onclick="cancelarTurno(${t.id})">
          <i class="bi bi-person-x me-1"></i>No Llegó
-       </button>` : '';
+       </button>`, motivoBloqueo(t)) : '';
   const llegoBtn    = esAsignado
-    ? `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="llegoTurno(${t.id},this)">
+    ? conBloqueo(`<button class="btn btn-success btn-sm px-3 fw-bold" onclick="llegoTurno(${t.id},this)">
          <i class="bi bi-check-circle me-1"></i>Llegó
-       </button>` : '';
+       </button>`, motivoBloqueo(t)) : '';
   // Mientras no se marque "Llegó" se puede volver a llamar (resuena el mismo
   // biper/VIPER del mismo turno, sin duplicar nada ni crear otro registro).
   const llamarDeNuevoBtn = (me.permiso_llamar_turno && esAsignado)
-    ? `<button class="btn btn-outline-primary btn-sm px-3 fw-bold" onclick="llamarTurnoOperador(${t.id},this)">
+    ? conBloqueo(`<button class="btn btn-outline-primary btn-sm px-3 fw-bold" onclick="llamarTurnoOperador(${t.id},this)">
          <i class="bi bi-megaphone me-1"></i>Llamar nuevamente
-       </button>` : '';
+       </button>`, motivoBloqueo(t, { etapa: false })) : '';
 
   return `
     <div class="turno-card llamado" id="turno-${t.id}">
@@ -225,7 +225,7 @@ function cardJugando(t) {
   const elapsed    = tiempoTranscurrido(baseTime);
   const duracion   = t.duracion_minutos || 0;
   const vencido    = duracion > 0 && elapsed > duracion;
-  const esAsignado = (me.atraccion_id === t.atraccion_id || me.rol === 'admin') && !modoLectura;
+  const esAsignado = me.atraccion_id === t.atraccion_id || me.rol === 'admin';
 
   let etapaHtml    = '';
   let btnFinalizar = '';
@@ -243,20 +243,20 @@ function cardJugando(t) {
 
     if (esAsignado) {
       if (esMasEtapas) {
-        btnFinalizar = `<button class="btn btn-primary btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
+        btnFinalizar = conBloqueo(`<button class="btn btn-primary btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
           <i class="bi bi-skip-forward-fill me-1"></i>Finalizar Etapa
-        </button>`;
+        </button>`, motivoBloqueo(t));
       } else {
-        btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
+        btnFinalizar = conBloqueo(`<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
           <i class="bi bi-trophy me-1"></i>Finalizar
-        </button>`;
+        </button>`, motivoBloqueo(t));
       }
     }
   } else if (esAsignado) {
     // Sin etapas → Finalizar
-    btnFinalizar = `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
+    btnFinalizar = conBloqueo(`<button class="btn btn-success btn-sm px-3 fw-bold" onclick="finalizarTurno(${t.id},this)">
       <i class="bi bi-trophy me-1"></i>Finalizar
-    </button>`;
+    </button>`, motivoBloqueo(t));
   }
 
   return `
@@ -392,6 +392,7 @@ socket.on('turno:finalizado',     t => { turnos = turnos.filter(x => x.id !== t.
 socket.on('turno:reordenado',     () => cargarTurnos());
 // El puesto se cierra solo al empezar un nuevo día: volver a elegir etapa.
 socket.on('puesto:cerrado', () => verificarPuesto());
+socket.on('puestos:cambio', () => refrescarPuestos());
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function upsert(t) {
@@ -457,23 +458,44 @@ let _modalPuesto = null;
 // Sin etapa a cargo el operador solo mira: las tarjetas no muestran acciones.
 // Arranca en true para no mostrar botones hasta confirmar el puesto.
 let modoLectura  = true;
-let _pollLectura = null;
 
 function setModoLectura(activo) {
   modoLectura = activo;
   document.getElementById('avisoLectura').classList.toggle('d-none', !activo);
-  // En modo lectura se revisa cada tanto si se liberó alguna etapa
-  clearInterval(_pollLectura);
-  _pollLectura = activo ? setInterval(revisarEtapasLibres, 20000) : null;
   renderTurnos();
 }
 
-async function revisarEtapasLibres() {
-  if (document.getElementById('modalPuesto').classList.contains('show')) return;
+// Por qué el operador no puede usar un botón de esta tarjeta (null = puede).
+// Sin puesto (modo lectura) no opera nada. Con puesto, "Llegó", "No llegó" y
+// "Finalizar" solo valen para grupos en una etapa suya; si la etapa no tiene
+// encargado cualquiera puede operarla. Llamar no depende de la etapa.
+function motivoBloqueo(t, { etapa = true } = {}) {
+  if (modoLectura) return 'Estás en modo lectura: elegí una etapa para poder operar';
+  if (!etapa || !t.etapa_actual_id || !_puesto) return null;
+  if (_puesto.mias.includes(t.etapa_actual_id)) return null;
+  const encargado = _puesto.etapas.find(e => e.id === t.etapa_actual_id)?.responsable;
+  return encargado
+    ? `Este grupo está en ${t.etapa_actual_nombre}, a cargo de ${encargado.nombre}`
+    : null;
+}
+
+// Botón deshabilitado y en gris: un botón disabled no muestra tooltip, por eso
+// el motivo va en un span que lo envuelve.
+function conBloqueo(boton, motivo) {
+  if (!motivo) return boton;
+  return `<span class="d-inline-block" tabindex="0" title="${escapeHtml(motivo)}">${
+    boton.replace('<button ', '<button disabled style="pointer-events:none;filter:grayscale(1);opacity:.55" ')}</span>`;
+}
+
+// Alguien tomó o dejó una etapa: actualizar botones y, en modo lectura,
+// ofrecer la etapa apenas se libere.
+async function refrescarPuestos() {
   const res = await fetch('/api/puestos/mio');
   if (!res.ok) return;
   _puesto = await res.json();
-  if (_puesto.etapas.some(e => !e.responsable)) {
+  renderTurnos();
+  const modalAbierto = document.getElementById('modalPuesto').classList.contains('show');
+  if (modoLectura && !modalAbierto && _puesto.etapas.some(e => !e.responsable)) {
     mostrarToast('Se liberó una etapa: ya podés elegirla', 'info');
     abrirModalPuesto();
   }
