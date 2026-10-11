@@ -171,6 +171,24 @@ db.exec(`
   );
 `);
 
+// ── Tabla operador_puestos ────────────────────────────────────────────────────
+// Historial de qué etapa (puesto) tuvo a cargo cada operador y en qué horario.
+// Una fila abierta (hasta NULL) por etapa a cargo. En juegos sin etapas el
+// puesto es el juego entero (etapa_id NULL). Las demoras se cargan a quien
+// tenía el puesto mientras el turno estaba excedido (routes/stats.js).
+db.exec(`
+  CREATE TABLE IF NOT EXISTS operador_puestos (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    usuario_id   INTEGER NOT NULL REFERENCES usuarios(id),
+    atraccion_id INTEGER NOT NULL REFERENCES atracciones(id),
+    etapa_id     INTEGER REFERENCES juego_etapas(id),
+    desde        DATETIME NOT NULL DEFAULT (datetime('now','localtime')),
+    hasta        DATETIME DEFAULT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_puestos_abiertos ON operador_puestos(hasta, usuario_id);
+  CREATE INDEX IF NOT EXISTS idx_puestos_atraccion ON operador_puestos(atraccion_id, etapa_id);
+`);
+
 // Índices para las estadísticas de demora por etapa (routes/stats.js)
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_teh_turno ON turno_etapas_historial(turno_id);

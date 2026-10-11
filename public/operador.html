@@ -60,6 +60,11 @@
     }
     #listaEsperando::-webkit-scrollbar { width: 8px; }
     #listaEsperando::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+    .puesto-badge { background: rgba(255,255,255,.15); color: #fff; font-size: .8rem; font-weight: 600; padding: 5px 10px; border-radius: 20px; white-space: nowrap; }
+    .etapa-opcion { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid #e2e8f0; border-radius: 10px; margin-bottom: 8px; cursor: pointer; }
+    .etapa-opcion:has(input:checked) { border-color: #16a34a; background: #f0fdf4; }
+    .etapa-opcion input { width: 1.3rem; height: 1.3rem; margin: 0; }
+    .etapa-opcion.ocupada { background: #f8fafc; color: #94a3b8; cursor: not-allowed; }
   </style>
 </head>
 <body>
@@ -70,6 +75,11 @@
   </span>
   <div class="d-flex align-items-center gap-2">
     <span class="text-white-50 small" id="usuarioNombre"></span>
+    <!-- Etapa(s) a cargo del operador; se completa desde JS -->
+    <span class="puesto-badge d-none" id="puestoActual"></span>
+    <button class="btn btn-outline-light btn-sm d-none" id="btnCambiarPuesto">
+      <i class="bi bi-arrow-left-right me-1"></i>Cambiar etapa
+    </button>
     <!-- Visible solo si tiene permiso_gestionar_juegos (se activa desde JS) -->
     <a href="/juegos.html" class="btn btn-outline-light btn-sm" id="btnJuegos" style="display:none">
       <i class="bi bi-controller me-1"></i>Juegos
@@ -128,6 +138,30 @@
 </div>
 
 <div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer"></div>
+
+<!-- Elección de puesto: qué etapa(s) tiene a cargo el operador -->
+<div class="modal fade" id="modalPuesto" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content border-0 rounded-4">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-bold"><i class="bi bi-person-badge me-2 text-success"></i>¿De qué etapa te vas a encargar?</h5>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3" id="puestoJuego"></p>
+        <div id="puestoEtapas"></div>
+        <p class="text-muted small mb-0 mt-2">
+          <i class="bi bi-info-circle me-1"></i>Las demoras de las etapas que elijas se te van a contar a vos mientras las tengas a cargo.
+        </p>
+        <div class="alert alert-danger small mt-3 mb-0 d-none" id="puestoError"></div>
+      </div>
+      <div class="modal-footer border-0 pt-0">
+        <!-- Solo al cambiar de etapa: al entrar es obligatorio elegir -->
+        <button class="btn btn-secondary d-none" id="btnCancelarPuesto" data-bs-dismiss="modal">Cancelar</button>
+        <button class="btn btn-success px-4" id="btnConfirmarPuesto">Confirmar</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script src="/socket.io/socket.io.js"></script>
 <script src="/vendor/bootstrap.bundle.min.js"></script>

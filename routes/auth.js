@@ -3,6 +3,7 @@ const router    = express.Router();
 const bcrypt    = require('bcryptjs');
 const db        = require('../db/database');
 const presencia = require('../services/presencia');
+const puestos   = require('../services/puestos');
 const { esPcPrincipal, MSG_ADMIN_SOLO_PC_PRINCIPAL } = require('../middleware/solo-local');
 
 router.post('/login', (req, res) => {
@@ -42,6 +43,10 @@ router.post('/login', (req, res) => {
     feature_llamar_turno:    esAdmin ? (user.feature_llamar_turno    ?? 1) : 1,
   };
 
+  // Cada inicio de sesión del operador arranca sin puesto: la pantalla del
+  // operador le pide elegir de qué etapa se va a encargar.
+  if (user.rol === 'operador') puestos.cerrarPuestosDeUsuario(user.id);
+
   const redirects = {
     superadmin: '/superadmin.html',
     admin:      '/admin.html',
@@ -56,6 +61,8 @@ router.post('/logout', (req, res) => {
   const usuarioId = req.session?.usuario?.id;
   if (usuarioId != null) {
     presencia.forzarOffline(usuarioId);
+    // Al salir deja de ser responsable de su etapa
+    puestos.cerrarPuestosDeUsuario(usuarioId);
   }
   req.session.destroy(() => res.json({ ok: true }));
 });

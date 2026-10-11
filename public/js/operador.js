@@ -43,6 +43,7 @@ async function init() {
 
   await cargarAtracciones();
   await cargarTurnos();
+  await verificarPuesto();
 
   timerInterval = setInterval(actualizarTimers, 1000);
 }
@@ -389,6 +390,8 @@ socket.on('turno:jugando',        t => { upsert(t); renderTurnos(); });
 socket.on('turno:etapa_avanzada', t => { upsert(t); renderTurnos(); });
 socket.on('turno:finalizado',     t => { turnos = turnos.filter(x => x.id !== t.id); renderTurnos(); });
 socket.on('turno:reordenado',     () => cargarTurnos());
+// El puesto se cierra solo al empezar un nuevo día: volver a elegir etapa.
+socket.on('puesto:cerrado', () => verificarPuesto());
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function upsert(t) {
@@ -437,3 +440,112 @@ function mostrarToast(mensaje, tipo = 'success') {
 }
 
 init();
+
+
+// ── Puesto del operador ───────────────────────────────────────────────────────
+// Al iniciar sesión el operador elige de qué etapa(s) de su juego se encarga.
+// Las demoras de esas etapas se le cargan mientras las tenga a cargo. En
+// juegos sin etapas el puesto es el juego entero y se asigna solo.
+let _puesto      = null;
+let _modalPuesto = null;
+
+async function verificarPuesto() {
+  const res = await fetch('/api/puestos/mio');
+  if (!res.ok) return;
+  _puesto = await res.json();
+  if (!_puesto.atraccion) return;
+
+  if (!_puesto.etapas.length) {
+    if (!_puesto.asignado) await guardarPuesto([]);
+    mostrarPuesto([]);
+    return;
+  }
+
+  const mias = _puesto.etapas.filter(e => _puesto.mias.includes(e.id)).map(e => e.nombre);
+  document.getElementById('btnCambiarPuesto').classList.remove('d-none');
+  mostrarPuesto(mias);
+  if (!mias.length) abrirModalPuesto();
+}
+
+function mostrarPuesto(nombres) {
+  const badge = document.getElementById('puestoActual');
+  if (!nombres.length && _puesto?.etapas.length) {
+    badge.classList.add('d-none');
+    return;
+  }
+  const texto = nombres.length ? nombres.join(' · ') : _puesto.atraccion.nombre;
+  badge.innerHTML = `<i class="bi bi-person-badge me-1"></i>${escapeHtml(texto)}`;
+  badge.classList.remove('d-none');
+}
+
+function abrirModalPuesto() {
+  document.getElementById('puestoJuego').textContent =
+    `${_puesto.atraccion.nombre}: podés elegir más de una si las vas a atender vos solo.`;
+  // Una etapa con encargado no se puede elegir: queda bloqueada con su nombre.
+  document.getElementById('puestoEtapas').innerHTML = _puesto.etapas.map(e => `
+    <label class="etapa-opcion ${e.responsable ? 'ocupada' : ''}">
+      <input type="checkbox" class="form-check-input" value="${e.id}"
+        ${_puesto.mias.includes(e.id) ? 'checked' : ''} ${e.responsable ? 'disabled' : ''}>
+      <span class="fw-semibold flex-grow-1">${escapeHtml(e.nombre)}</span>
+      ${e.responsable ? `<span class="badge bg-secondary-subtle text-secondary"><i class="bi bi-lock-fill me-1"></i>A cargo de ${escapeHtml(e.responsable.nombre)}</span>` : ''}
+    </label>`).join('');
+  const libres = _puesto.etapas.filter(e => !e.responsable).length;
+  const errEl  = document.getElementById('puestoError');
+  errEl.textContent = 'Todas las etapas ya tienen encargado. Pedí que liberen una para poder trabajar.';
+  errEl.classList.toggle('d-none', libres > 0);
+  document.getElementById('btnConfirmarPuesto').disabled = libres === 0;
+  document.getElementById('btnCancelarPuesto').classList.toggle('d-none', !_puesto.mias.length);
+  _modalPuesto ??= new bootstrap.Modal(document.getElementById('modalPuesto'));
+  _modalPuesto.show();
+}
+
+async function guardarPuesto(etapas) {
+  const res = await fetch('/api/puestos', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body:    JSON.stringify({ etapas }),
+  });
+  return { status: res.status, data: await res.json().catch(() => ({})) };
+}
+
+// Traer el estado actual antes de abrir: otro operador pudo haber tomado o
+// liberado etapas desde la última consulta.
+document.getElementById('btnCambiarPuesto').addEventListener('click', async () => {
+  const res = await fetch('/api/puestos/mio');
+  if (res.ok) _puesto = await res.json();
+  abrirModalPuesto();
+});
+
+document.getElementById('btnConfirmarPuesto').addEventListener('click', async e => {
+  const btn    = e.currentTarget;
+  const errEl  = document.getElementById('puestoError');
+  const etapas = [...document.querySelectorAll('#puestoEtapas input:checked')].map(i => Number(i.value));
+  errEl.classList.add('d-none');
+
+  if (!etapas.length) {
+    errEl.textContent = 'Elegí al menos una etapa.';
+    errEl.classList.remove('d-none');
+    return;
+  }
+
+  btn.disabled = true;
+  try {
+    const { status, data } = await guardarPuesto(etapas);
+    if (status !== 200) {
+      // 409: otro operador eligió esa etapa recién; se refresca la lista
+      errEl.textContent = data.error || 'No se pudo guardar la etapa';
+      errEl.classList.remove('d-none');
+      if (status === 409) {
+        await verificarPuesto();
+        errEl.textContent = data.error;
+        errEl.classList.remove('d-none');
+      }
+      return;
+    }
+    _modalPuesto.hide();
+    mostrarToast(`Ahora estás a cargo de: ${escapeHtml(data.etapas.join(', '))}`);
+    await verificarPuesto();
+  } finally {
+    btn.disabled = !_puesto.etapas.some(e => !e.responsable);
+  }
+});

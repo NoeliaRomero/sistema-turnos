@@ -146,20 +146,27 @@ router.get('/', (req, res) => {
   `).all();
 
   // Demora acumulada por operador: minutos que cada turno (o cada etapa, en
-  // juegos con etapas) siguió corriendo después de su duración configurada,
-  // cargados a quien lo finalizó. Se calcula sobre los datos existentes, así
-  // que también cubre el historial previo. Los turnos de un grupo combinado se
-  // cierran juntos: se cuenta una sola vez por grupo (y etapa), no por turno.
-  // Cancelaciones y la limpieza diaria (finalizado_por NULL) no suman demora.
+  // juegos con etapas) siguió corriendo después de su duración configurada.
+  // Se calcula sobre los datos existentes, así que también cubre el historial.
+  // Los turnos de un grupo combinado se cierran juntos: se cuenta una sola vez
+  // por grupo (y etapa), no por turno. Cancelaciones y la limpieza diaria
+  // (finalizado_por NULL) no suman demora.
   //
   // En juegos con etapas un grupo no puede avanzar si la etapa siguiente está
   // ocupada por otro grupo: ese tiempo de espera se descuenta, porque no es
   // culpa de quien atiende la etapa actual (la demora del grupo que ocupa la
   // etapa siguiente ya se le carga a su propio operador).
+  //
+  // ¿A quién se le carga? A quien tenía ese puesto (la etapa, o el juego si no
+  // usa etapas) mientras el turno estaba excedido, según operador_puestos: si
+  // Kevin tenía la Charla y la cerró recepción, la demora es de Kevin. Si el
+  // puesto cambió de manos durante la demora, se reparte según el tiempo que
+  // lo tuvo cada uno. Si nadie tenía el puesto (historial previo a esta
+  // función), se le carga a quien lo cerró, solo si es operador.
   const demoras = db.prepare(`
     WITH etapas AS (
       SELECT h.id AS hid, h.turno_id, h.etapa_id, h.finalizada_por,
-             t.combinacion_id,
+             t.atraccion_id, t.combinacion_id,
              COALESCE('c' || t.combinacion_id, 't' || t.id) AS grupo,
              julianday(COALESCE(h.iniciada_at, t.jugando_desde, t.called_at))
                + e.duracion_minutos / 1440.0 AS limite,
@@ -197,11 +204,14 @@ router.get('/', (req, res) => {
       FROM ocupaciones GROUP BY hid
     ),
     excesos AS (
-      SELECT t.finalizado_por AS usuario_id,
-             COALESCE('c' || t.combinacion_id, 't' || t.id) AS grupo,
-             0 AS etapa_id,
+      SELECT COALESCE('c' || t.combinacion_id, 't' || t.id) AS grupo,
+             t.atraccion_id,
+             NULL AS etapa_id,
+             julianday(COALESCE(t.jugando_desde, t.called_at)) + a.duracion_minutos / 1440.0 AS limite,
+             julianday(t.finished_at) AS fin,
              (julianday(t.finished_at) - julianday(COALESCE(t.jugando_desde, t.called_at))) * 1440
-               - a.duracion_minutos AS exceso
+               - a.duracion_minutos AS exceso,
+             t.finalizado_por AS cerrador_id
       FROM turnos t
       JOIN atracciones a ON a.id = t.atraccion_id
       WHERE t.estado = 'finalizado' AND t.finalizado_por IS NOT NULL
@@ -209,19 +219,52 @@ router.get('/', (req, res) => {
         AND NOT EXISTS (SELECT 1 FROM turno_etapas_historial h WHERE h.turno_id = t.id)
         AND ${wT}
       UNION ALL
-      SELECT et.finalizada_por, et.grupo, et.etapa_id,
-             (et.fin - et.limite) * 1440 - COALESCE(b.bloqueado, 0)
+      SELECT et.grupo, et.atraccion_id, et.etapa_id, et.limite, et.fin,
+             (et.fin - et.limite) * 1440 - COALESCE(b.bloqueado, 0),
+             et.finalizada_por
       FROM etapas et
       LEFT JOIN bloqueos b ON b.hid = et.hid
+    ),
+    -- Una fila por demora: grupo combinado + etapa (0 = juego sin etapas)
+    demoras AS (
+      SELECT grupo || '|' || COALESCE(etapa_id, 0) AS k,
+             atraccion_id, etapa_id,
+             MIN(limite) AS limite, MAX(fin) AS fin,
+             MAX(exceso) AS exceso, MAX(cerrador_id) AS cerrador_id
+      FROM excesos
+      GROUP BY grupo, COALESCE(etapa_id, 0)
+      HAVING MAX(exceso) > 0
+    ),
+    -- Cuánto del tiempo excedido tuvo cada operador el puesto
+    coberturas AS (
+      SELECT d.k, p.usuario_id,
+             SUM(MAX(0, MIN(julianday(COALESCE(p.hasta, datetime('now','localtime'))), d.fin)
+                      - MAX(julianday(p.desde), d.limite))) AS tiempo
+      FROM demoras d
+      JOIN operador_puestos p ON p.atraccion_id = d.atraccion_id AND p.etapa_id IS d.etapa_id
+      WHERE julianday(p.desde) < d.fin
+        AND julianday(COALESCE(p.hasta, datetime('now','localtime'))) > d.limite
+      GROUP BY d.k, p.usuario_id
+    ),
+    cubiertas AS (
+      SELECT k, SUM(tiempo) AS total FROM coberturas GROUP BY k HAVING SUM(tiempo) > 0
+    ),
+    cargos AS (
+      SELECT c.usuario_id, c.k, d.exceso * c.tiempo / cu.total AS minutos
+      FROM coberturas c
+      JOIN cubiertas cu ON cu.k = c.k
+      JOIN demoras d    ON d.k = c.k
+      WHERE c.tiempo > 0
+      UNION ALL
+      SELECT d.cerrador_id, d.k, d.exceso
+      FROM demoras d
+      JOIN usuarios u ON u.id = d.cerrador_id AND u.rol = 'operador'
+      WHERE d.k NOT IN (SELECT k FROM cubiertas)
     )
     SELECT usuario_id,
-           ROUND(SUM(exceso), 1) AS demora_total,
-           COUNT(*)              AS turnos_demorados
-    FROM (
-      SELECT usuario_id, grupo, etapa_id, MAX(exceso) AS exceso
-      FROM excesos GROUP BY usuario_id, grupo, etapa_id
-    )
-    WHERE exceso > 0
+           ROUND(SUM(minutos), 1) AS demora_total,
+           COUNT(DISTINCT k)      AS turnos_demorados
+    FROM cargos
     GROUP BY usuario_id
   `).all();
   const demoraPorUsuario = new Map(demoras.map(d => [d.usuario_id, d]));
