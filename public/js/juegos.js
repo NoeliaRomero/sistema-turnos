@@ -46,21 +46,23 @@ async function cargarJuegos() {
 
   tbody.innerHTML = juegos.map(j => `
     <tr>
-      <td class="ps-4 fw-semibold">
-        ${escapeHtml(j.nombre)}
-        ${j.usa_etapas ? `<span class="etapas-badge ms-2"><i class="bi bi-layers me-1"></i>${j.etapas.length} etapas</span>` : ''}
-        ${j.usa_subcategorias ? `<span class="subcategorias-badge ms-2"><i class="bi bi-diagram-3 me-1"></i>${j.subcategorias.length} subcategorías</span>` : ''}
-        ${j.usa_vueltas ? `<span class="vueltas-badge ms-2"><i class="bi bi-arrow-repeat me-1"></i>${(j.vueltas || []).map(v => v.cantidad).join(' / ')} vueltas</span>` : ''}
+      <td class="ps-4">
+        <div class="juego-nombre">
+        <strong>${escapeHtml(j.nombre)}</strong>
+        ${j.usa_etapas ? `<span class="etapas-badge"><i class="bi bi-layers me-1"></i>${j.etapas.length} etapas</span>` : ''}
+        ${j.usa_subcategorias ? `<span class="subcategorias-badge"><i class="bi bi-diagram-3 me-1"></i>${j.subcategorias.length} subcategorías</span>` : ''}
+        ${j.usa_vueltas ? `<span class="vueltas-badge"><i class="bi bi-arrow-repeat me-1"></i>${(j.vueltas || []).map(v => v.cantidad).join(' / ')} vueltas</span>` : ''}
+        </div>
       </td>
       <td><span class="duracion-badge"><i class="bi bi-clock me-1"></i>${j.duracion_minutos} min</span></td>
-      <td><span class="text-muted small"><i class="bi bi-people me-1"></i>${j.min_miembros || 1}–${j.max_miembros || 20}</span></td>
+      <td class="text-nowrap"><span class="text-muted small"><i class="bi bi-people me-1"></i>${j.min_miembros || 1}–${j.max_miembros || 20}</span></td>
       <td class="text-center">
         <span class="badge rounded-pill px-3 ${j.activa ? 'badge-activo' : 'badge-inactivo'}">
           ${j.activa ? 'Activo' : 'Inactivo'}
         </span>
       </td>
       <td class="text-end pe-4">
-        <button class="btn btn-sm btn-outline-primary" onclick="editarJuego(${j.id})">
+        <button class="btn btn-sm btn-outline-primary btn-editar" onclick="editarJuego(${j.id})">
           <i class="bi bi-pencil me-1"></i>Editar
         </button>
       </td>
