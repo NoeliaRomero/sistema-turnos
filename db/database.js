@@ -171,6 +171,41 @@ db.exec(`
   );
 `);
 
+// ── Duración vigente al empezar cada turno / etapa ────────────────────────────
+// La demora se mide contra la duración que el juego (o la etapa) tenía cuando
+// el grupo empezó, no contra la configuración actual: si después se edita la
+// duración, el historial no cambia. Los triggers la guardan en todos los
+// lugares donde un turno empieza a jugar o entra a una etapa, sin depender de
+// cada endpoint. Turnos anteriores a esto quedan en NULL y las estadísticas
+// usan la duración actual (routes/stats.js).
+try { db.exec('ALTER TABLE turnos ADD COLUMN duracion_snapshot INTEGER DEFAULT NULL'); } catch (_) {}
+try { db.exec('ALTER TABLE turno_etapas_historial ADD COLUMN duracion_minutos INTEGER DEFAULT NULL'); } catch (_) {}
+db.exec(`
+  -- Empieza (o se reinicia, al volver a la cola) el tiempo de juego. La primera
+  -- etapa no tiene iniciada_at: su reloj también arranca con jugando_desde.
+  CREATE TRIGGER IF NOT EXISTS trg_turno_duracion_inicio
+  AFTER UPDATE OF jugando_desde ON turnos
+  WHEN NEW.jugando_desde IS NOT OLD.jugando_desde
+  BEGIN
+    UPDATE turnos SET duracion_snapshot = CASE WHEN NEW.jugando_desde IS NULL THEN NULL
+      ELSE (SELECT duracion_minutos FROM atracciones WHERE id = NEW.atraccion_id) END
+    WHERE id = NEW.id;
+    UPDATE turno_etapas_historial SET duracion_minutos = CASE WHEN NEW.jugando_desde IS NULL THEN NULL
+      ELSE (SELECT duracion_minutos FROM juego_etapas WHERE id = turno_etapas_historial.etapa_id) END
+    WHERE turno_id = NEW.id AND iniciada_at IS NULL AND finalizada_at IS NULL;
+  END;
+
+  -- El grupo entra a una etapa siguiente
+  CREATE TRIGGER IF NOT EXISTS trg_etapa_duracion_inicio
+  AFTER INSERT ON turno_etapas_historial
+  WHEN NEW.iniciada_at IS NOT NULL
+  BEGIN
+    UPDATE turno_etapas_historial
+    SET duracion_minutos = (SELECT duracion_minutos FROM juego_etapas WHERE id = NEW.etapa_id)
+    WHERE id = NEW.id;
+  END;
+`);
+
 // ── Tabla operador_puestos ────────────────────────────────────────────────────
 // Historial de qué etapa (puesto) tuvo a cargo cada operador y en qué horario.
 // Una fila abierta (hasta NULL) por etapa a cargo. En juegos sin etapas el

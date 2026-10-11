@@ -146,7 +146,8 @@ router.get('/', (req, res) => {
   `).all();
 
   // Demora acumulada por operador: minutos que cada turno (o cada etapa, en
-  // juegos con etapas) siguió corriendo después de su duración configurada.
+  // juegos con etapas) siguió corriendo después de su duración configurada,
+  // la vigente cuando el grupo empezó (db/database.js guarda esa duración).
   // Se calcula sobre los datos existentes, así que también cubre el historial.
   // Los turnos de un grupo combinado se cierran juntos: se cuenta una sola vez
   // por grupo (y etapa), no por turno. Cancelaciones y la limpieza diaria
@@ -169,15 +170,16 @@ router.get('/', (req, res) => {
              t.atraccion_id, t.combinacion_id,
              COALESCE('c' || t.combinacion_id, 't' || t.id) AS grupo,
              julianday(COALESCE(h.iniciada_at, t.jugando_desde, t.called_at))
-               + e.duracion_minutos / 1440.0 AS limite,
+               + COALESCE(h.duracion_minutos, e.duracion_minutos) / 1440.0 AS limite,
              julianday(h.finalizada_at) AS fin,
              (SELECT h2.etapa_id FROM turno_etapas_historial h2
               WHERE h2.turno_id = h.turno_id AND h2.etapa_orden > h.etapa_orden
               ORDER BY h2.etapa_orden LIMIT 1) AS etapa_sig_id
       FROM turno_etapas_historial h
-      JOIN turnos t       ON t.id = h.turno_id
-      JOIN juego_etapas e ON e.id = h.etapa_id
+      JOIN turnos t            ON t.id = h.turno_id
+      LEFT JOIN juego_etapas e ON e.id = h.etapa_id
       WHERE h.finalizada_por IS NOT NULL AND h.finalizada_at IS NOT NULL
+        AND COALESCE(h.duracion_minutos, e.duracion_minutos) IS NOT NULL
         AND COALESCE(h.iniciada_at, t.jugando_desde, t.called_at) IS NOT NULL
         -- La etapa que se cerró al cancelar el turno no es una finalización
         AND NOT (t.estado != 'finalizado' AND h.finalizada_at = t.finished_at)
@@ -207,10 +209,11 @@ router.get('/', (req, res) => {
       SELECT COALESCE('c' || t.combinacion_id, 't' || t.id) AS grupo,
              t.atraccion_id,
              NULL AS etapa_id,
-             julianday(COALESCE(t.jugando_desde, t.called_at)) + a.duracion_minutos / 1440.0 AS limite,
+             julianday(COALESCE(t.jugando_desde, t.called_at))
+               + COALESCE(t.duracion_snapshot, a.duracion_minutos) / 1440.0 AS limite,
              julianday(t.finished_at) AS fin,
              (julianday(t.finished_at) - julianday(COALESCE(t.jugando_desde, t.called_at))) * 1440
-               - a.duracion_minutos AS exceso,
+               - COALESCE(t.duracion_snapshot, a.duracion_minutos) AS exceso,
              t.finalizado_por AS cerrador_id
       FROM turnos t
       JOIN atracciones a ON a.id = t.atraccion_id
