@@ -91,6 +91,16 @@
 </nav>
 
 <div class="container-fluid px-4 mt-4">
+  <!-- Modo lectura: sin etapa a cargo, puede mirar pero no operar -->
+  <div class="alert alert-secondary d-flex align-items-center gap-3 mb-3 d-none" id="avisoLectura">
+    <i class="bi bi-eye fs-4 flex-shrink-0"></i>
+    <div class="flex-grow-1">
+      <div class="fw-bold">Modo lectura</div>
+      <div class="small">Todas las etapas tienen encargado. Podés ver lo que pasa, pero no llamar ni finalizar turnos hasta que se libere una.</div>
+    </div>
+    <button class="btn btn-success btn-sm flex-shrink-0" id="btnElegirEtapa">Elegir etapa</button>
+  </div>
+
 
   <div class="row g-3 mb-4 align-items-center">
     <div class="col-auto">
@@ -155,6 +165,10 @@
         <div class="alert alert-danger small mt-3 mb-0 d-none" id="puestoError"></div>
       </div>
       <div class="modal-footer border-0 pt-0">
+        <!-- Solo si todas las etapas tienen encargado: mirar sin operar -->
+        <button class="btn btn-outline-secondary d-none" id="btnSoloLectura">
+          <i class="bi bi-eye me-1"></i>Entrar en modo lectura
+        </button>
         <!-- Solo al cambiar de etapa: al entrar es obligatorio elegir -->
         <button class="btn btn-secondary d-none" id="btnCancelarPuesto" data-bs-dismiss="modal">Cancelar</button>
         <button class="btn btn-success px-4" id="btnConfirmarPuesto">Confirmar</button>

@@ -13,6 +13,24 @@ export class OperadorPage extends BasePage {
   async goto(): Promise<void> {
     await super.goto('/operador.html');
     await expect(this.gameFilter).toBeDisabled();
+    await this.takeAllStages();
+  }
+
+  /**
+   * On login the operator must pick the stage(s) they are in charge of (games
+   * without stages are assigned automatically). Tests run one operator per
+   * game, so the operator takes every free stage.
+   */
+  async takeAllStages(): Promise<void> {
+    const modal = this.page.locator('#modalPuesto');
+    const badge = this.page.locator('#puestoActual');
+    await expect(modal.and(this.page.locator('.show')).or(badge.and(this.page.locator(':not(.d-none)')))).toBeVisible();
+    if (await modal.isVisible()) {
+      for (const box of await modal.locator('input[type=checkbox]:not([disabled])').all()) await box.check();
+      await modal.getByRole('button', { name: 'Confirmar' }).click();
+      await expect(modal).toBeHidden();
+    }
+    await expect(this.page.locator('#avisoLectura')).toBeHidden();
   }
 
   /**

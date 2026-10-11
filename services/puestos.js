@@ -78,7 +78,19 @@ function cerrarPuestosAnterioresA(limiteSql) {
   return usuarios;
 }
 
+// Middleware: un operador sin etapa a cargo está en modo lectura y no puede
+// operar turnos. Los demás roles pasan sin cambios.
+function requierePuesto(req, res, next) {
+  const usuario = req.session?.usuario;
+  if (usuario?.rol !== 'operador' || puestosDeUsuario(usuario.id).length) return next();
+  return res.status(403).json({
+    error: 'Estás en modo lectura: elegí una etapa a tu cargo para poder operar.',
+    modo_lectura: true,
+  });
+}
+
 module.exports = {
+  requierePuesto,
   cerrarPuestosDeUsuario,
   puestosDeUsuario,
   responsablesDeEtapas,

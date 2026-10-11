@@ -121,7 +121,7 @@ function renderTurnos() {
 // El botón "Llamar" solo aparece si el operador tiene permiso_llamar_turno
 // (lo activa el Administrador) y el turno es de su propia atracción asignada.
 function cardEsperando(t) {
-  const esAsignado = me.atraccion_id === t.atraccion_id || me.rol === 'admin';
+  const esAsignado = (me.atraccion_id === t.atraccion_id || me.rol === 'admin') && !modoLectura;
   const llamarBtn  = (me.permiso_llamar_turno && esAsignado)
     ? `<button class="btn btn-success btn-sm px-3 fw-bold" onclick="llamarTurnoOperador(${t.id},this)">
          <i class="bi bi-megaphone me-1"></i>Llamar
@@ -170,7 +170,7 @@ function cardLlamado(t) {
   const restoMin      = Math.floor(restoMs / 60000);
   const restoSeg      = Math.floor((restoMs % 60000) / 1000);
 
-  const esAsignado  = me.atraccion_id === t.atraccion_id || me.rol === 'admin';
+  const esAsignado  = (me.atraccion_id === t.atraccion_id || me.rol === 'admin') && !modoLectura;
   const cancelBtn   = (me.permiso_cancelar_turno && esAsignado)
     ? `<button class="btn btn-danger btn-sm px-3 fw-bold" onclick="cancelarTurno(${t.id})">
          <i class="bi bi-person-x me-1"></i>No Llegó
@@ -225,7 +225,7 @@ function cardJugando(t) {
   const elapsed    = tiempoTranscurrido(baseTime);
   const duracion   = t.duracion_minutos || 0;
   const vencido    = duracion > 0 && elapsed > duracion;
-  const esAsignado = me.atraccion_id === t.atraccion_id || me.rol === 'admin';
+  const esAsignado = (me.atraccion_id === t.atraccion_id || me.rol === 'admin') && !modoLectura;
 
   let etapaHtml    = '';
   let btnFinalizar = '';
@@ -454,6 +454,30 @@ init();
 // juegos sin etapas el puesto es el juego entero y se asigna solo.
 let _puesto      = null;
 let _modalPuesto = null;
+// Sin etapa a cargo el operador solo mira: las tarjetas no muestran acciones.
+// Arranca en true para no mostrar botones hasta confirmar el puesto.
+let modoLectura  = true;
+let _pollLectura = null;
+
+function setModoLectura(activo) {
+  modoLectura = activo;
+  document.getElementById('avisoLectura').classList.toggle('d-none', !activo);
+  // En modo lectura se revisa cada tanto si se liberó alguna etapa
+  clearInterval(_pollLectura);
+  _pollLectura = activo ? setInterval(revisarEtapasLibres, 20000) : null;
+  renderTurnos();
+}
+
+async function revisarEtapasLibres() {
+  if (document.getElementById('modalPuesto').classList.contains('show')) return;
+  const res = await fetch('/api/puestos/mio');
+  if (!res.ok) return;
+  _puesto = await res.json();
+  if (_puesto.etapas.some(e => !e.responsable)) {
+    mostrarToast('Se liberó una etapa: ya podés elegirla', 'info');
+    abrirModalPuesto();
+  }
+}
 
 async function verificarPuesto() {
   const res = await fetch('/api/puestos/mio');
@@ -464,12 +488,14 @@ async function verificarPuesto() {
   if (!_puesto.etapas.length) {
     if (!_puesto.asignado) await guardarPuesto([]);
     mostrarPuesto([]);
+    setModoLectura(false);
     return;
   }
 
   const mias = _puesto.etapas.filter(e => _puesto.mias.includes(e.id)).map(e => e.nombre);
-  document.getElementById('btnCambiarPuesto').classList.remove('d-none');
+  document.getElementById('btnCambiarPuesto').classList.toggle('d-none', !mias.length);
   mostrarPuesto(mias);
+  setModoLectura(!mias.length);
   if (!mias.length) abrirModalPuesto();
 }
 
@@ -497,9 +523,10 @@ function abrirModalPuesto() {
     </label>`).join('');
   const libres = _puesto.etapas.filter(e => !e.responsable).length;
   const errEl  = document.getElementById('puestoError');
-  errEl.textContent = 'Todas las etapas ya tienen encargado. Pedí que liberen una para poder trabajar.';
+  errEl.textContent = 'Todas las etapas ya tienen encargado. Podés entrar en modo lectura hasta que se libere una.';
   errEl.classList.toggle('d-none', libres > 0);
   document.getElementById('btnConfirmarPuesto').disabled = libres === 0;
+  document.getElementById('btnSoloLectura').classList.toggle('d-none', libres > 0 || _puesto.mias.length > 0);
   document.getElementById('btnCancelarPuesto').classList.toggle('d-none', !_puesto.mias.length);
   _modalPuesto ??= new bootstrap.Modal(document.getElementById('modalPuesto'));
   _modalPuesto.show();
@@ -517,6 +544,14 @@ async function guardarPuesto(etapas) {
 // Traer el estado actual antes de abrir: otro operador pudo haber tomado o
 // liberado etapas desde la última consulta.
 document.getElementById('btnCambiarPuesto').addEventListener('click', async () => {
+  const res = await fetch('/api/puestos/mio');
+  if (res.ok) _puesto = await res.json();
+  abrirModalPuesto();
+});
+
+document.getElementById('btnSoloLectura').addEventListener('click', () => _modalPuesto.hide());
+
+document.getElementById('btnElegirEtapa').addEventListener('click', async () => {
   const res = await fetch('/api/puestos/mio');
   if (res.ok) _puesto = await res.json();
   abrirModalPuesto();
