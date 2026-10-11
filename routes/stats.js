@@ -159,10 +159,10 @@ router.get('/', (req, res) => {
   //
   // ¿A quién se le carga? A quien tenía ese puesto (la etapa, o el juego si no
   // usa etapas) mientras el turno estaba excedido, según operador_puestos: si
-  // Kevin tenía la Charla y la cerró recepción, la demora es de Kevin. Si el
-  // puesto cambió de manos durante la demora, se reparte según el tiempo que
-  // lo tuvo cada uno. Si nadie tenía el puesto (historial previo a esta
-  // función), se le carga a quien lo cerró, solo si es operador.
+  // Kevin tenía la Charla y la cerró recepción, la demora es de Kevin. A cada
+  // operador se le carga solo la parte de la demora en la que tuvo el puesto.
+  // La parte en la que nadie lo tenía (historial previo a esta función, o un
+  // puesto sin elegir) se le carga a quien cerró el turno, solo si es operador.
   const demoras = db.prepare(`
     WITH etapas AS (
       SELECT h.id AS hid, h.turno_id, h.etapa_id, h.finalizada_por,
@@ -246,25 +246,33 @@ router.get('/', (req, res) => {
         AND julianday(COALESCE(p.hasta, datetime('now','localtime'))) > d.limite
       GROUP BY d.k, p.usuario_id
     ),
+    -- Fracción de la demora cubierta por algún puesto (tope 1: en un juego
+    -- sin etapas dos operadores pueden tener el puesto a la vez)
     cubiertas AS (
-      SELECT k, SUM(tiempo) AS total FROM coberturas GROUP BY k HAVING SUM(tiempo) > 0
+      SELECT d.k, SUM(c.tiempo) AS total,
+             MIN(1.0, SUM(c.tiempo) / (d.fin - d.limite)) AS fraccion
+      FROM demoras d JOIN coberturas c ON c.k = d.k
+      GROUP BY d.k
+      HAVING SUM(c.tiempo) > 0
     ),
     cargos AS (
-      SELECT c.usuario_id, c.k, d.exceso * c.tiempo / cu.total AS minutos
+      SELECT c.usuario_id, c.k, d.exceso * cu.fraccion * c.tiempo / cu.total AS minutos
       FROM coberturas c
       JOIN cubiertas cu ON cu.k = c.k
       JOIN demoras d    ON d.k = c.k
       WHERE c.tiempo > 0
       UNION ALL
-      SELECT d.cerrador_id, d.k, d.exceso
+      SELECT d.cerrador_id, d.k, d.exceso * (1 - COALESCE(cu.fraccion, 0))
       FROM demoras d
       JOIN usuarios u ON u.id = d.cerrador_id AND u.rol = 'operador'
-      WHERE d.k NOT IN (SELECT k FROM cubiertas)
+      LEFT JOIN cubiertas cu ON cu.k = d.k
+      WHERE COALESCE(cu.fraccion, 0) < 1
     )
     SELECT usuario_id,
            ROUND(SUM(minutos), 1) AS demora_total,
            COUNT(DISTINCT k)      AS turnos_demorados
     FROM cargos
+    WHERE minutos > 0.01
     GROUP BY usuario_id
   `).all();
   const demoraPorUsuario = new Map(demoras.map(d => [d.usuario_id, d]));
