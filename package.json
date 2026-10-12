@@ -1,6 +1,6 @@
 {
   "name": "sistema-turnos-biper",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Sistema de gestión de turnos y llamado por biper",
   "main": "main.js",
   "scripts": {
