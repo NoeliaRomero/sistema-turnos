@@ -5,6 +5,9 @@ const { requireAuth, requirePermission } = require('../middleware/auth');
 const { requierePuesto, requiereEtapaPropia } = require('../services/puestos');
 const serialService = require('../server/services/serialService');
 const { getCodigoBeeper, existeBeeper } = require('../server/config/beeperCodes');
+const { registrarAccion, detalleCombinacion } = require('../services/acciones');
+
+const DETALLE_JUGANDO_AUTO = 'Pasó a jugando automáticamente 5 minutos después del llamado';
 
 // Incluye etapa_actual, subcategoria y campos de estado jugando
 const SELECT_TURNO = `
@@ -104,64 +107,35 @@ function calcularEsperasCombinadas(esperando, atraccion, acumuladoInicial) {
   return esperas;
 }
 
-// ── Sincronización de grupos combinados ───────────────────────────────────────
-function getSincronizar() {
-  try {
-    const cfg = db.prepare('SELECT sincronizar_grupos_combinados FROM configuracion_general WHERE id=1').get();
-    return cfg?.sincronizar_grupos_combinados === 1;
-  } catch { return false; }
-}
-
-// Un "hermano combinado" es otro turno activo que juega EN LA MISMA ETAPA que
-// éste (además de la misma atracción/subcategoría). Antes, al no filtrar por
-// etapa, un turno que ya había avanzado a una etapa siguiente seguía
-// "combinado" con uno nuevo que recién entraba a la primera etapa — por eso
-// la etapa anterior nunca quedaba realmente libre. Si el juego no usa etapas
-// (etapa_actual_id siempre null), el filtro no se aplica y el comportamiento
-// queda exactamente igual que antes.
-// La comparación de etapa es null-safe (`IS ?`): un turno sin etapa (ej. uno
-// viejo, llamado antes de configurar las etapas del juego) solo arrastra a
-// otros turnos sin etapa, nunca a los grupos que están en una etapa. En un
-// juego sin etapas todos tienen null, así que se comporta igual que antes.
-function _hermanosCombinados(turno) {
-  if (turno.subcategoria_id) {
-    return db.prepare(
-      `SELECT t.*, ea.orden AS etapa_actual_orden FROM turnos t LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id WHERE t.atraccion_id=? AND t.subcategoria_id=? AND t.estado IN ('llamado','jugando') AND t.id!=? AND t.etapa_actual_id IS ? AND t.vueltas IS ?`
-    ).all(turno.atraccion_id, turno.subcategoria_id, turno.id, turno.etapa_actual_id ?? null, turno.vueltas ?? null);
-  }
-  return db.prepare(
-    `SELECT t.*, ea.orden AS etapa_actual_orden FROM turnos t LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id WHERE t.atraccion_id=? AND t.subcategoria_id IS NULL AND t.estado IN ('llamado','jugando') AND t.id!=? AND t.etapa_actual_id IS ? AND t.vueltas IS ?`
-  ).all(turno.atraccion_id, turno.id, turno.etapa_actual_id ?? null, turno.vueltas ?? null);
-}
-
 // Turnos que acompañan a éste en cualquier acción (llegó, avanzar, finalizar,
-// cancelar, no llegó, re-llamar): los hermanos combinados (si está activa la
-// sincronización) y, siempre, los grupos que recepción combinó con él (mismo
-// combinacion_id) y siguen activos — una combinación se maneja como un solo
-// grupo. `mismaEtapa`: al avanzar de etapa solo acompañan los que están en la
-// misma etapa; al cerrar el turno se cierran todos.
+// cancelar, no llegó, re-llamar): SOLO los grupos que recepción combinó con él
+// (mismo combinacion_id, vía POST /combinar) y siguen activos — una
+// combinación se maneja como un solo grupo. Otros turnos activos del mismo
+// juego/subcategoría/etapa NO se arrastran: antes, con la opción "Sincronizar
+// grupos combinados", cualquier grupo que coincidiera se cerraba o avanzaba
+// junto con el que el operador tocó, sin que recepción los hubiera combinado.
+// `mismaEtapa`: al avanzar de etapa solo acompañan los que están en la misma
+// etapa; al cerrar el turno se cierran todos.
 function _acompanantes(turno, { mismaEtapa = false } = {}) {
-  const mapa = new Map();
-  if (getSincronizar()) _hermanosCombinados(turno).forEach(h => mapa.set(h.id, h));
-  if (turno.combinacion_id) {
-    db.prepare(`
-      SELECT t.*, ea.orden AS etapa_actual_orden FROM turnos t
-      LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id
-      WHERE t.combinacion_id = ? AND t.atraccion_id = ? AND t.estado IN ('llamado','jugando') AND t.id != ?
-    `).all(turno.combinacion_id, turno.atraccion_id, turno.id)
-      .filter(h => !mismaEtapa || h.etapa_actual_id === turno.etapa_actual_id)
-      .forEach(h => mapa.set(h.id, h));
-  }
-  return [...mapa.values()];
+  if (turno.combinacion_id == null) return [];
+  return db.prepare(`
+    SELECT t.*, ea.orden AS etapa_actual_orden FROM turnos t
+    LEFT JOIN juego_etapas ea ON t.etapa_actual_id = ea.id
+    WHERE t.combinacion_id = ? AND t.atraccion_id = ? AND t.estado IN ('llamado','jugando') AND t.id != ?
+  `).all(turno.combinacion_id, turno.atraccion_id, turno.id)
+    .filter(h => !mismaEtapa || h.etapa_actual_id === turno.etapa_actual_id);
+}
+
+function _nombreEtapa(etapaId) {
+  if (etapaId == null) return null;
+  return db.prepare('SELECT nombre FROM juego_etapas WHERE id = ?').get(etapaId)?.nombre ?? null;
 }
 
 // ── Cierre de turno (finalizado / no_llego / cancelado) ──────────────────────
 // Cierra TODAS las filas abiertas de turno_etapas_historial para el turno dado
 // y deja el turno en el estado final indicado. No decide por sí mismo si hay
-// que replicar la acción a los hermanos combinados: eso queda a cargo del
-// llamador (que ya sabe, según getSincronizar()/_hermanosCombinados, si debe
-// invocar este helper también para cada hermano), preservando exactamente el
-// comportamiento previo de cada endpoint.
+// que replicar la acción a los integrantes de la combinación: eso queda a
+// cargo del llamador (ver _acompanantes).
 function _cerrarTurno(turnoId, estadoFinal, usuarioId) {
   db.prepare(`
     UPDATE turno_etapas_historial
@@ -204,7 +178,10 @@ module.exports = (io) => {
       const turno = conEtapaSig(db.prepare(SELECT_TURNO).get(turnoId));
       if (turno) {
         io.emit('turno:jugando', turno);
-        _pasarAJugando(_acompanantes(turno));
+        registrarAccion(turno, 'jugando_automatico', null, DETALLE_JUGANDO_AUTO);
+        _pasarAJugando(_acompanantes(turno), {
+          principal: turno, accion: 'jugando_automatico', usuario: null, detalle: DETALLE_JUGANDO_AUTO,
+        });
       }
     }, 5 * 60 * 1000);
 
@@ -213,7 +190,9 @@ module.exports = (io) => {
 
   // Pasa a 'jugando' a los acompañantes que siguen en 'llamado' (misma
   // transición que el turno principal: una combinación juega toda junta).
-  function _pasarAJugando(acompanantes) {
+  // Si se indica `accion`, cada acompañante queda registrado en el historial
+  // de acciones como parte de la combinación de `principal`.
+  function _pasarAJugando(acompanantes, { principal = null, accion = null, usuario = null, detalle = null } = {}) {
     acompanantes.filter(h => h.estado === 'llamado').forEach(h => {
       if (timerLlamado.has(h.id)) { clearTimeout(timerLlamado.get(h.id)); timerLlamado.delete(h.id); }
       db.prepare(
@@ -221,6 +200,7 @@ module.exports = (io) => {
       ).run(h.id);
       const tH = conEtapaSig(db.prepare(SELECT_TURNO).get(h.id));
       if (tH) io.emit('turno:jugando', tH);
+      if (accion) registrarAccion(tH || h, accion, usuario, detalleCombinacion(principal, detalle));
     });
   }
 
@@ -229,16 +209,24 @@ module.exports = (io) => {
   // jugando) se cancelan solos: no tienen que bloquear etapas, capacidad ni
   // beepers del día nuevo. Corre al iniciar el servidor (por si estaba apagado
   // a la medianoche) y todos los días a las 00:01.
+  // Solo se cancelan si además su última actividad (empezó a jugar, fue
+  // llamado o se creó) tiene más de 6 horas: un grupo creado o llamado poco
+  // antes de la medianoche sigue vivo. Cada cancelación queda registrada en el
+  // historial de acciones como acción del sistema.
   function _limpiarTurnosDiasAnteriores() {
     const viejos = db.prepare(`
-      SELECT id FROM turnos
+      SELECT * FROM turnos
       WHERE estado IN ('esperando','llamado','jugando')
         AND date(COALESCE(called_at, created_at)) < date('now','localtime')
+        AND datetime(COALESCE(jugando_desde, called_at, created_at)) < datetime('now','localtime','-6 hours')
     `).all();
     if (!viejos.length) return;
 
-    viejos.forEach(({ id }) => {
+    viejos.forEach(viejo => {
+      const { id } = viejo;
       if (timerLlamado.has(id)) { clearTimeout(timerLlamado.get(id)); timerLlamado.delete(id); }
+      registrarAccion(viejo, 'cancelado_limpieza', null,
+        `Cancelado automáticamente por la limpieza diaria: turno de un día anterior (estado "${viejo.estado}") sin actividad hace más de 6 horas`);
       const turno = _cerrarTurno(id, 'cancelado', null);
       io.emit('turno:finalizado', turno);
     });
@@ -256,11 +244,12 @@ module.exports = (io) => {
       const remaining = Math.max(1000, 5 * 60 * 1000 - elapsed);
       const handle = setTimeout(() => {
         timerLlamado.delete(t.id);
-        db.prepare(
+        const r = db.prepare(
           "UPDATE turnos SET estado='jugando', jugando_desde=datetime('now','localtime') WHERE id=? AND estado='llamado'"
         ).run(t.id);
         const turno = conEtapaSig(db.prepare(SELECT_TURNO).get(t.id));
         if (turno) io.emit('turno:jugando', turno);
+        if (turno && r.changes > 0) registrarAccion(turno, 'jugando_automatico', null, DETALLE_JUGANDO_AUTO);
       }, remaining);
       timerLlamado.set(t.id, handle);
     });
@@ -584,6 +573,7 @@ module.exports = (io) => {
     }
 
     const turno = conEtapaSig(db.prepare(SELECT_TURNO).get(turnoId));
+    registrarAccion(turno, 'creado', req.session.usuario);
     io.emit('turno:nuevo', turno);
     res.status(201).json(turno);
   });
@@ -626,7 +616,9 @@ module.exports = (io) => {
   // entran a la misma etapa que el primero aunque ya esté ocupada por él.
   // `esCompanero` (uso interno): el turno se llama como parte de la combinación
   // de otro, que ya hizo las validaciones por todo el grupo.
-  function _ejecutarLlamado(turnoId, usuario, { force = false, saltarOcupados = false, combinar = false, esCompanero = false } = {}) {
+  // `principal` (uso interno): turno de la combinación sobre el que se actuó,
+  // para dejar constancia en el historial de acciones.
+  function _ejecutarLlamado(turnoId, usuario, { force = false, saltarOcupados = false, combinar = false, esCompanero = false, principal = null } = {}) {
     const id = Number(turnoId);
 
     const turnoActual = db.prepare(
@@ -903,6 +895,14 @@ module.exports = (io) => {
     }
 
     const turno = conEtapaSig(db.prepare(SELECT_TURNO).get(Number(id)));
+    {
+      const esSistema = !usuario || usuario.id == null;
+      const accion = esReLlamado ? 're_llamado' : (esSistema ? 'llamado_automatico' : 'llamado');
+      const detalle = esCompanero && principal
+        ? detalleCombinacion(principal)
+        : (esSistema && !esReLlamado ? 'Llamado automático del siguiente turno' : null);
+      registrarAccion(turno, accion, esSistema ? null : usuario, detalle);
+    }
     io.emit('turno:llamado', turno);
     io.emit('biper:activar', { numero: turno.biper_numero, turno });
 
@@ -931,7 +931,7 @@ module.exports = (io) => {
     // a la misma etapa que el primero.
     const llamadosJuntos = [];
     for (const c of companeros) {
-      const r = _ejecutarLlamado(c.id, usuario, { force: true, combinar: true, esCompanero: true });
+      const r = _ejecutarLlamado(c.id, usuario, { force: true, combinar: true, esCompanero: true, principal: turnoActual });
       if (r.status === 200 && !r.body?.advertencia) llamadosJuntos.push(r.body);
       else console.log(`[LLAMAR] combinación: turno=${c.id} no llamado: ${r.body?.error || r.body?.advertencia}`);
     }
@@ -1076,6 +1076,7 @@ module.exports = (io) => {
     }
 
     if (!turnoActual.etapa_actual_id) {
+      registrarAccion(turnoActual, 'finalizado', usuario);
       const turno = _cerrarTurno(Number(id), 'finalizado', usuario.id);
       io.emit('turno:finalizado', turno);
       _notificarRecepcion(io, usuario, turno);
@@ -1083,6 +1084,7 @@ module.exports = (io) => {
       {
         _acompanantes(turnoActual).forEach(h => {
           if (timerLlamado.has(h.id)) { clearTimeout(timerLlamado.get(h.id)); timerLlamado.delete(h.id); }
+          registrarAccion(h, 'finalizado', usuario, detalleCombinacion(turnoActual));
           const tH = _cerrarTurno(h.id, 'finalizado', usuario.id);
           io.emit('turno:finalizado', tH);
           _notificarRecepcion(io, usuario, tH);
@@ -1112,22 +1114,29 @@ module.exports = (io) => {
       `).run(id, sig.id, sig.nombre, sig.orden, usuario.id);
 
       const turno = conEtapaSig(db.prepare(SELECT_TURNO).get(Number(id)));
+      const etapaAnterior = _nombreEtapa(turnoActual.etapa_actual_id);
+      registrarAccion(turnoActual, 'etapa_avanzada', usuario,
+        `De ${etapaAnterior ?? '—'} a ${sig.nombre}`, { etapaNombre: etapaAnterior });
       io.emit('turno:etapa_avanzada', turno);
 
       {
         const acompEtapa = _acompanantes(turnoActual, { mismaEtapa: true });
         _pasarAJugando(acompEtapa);
         acompEtapa.forEach(h => {
+          const etapaAnteriorH = _nombreEtapa(h.etapa_actual_id);
           if (h.etapa_actual_id) {
             db.prepare("UPDATE turno_etapas_historial SET finalizada_at=datetime('now','localtime'), finalizada_por=? WHERE turno_id=? AND etapa_id=? AND finalizada_at IS NULL").run(usuario.id, h.id, h.etapa_actual_id);
           }
           const sigH = etapaSiguiente(h.atraccion_id, h.etapa_actual_orden ?? 0);
           if (sigH) {
+            registrarAccion(h, 'etapa_avanzada', usuario,
+              detalleCombinacion(turnoActual, `De ${etapaAnteriorH ?? '—'} a ${sigH.nombre}`), { etapaNombre: etapaAnteriorH });
             db.prepare("UPDATE turnos SET etapa_actual_id=? WHERE id=?").run(sigH.id, h.id);
             db.prepare("INSERT INTO turno_etapas_historial (turno_id, etapa_id, etapa_nombre, etapa_orden, iniciada_at, iniciada_por) VALUES (?,?,?,?,datetime('now','localtime'),?)").run(h.id, sigH.id, sigH.nombre, sigH.orden, usuario.id);
             const tH = conEtapaSig(db.prepare(SELECT_TURNO).get(h.id));
             io.emit('turno:etapa_avanzada', tH);
           } else {
+            registrarAccion(h, 'finalizado', usuario, detalleCombinacion(turnoActual), { etapaNombre: etapaAnteriorH });
             db.prepare("UPDATE turnos SET estado='finalizado', finished_at=datetime('now','localtime'), finalizado_por=?, etapa_actual_id=NULL WHERE id=?").run(usuario.id, h.id);
             const tH = db.prepare(SELECT_TURNO).get(h.id);
             io.emit('turno:finalizado', tH);
@@ -1142,6 +1151,7 @@ module.exports = (io) => {
       return res.json(turno);
     }
 
+    registrarAccion(turnoActual, 'finalizado', usuario);
     const turno = _cerrarTurno(Number(id), 'finalizado', usuario.id);
     io.emit('turno:finalizado', turno);
     _notificarRecepcion(io, usuario, turno);
@@ -1149,6 +1159,7 @@ module.exports = (io) => {
     {
       _acompanantes(turnoActual).forEach(h => {
         if (timerLlamado.has(h.id)) { clearTimeout(timerLlamado.get(h.id)); timerLlamado.delete(h.id); }
+        registrarAccion(h, 'finalizado', usuario, detalleCombinacion(turnoActual));
         const tH = _cerrarTurno(h.id, 'finalizado', usuario.id);
         io.emit('turno:finalizado', tH);
         _notificarRecepcion(io, usuario, tH);
@@ -1189,8 +1200,9 @@ module.exports = (io) => {
     ).run(Number(id));
 
     const turno = conEtapaSig(db.prepare(SELECT_TURNO).get(Number(id)));
+    registrarAccion(turno, 'llego', usuario);
     io.emit('turno:jugando', turno);
-    _pasarAJugando(_acompanantes(turnoActual));
+    _pasarAJugando(_acompanantes(turnoActual), { principal: turnoActual, accion: 'llego', usuario });
 
     res.json(turno);
   });
@@ -1215,11 +1227,13 @@ module.exports = (io) => {
       timerLlamado.delete(Number(id));
     }
 
+    registrarAccion(turnoActual, 'cancelado', usuario);
     const turno = _cerrarTurno(Number(id), 'cancelado', usuario.id);
     io.emit('turno:finalizado', turno);
 
     _acompanantes(turnoActual).forEach(h => {
       if (timerLlamado.has(h.id)) { clearTimeout(timerLlamado.get(h.id)); timerLlamado.delete(h.id); }
+      registrarAccion(h, 'cancelado', usuario, detalleCombinacion(turnoActual));
       const tH = _cerrarTurno(h.id, 'cancelado', usuario.id);
       io.emit('turno:finalizado', tH);
     });
@@ -1307,6 +1321,18 @@ module.exports = (io) => {
     const turnoActualizado = conEtapaSig(db.prepare(SELECT_TURNO).get(turnoId));
     if (!turnoActualizado) return res.status(409).json({ error: 'El turno cambió de estado durante la edición.' });
 
+    {
+      const nombreSubcat = sid => sid == null ? '—'
+        : (db.prepare('SELECT nombre FROM juego_subcategorias WHERE id = ?').get(sid)?.nombre ?? String(sid));
+      const cambios = [];
+      if (nuevosMiembros !== turno.cantidad_miembros) cambios.push(`Miembros: ${turno.cantidad_miembros} → ${nuevosMiembros}`);
+      if ((nuevaSubcategoriaId ?? null) !== (turno.subcategoria_id ?? null)) {
+        cambios.push(`Subcategoría: ${nombreSubcat(turno.subcategoria_id)} → ${nombreSubcat(nuevaSubcategoriaId)}`);
+      }
+      if ((nuevasVueltas ?? null) !== (turno.vueltas ?? null)) cambios.push(`Vueltas: ${turno.vueltas ?? '—'} → ${nuevasVueltas ?? '—'}`);
+      registrarAccion(turnoActualizado, 'editado', req.session.usuario, cambios.length ? cambios.join('; ') : 'Sin cambios');
+    }
+
     io.emit('turno:editado', turnoActualizado);
     res.json(turnoActualizado);
   });
@@ -1323,6 +1349,10 @@ module.exports = (io) => {
     if (turno.estado !== 'esperando') {
       return res.status(409).json({ error: 'Solo se pueden eliminar turnos que están en espera.' });
     }
+
+    // Copia en el historial de acciones antes de borrarlo: el turno eliminado
+    // tiene que seguir apareciendo.
+    registrarAccion(turno, 'eliminado', req.session.usuario, 'Eliminado mientras estaba en espera');
 
     // Limpiar historial de etapas pendientes (sin iniciada_at — nunca comenzaron)
     db.prepare(
@@ -1405,6 +1435,11 @@ module.exports = (io) => {
     }
 
     console.log(`[COMBINAR] combinacion=${combinacionId} turnos=${[...idsGrupo].join(',')} personas=${personas}/${maximo}`);
+    unicos.forEach(t => {
+      const otros = unicos.filter(o => o.id !== t.id).map(o => o.biper_numero).join(', ');
+      registrarAccion(t, 'combinado', req.session.usuario,
+        `Combinado con beeper${unicos.length > 2 ? 's' : ''} ${otros} (${personas} personas en total)`);
+    });
     io.emit('turno:reordenado', { atraccion_id: base.atraccion_id });
     res.json({ ok: true, combinacion_id: combinacionId, personas });
   });
@@ -1414,8 +1449,17 @@ module.exports = (io) => {
     const turno = db.prepare("SELECT * FROM turnos WHERE id = ? AND estado = 'esperando'").get(Number(req.params.id));
     if (!turno?.combinacion_id) return res.status(400).json({ error: 'El grupo no está combinado' });
 
+    const integrantes = db.prepare("SELECT * FROM turnos WHERE combinacion_id = ? AND atraccion_id = ? AND estado = 'esperando'")
+      .all(turno.combinacion_id, turno.atraccion_id);
+
     db.prepare("UPDATE turnos SET combinacion_id = NULL WHERE combinacion_id = ? AND atraccion_id = ? AND estado = 'esperando'")
       .run(turno.combinacion_id, turno.atraccion_id);
+
+    integrantes.forEach(t => {
+      const otros = integrantes.filter(o => o.id !== t.id).map(o => o.biper_numero).join(', ');
+      registrarAccion(t, 'descombinado', req.session.usuario,
+        otros ? `Separado de beeper${integrantes.length > 2 ? 's' : ''} ${otros}` : 'Combinación separada');
+    });
 
     io.emit('turno:reordenado', { atraccion_id: turno.atraccion_id });
     res.json({ ok: true });
@@ -1481,6 +1525,14 @@ module.exports = (io) => {
       return res.status(500).json({ error: 'No se pudo reordenar la cola' });
     }
 
+    {
+      const movidos = Math.abs(nuevoIdx - idx);
+      const texto = `${direccion === 'subir' ? 'Subió' : 'Bajó'} ${movidos} puesto${movidos !== 1 ? 's' : ''} en la cola`;
+      const companerosMov = _companerosEnEspera(turnoA);
+      registrarAccion(turnoA, 'movido', req.session.usuario, texto);
+      companerosMov.forEach(c => registrarAccion(c, 'movido', req.session.usuario, detalleCombinacion(turnoA, texto)));
+    }
+
     io.emit('turno:reordenado', { atraccion_id: turnoA.atraccion_id });
     res.json({ ok: true });
   });
@@ -1528,7 +1580,10 @@ module.exports = (io) => {
 
     // La combinación vuelve entera a la cola, junta y todavía combinada: se
     // la vuelve a llamar como un solo grupo.
-    [turnoActual, ..._acompanantes(turnoActual)].forEach((t, i) => {
+    const acompNoLlego = _acompanantes(turnoActual);
+    registrarAccion(turnoActual, 'no_llego', usuario, 'Vuelve al final de la cola');
+    acompNoLlego.forEach(h => registrarAccion(h, 'no_llego', usuario, detalleCombinacion(turnoActual, 'Vuelve al final de la cola')));
+    [turnoActual, ...acompNoLlego].forEach((t, i) => {
       if (timerLlamado.has(t.id)) { clearTimeout(timerLlamado.get(t.id)); timerLlamado.delete(t.id); }
 
       // Descartar el progreso de etapa del intento abandonado (si lo hubo) —

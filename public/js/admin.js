@@ -178,7 +178,7 @@ function renderOperadoresChart(llamados, finalizados) {
 function renderTablaOperadores(ops) {
   const tbody = document.getElementById('tablaOps');
   if (!ops.length) {
-    tbody.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">Sin datos de operadores</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="7" class="text-center text-muted py-4">Sin datos de operadores</td></tr>';
     return;
   }
   tbody.innerHTML = ops.map(op => `
@@ -191,6 +191,11 @@ function renderTablaOperadores(ops) {
       <td class="text-center">${op.demora_total > 0
         ? `<span class="badge bg-danger rounded-pill" title="${op.turnos_demorados} turno(s) finalizados fuera de tiempo">${formatearMinutos(op.demora_total)}</span>`
         : '<span class="text-muted">—</span>'}</td>
+      <td class="text-center">
+        <button class="btn btn-outline-primary btn-sm" data-historial-usuario="${op.id}" title="Ver historial de acciones">
+          <i class="bi bi-clock-history me-1"></i>Ver historial
+        </button>
+      </td>
     </tr>`).join('');
 }
 
@@ -808,5 +813,166 @@ document.getElementById('btnConfirmarEliminarJuego').addEventListener('click', a
   mostrarToast('Juego eliminado', 'success');
   cargarJuegos();
 });
+
+// ── Historial de acciones ─────────────────────────────────────────────────────
+// Etiqueta y color de cada acción registrada en turno_acciones.
+const ACCIONES_HISTORIAL = {
+  creado:             { label: 'Creado',               color: 'secondary' },
+  editado:            { label: 'Editado',              color: 'secondary' },
+  movido:             { label: 'Movido en la cola',    color: 'secondary' },
+  combinado:          { label: 'Combinado',            color: 'info' },
+  descombinado:       { label: 'Separado',             color: 'info' },
+  llamado:            { label: 'Llamado',              color: 'primary' },
+  re_llamado:         { label: 'Re-llamado',           color: 'primary' },
+  llamado_automatico: { label: 'Llamado automático',   color: 'primary' },
+  llego:              { label: 'Llegó',                color: 'success' },
+  jugando_automatico: { label: 'Jugando (automático)', color: 'success' },
+  etapa_avanzada:     { label: 'Etapa avanzada',       color: 'info' },
+  finalizado:         { label: 'Finalizado',           color: 'success' },
+  no_llego:           { label: 'No llegó',             color: 'warning' },
+  cancelado:          { label: 'Cancelado',            color: 'danger' },
+  cancelado_limpieza: { label: 'Cancelado (limpieza diaria)', color: 'danger' },
+  eliminado:          { label: 'Eliminado',            color: 'dark' },
+};
+// Totales que se muestran siempre en el resumen, aunque sean cero.
+const RESUMEN_HISTORIAL = [
+  ['Llamados',    ['llamado', 're_llamado', 'llamado_automatico']],
+  ['Llegó',       ['llego']],
+  ['No llegó',    ['no_llego']],
+  ['Etapas',      ['etapa_avanzada']],
+  ['Finalizados', ['finalizado']],
+  ['Cancelados',  ['cancelado', 'cancelado_limpieza']],
+  ['Eliminados',  ['eliminado']],
+  ['Creados',     ['creado']],
+];
+const ROLES_HISTORIAL = { admin: 'Admin', recepcion: 'Recepción', operador: 'Operador', sistema: 'Sistema' };
+
+let _modalHistorial = null;
+let _usuariosHistorialCargados = false;
+
+function _fechaHoy() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+async function _cargarUsuariosHistorial() {
+  if (_usuariosHistorialCargados) return;
+  const res = await fetch('/api/stats/acciones/usuarios');
+  const usuarios = res.ok ? await res.json() : [];
+  document.getElementById('histUsuario').innerHTML =
+    '<option value="">Todos los usuarios</option>'
+    + '<option value="sistema">Sistema (acciones automáticas)</option>'
+    + usuarios.map(u => `<option value="${u.id}">${escapeHtml(u.nombre)} — ${escapeHtml(ROLES_HISTORIAL[u.rol] || u.rol)}${u.activo ? '' : ' (inactivo)'}</option>`).join('');
+  document.getElementById('histAccion').innerHTML = '<option value="">Todas</option>'
+    + Object.entries(ACCIONES_HISTORIAL).map(([k, v]) => `<option value="${k}">${escapeHtml(v.label)}</option>`).join('');
+  _usuariosHistorialCargados = true;
+}
+
+async function abrirHistorial(usuarioId = '') {
+  await _cargarUsuariosHistorial();
+  document.getElementById('histUsuario').value = String(usuarioId);
+  document.getElementById('histDesde').value   = _fechaHoy();
+  document.getElementById('histHasta').value   = _fechaHoy();
+  document.getElementById('histAccion').value  = '';
+  document.getElementById('histBiper').value   = '';
+  if (!_modalHistorial) _modalHistorial = new bootstrap.Modal(document.getElementById('modalHistorial'));
+  _modalHistorial.show();
+  cargarHistorial();
+}
+
+function _badgeAccion(accion) {
+  const a = ACCIONES_HISTORIAL[accion] || { label: accion, color: 'secondary' };
+  const textoOscuro = a.color === 'warning' || a.color === 'info' ? ' text-dark' : '';
+  return `<span class="badge bg-${a.color}${textoOscuro}">${escapeHtml(a.label)}</span>`;
+}
+
+async function cargarHistorial() {
+  const usuario = document.getElementById('histUsuario').value;
+  const biper   = document.getElementById('histBiper').value.trim();
+  const accion  = document.getElementById('histAccion').value;
+  const params  = new URLSearchParams();
+  params.set('desde', document.getElementById('histDesde').value);
+  params.set('hasta', document.getElementById('histHasta').value);
+  if (accion) params.set('accion', accion);
+  if (biper) params.set('biper', biper);
+  else if (usuario) params.set('usuario_id', usuario);
+
+  // Con beeper o sin usuario elegido se ven acciones de varios usuarios:
+  // se agrega la columna "Usuario".
+  const conUsuario = !!biper || !usuario;
+  const columnas = ['Hora', 'Acción', ...(conUsuario ? ['Usuario'] : []), 'Beeper', 'Cliente', 'Juego', 'Etapa', 'Detalle'];
+  document.getElementById('histEncabezado').innerHTML = columnas.map(c => `<th>${c}</th>`).join('');
+
+  const tbody = document.getElementById('histFilas');
+  const aviso = document.getElementById('histAviso');
+  const filaMensaje = (texto, clase) =>
+    `<tr><td colspan="${columnas.length}" class="text-center ${clase} py-4">${escapeHtml(texto)}</td></tr>`;
+  tbody.innerHTML = filaMensaje('Cargando…', 'text-muted');
+  aviso.classList.add('d-none');
+
+  const sel = document.getElementById('histUsuario');
+  document.getElementById('histDescripcion').textContent = biper
+    ? `Línea de tiempo del beeper ${biper} (todos los usuarios)`
+    : (sel.options[sel.selectedIndex]?.text || '');
+
+  const res  = await fetch(`/api/stats/acciones?${params}`);
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    tbody.innerHTML = filaMensaje(data.error || 'No se pudo cargar el historial', 'text-danger');
+    document.getElementById('histResumen').innerHTML = '';
+    return;
+  }
+
+  const conteos = data.conteos || {};
+  document.getElementById('histResumen').innerHTML = RESUMEN_HISTORIAL.map(([label, claves]) => {
+    const total = claves.reduce((s, k) => s + (conteos[k] || 0), 0);
+    return `<span class="badge rounded-pill text-bg-light border px-3 py-2${total ? '' : ' text-muted'}">${escapeHtml(label)}: <strong>${total}</strong></span>`;
+  }).join('');
+
+  if (data.truncado) {
+    aviso.textContent = `Se muestran las ${data.limite} acciones más recientes. Acotá el rango de fechas o filtrá por acción para ver el resto.`;
+    aviso.classList.remove('d-none');
+  }
+
+  if (!data.acciones.length) {
+    tbody.innerHTML = filaMensaje('Sin acciones en el período elegido', 'text-muted');
+    return;
+  }
+
+  const unDia = data.desde === data.hasta;
+  tbody.innerHTML = data.acciones.map(a => {
+    const [fecha, hora] = String(a.created_at || '').split(' ');
+    const cuando = unDia ? (hora || '') : `${fecha} ${hora || ''}`;
+    const quien  = a.usuario_id == null
+      ? '<span class="text-muted">Sistema</span>'
+      : `${escapeHtml(a.usuario_nombre)} <span class="text-muted small">(${escapeHtml(ROLES_HISTORIAL[a.usuario_rol] || a.usuario_rol)})</span>`;
+    const miembros = a.cantidad_miembros ? ` <span class="text-muted small">(${escapeHtml(a.cantidad_miembros)})</span>` : '';
+    return `<tr>
+      <td class="text-nowrap">${escapeHtml(cuando)}</td>
+      <td>${_badgeAccion(a.accion)}</td>
+      ${conUsuario ? `<td>${quien}</td>` : ''}
+      <td class="fw-semibold">${escapeHtml(a.biper_numero ?? '—')}</td>
+      <td>${a.nombre_cliente ? escapeHtml(a.nombre_cliente) : '<span class="text-muted">—</span>'}${miembros}</td>
+      <td>${escapeHtml(a.atraccion_nombre ?? '—')}</td>
+      <td>${a.etapa_nombre ? escapeHtml(a.etapa_nombre) : '<span class="text-muted">—</span>'}</td>
+      <td class="small">${a.detalle ? escapeHtml(a.detalle) : ''}</td>
+    </tr>`;
+  }).join('');
+}
+
+document.getElementById('tablaOps').addEventListener('click', e => {
+  const btn = e.target.closest('[data-historial-usuario]');
+  if (btn) abrirHistorial(btn.dataset.historialUsuario);
+});
+document.getElementById('btnHistorialGeneral').addEventListener('click', () => abrirHistorial(''));
+document.getElementById('formHistorial').addEventListener('submit', e => {
+  e.preventDefault();
+  cargarHistorial();
+});
+document.getElementById('histUsuario').addEventListener('change', () => {
+  document.getElementById('histBiper').value = '';
+  cargarHistorial();
+});
+document.getElementById('histAccion').addEventListener('change', cargarHistorial);
 
 init();

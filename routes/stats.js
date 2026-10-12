@@ -297,4 +297,85 @@ router.get('/', (req, res) => {
   });
 });
 
+// ── Historial de acciones (turno_acciones) ────────────────────────────────────
+// Usuarios que se pueden elegir en el historial (todos los roles salvo
+// superadmin, también los inactivos: sus acciones pasadas siguen contando).
+router.get('/acciones/usuarios', (req, res) => {
+  const usuarios = db.prepare(`
+    SELECT id, nombre, rol, activo FROM usuarios
+    WHERE rol IN ('admin','recepcion','operador')
+    ORDER BY activo DESC, rol, nombre
+  `).all();
+  res.json(usuarios);
+});
+
+// Filtros: usuario_id (id numérico o 'sistema'), desde / hasta (YYYY-MM-DD,
+// por defecto hoy), accion, atraccion_id y biper. Con biper se ignora el
+// filtro de usuario: muestra la línea de tiempo completa de ese beeper.
+const FECHA_RE = /^\d{4}-\d{2}-\d{2}$/;
+const LIMITE_ACCIONES = 1000;
+
+router.get('/acciones', (req, res) => {
+  const hoy   = db.prepare("SELECT date('now','localtime') AS d").get().d;
+  const desde = FECHA_RE.test(req.query.desde || '') ? req.query.desde : hoy;
+  const hasta = FECHA_RE.test(req.query.hasta || '') ? req.query.hasta : hoy;
+
+  const where  = ["created_at >= (? || ' 00:00:00')", "created_at < date(?, '+1 day')"];
+  const params = [desde, hasta];
+
+  const biperTexto = String(req.query.biper ?? '').trim();
+  if (biperTexto) {
+    if (!/^\d+$/.test(biperTexto)) return res.status(400).json({ error: 'El número de beeper es inválido' });
+    where.push('biper_numero = ?');
+    params.push(String(parseInt(biperTexto, 10)));
+  } else if (req.query.usuario_id === 'sistema') {
+    where.push('usuario_id IS NULL');
+  } else if (req.query.usuario_id != null && req.query.usuario_id !== '') {
+    const uid = Number(req.query.usuario_id);
+    if (!Number.isInteger(uid) || uid <= 0) return res.status(400).json({ error: 'Usuario inválido' });
+    where.push('usuario_id = ?');
+    params.push(uid);
+  }
+
+  if (req.query.atraccion_id) {
+    const aid = Number(req.query.atraccion_id);
+    if (!Number.isInteger(aid) || aid <= 0) return res.status(400).json({ error: 'Juego inválido' });
+    where.push('atraccion_id = ?');
+    params.push(aid);
+  }
+
+  // Los totales por acción ignoran el filtro de acción: el resumen siempre
+  // muestra todo lo que hizo el usuario en el rango elegido.
+  const conteos = db.prepare(`
+    SELECT accion, COUNT(*) AS total FROM turno_acciones
+    WHERE ${where.join(' AND ')}
+    GROUP BY accion
+  `).all(...params);
+
+  const accion = String(req.query.accion ?? '').trim();
+  if (accion) {
+    where.push('accion = ?');
+    params.push(accion);
+  }
+
+  const filas = db.prepare(`
+    SELECT id, turno_id, atraccion_id, atraccion_nombre, biper_numero, nombre_cliente,
+           cantidad_miembros, accion, usuario_id, usuario_nombre, usuario_rol,
+           etapa_nombre, detalle, created_at
+    FROM turno_acciones
+    WHERE ${where.join(' AND ')}
+    ORDER BY created_at DESC, id DESC
+    LIMIT ${LIMITE_ACCIONES + 1}
+  `).all(...params);
+
+  const truncado = filas.length > LIMITE_ACCIONES;
+  res.json({
+    desde, hasta,
+    acciones: truncado ? filas.slice(0, LIMITE_ACCIONES) : filas,
+    truncado,
+    limite: LIMITE_ACCIONES,
+    conteos: Object.fromEntries(conteos.map(c => [c.accion, c.total])),
+  });
+});
+
 module.exports = router;

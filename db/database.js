@@ -224,6 +224,32 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_puestos_atraccion ON operador_puestos(atraccion_id, etapa_id);
 `);
 
+// ── Tabla turno_acciones ──────────────────────────────────────────────────────
+// Historial de acciones sobre los turnos: quién hizo qué y cuándo (operador,
+// recepción, admin o el sistema). Guarda una copia de los datos del turno y
+// del usuario (sin FK) para que el registro sobreviva aunque el turno se
+// elimine o el usuario cambie de nombre. Se escribe en services/acciones.js.
+db.exec(`
+  CREATE TABLE IF NOT EXISTS turno_acciones (
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,
+    turno_id          INTEGER,
+    atraccion_id      INTEGER,
+    atraccion_nombre  TEXT,
+    biper_numero      TEXT,
+    nombre_cliente    TEXT,
+    cantidad_miembros INTEGER,
+    accion            TEXT NOT NULL,
+    usuario_id        INTEGER DEFAULT NULL,
+    usuario_nombre    TEXT,
+    usuario_rol       TEXT,
+    etapa_nombre      TEXT DEFAULT NULL,
+    detalle           TEXT DEFAULT NULL,
+    created_at        TEXT DEFAULT (datetime('now','localtime'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_acciones_usuario ON turno_acciones(usuario_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_acciones_turno   ON turno_acciones(turno_id);
+`);
+
 // Índices para las estadísticas de demora por etapa (routes/stats.js)
 db.exec(`
   CREATE INDEX IF NOT EXISTS idx_teh_turno ON turno_etapas_historial(turno_id);
