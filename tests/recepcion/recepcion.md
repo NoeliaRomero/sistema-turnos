@@ -45,13 +45,17 @@
 
 ---
 
-## Test Case: `RECEP-E2E-004` - Groups with different laps cannot be combined
+## Test Case: `RECEP-E2E-004` - Groups with different laps can be combined
 
 **Priority:** `critical` · **Tags:** @e2e @recepcion
 
+### Flow Steps:
+1. Seed groups A (2 p., 5 laps) and B (3 p., 10 laps).
+2. "Combinar" on A → check B → "Combinar".
+
 ### Expected Result:
-- In the modal, the 10-lap group is disabled with "Otra cantidad de vueltas (10)" and "Combinar" stays disabled.
-- `POST /api/turnos/combinar` → 400 "Solo se pueden combinar grupos con la misma cantidad de vueltas".
+- One waiting card "A + B", badge "Combinado", laps badge "5 / 10 vueltas".
+- Both turns share the same `combinacion_id` and keep their own laps (5 and 10).
 
 ---
 

@@ -81,25 +81,26 @@ test.describe('Recepción - combine waiting groups', () => {
       expect(tb.combinacion_id).toBe(ta.combinacion_id);
     });
 
-  test('Groups with different laps cannot be combined',
+  test('Groups with different laps can be combined',
     { tag: ['@critical', '@e2e', '@recepcion', '@RECEP-E2E-004'] },
     async ({ page, adminApi }) => {
       const { game, recepcion } = await setup(adminApi, page);
-      const a = await adminApi.createTurn(game, { nombre: uniqueName('Cinco'), vueltas: 5 });
-      const b = await adminApi.createTurn(game, { nombre: uniqueName('Diez'), vueltas: 10 });
+      const a = await adminApi.createTurn(game, { nombre: uniqueName('Cinco'), vueltas: 5, miembros: 2 });
+      const b = await adminApi.createTurn(game, { nombre: uniqueName('Diez'), vueltas: 10, miembros: 3 });
       await page.reload();
       await recepcion.openGameTab(game.nombre);
 
-      await recepcion.openCombine(a.nombre_cliente!);
+      await recepcion.combine(a.nombre_cliente!, [b.nombre_cliente!]);
 
-      await expect(recepcion.combineCandidate(b.nombre_cliente!)).toBeDisabled();
-      await expect(recepcion.combineDialog).toContainText('Otra cantidad de vueltas (10)');
-      await expect(recepcion.combineDialog.getByRole('button', { name: iconName('Combinar') })).toBeDisabled();
+      await recepcion.expectToast('Grupos combinados (5 personas)');
+      const card = recepcion.waitingCard(`${a.nombre_cliente} + ${b.nombre_cliente}`);
+      await expect(card).toContainText('Combinado');
+      await expect(card).toContainText('5 / 10 vueltas');
 
-      const res = await page.request.post('/api/turnos/combinar', { data: { turno_id: a.id, con: [b.id] } });
-      expect(res.status()).toBe(400);
-      expect((await res.json()).error).toBe('Solo se pueden combinar grupos con la misma cantidad de vueltas');
-      expect((await adminApi.turn(b.id, game)).combinacion_id).toBeNull();
+      const [ta, tb] = [await adminApi.turn(a.id, game), await adminApi.turn(b.id, game)];
+      expect(ta.combinacion_id).not.toBeNull();
+      expect(tb.combinacion_id).toBe(ta.combinacion_id);
+      expect([ta.vueltas, tb.vueltas]).toEqual([5, 10]);
     });
 });
 

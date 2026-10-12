@@ -53,9 +53,14 @@ function conEtapaSig(turno) {
 // esa sesión combinada termina.
 function acumuladoBaseDesdeActivos(activos) {
   const maxPorGrupo = {};
+  const keyPorCombinacion = {};
   activos.forEach(t => {
-    // Distinta cantidad de vueltas tampoco juega junta (null si el juego no las usa)
-    const key = `${t.subcategoria_id ?? '__null__'}|${t.vueltas ?? '__null__'}`;
+    // Distinta cantidad de vueltas tampoco juega junta (null si el juego no las
+    // usa), salvo dentro de una combinación: todos sus integrantes comparten
+    // el grupo del primero.
+    const key = (t.combinacion_id && keyPorCombinacion[t.combinacion_id])
+      || `${t.subcategoria_id ?? '__null__'}|${t.vueltas ?? '__null__'}`;
+    if (t.combinacion_id) keyPorCombinacion[t.combinacion_id] = key;
     maxPorGrupo[key] = Math.max(maxPorGrupo[key] || 0, t.tiempo_restante);
   });
   return Object.values(maxPorGrupo).reduce((s, v) => s + v, 0);
@@ -74,16 +79,21 @@ function calcularEsperasCombinadas(esperando, atraccion, acumuladoInicial) {
     let miembros = esperando[i].cantidad_miembros || 0;
     const subcat  = esperando[i].subcategoria_id;
     const vueltas = esperando[i].vueltas ?? null;
+    const combinaciones = new Set(esperando[i].combinacion_id ? [esperando[i].combinacion_id] : []);
     let j = i + 1;
     while (j < esperando.length) {
       const cand = esperando[j];
       const mismaSubcat = atraccion.usa_subcategorias ? cand.subcategoria_id === subcat : true;
       if (!mismaSubcat) break;
+      // Los integrantes de una misma combinación juegan juntos aunque tengan
+      // distinta cantidad de vueltas.
+      const mismaCombinacion = !!cand.combinacion_id && combinaciones.has(cand.combinacion_id);
       const mismasVueltas = atraccion.usa_vueltas ? (cand.vueltas ?? null) === vueltas : true;
-      if (!mismasVueltas) break;
+      if (!mismasVueltas && !mismaCombinacion) break;
       const nuevaCantidad = miembros + (cand.cantidad_miembros || 0);
       if (nuevaCantidad > atraccion.max_miembros) break;
       miembros = nuevaCantidad;
+      if (cand.combinacion_id) combinaciones.add(cand.combinacion_id);
       j++;
     }
     const espera = Math.ceil(acumulado);
@@ -324,7 +334,7 @@ module.exports = (io) => {
     const juegos = atracciones.map(a => {
       const activos = db.prepare(`
         SELECT t.id, t.biper_numero, t.nombre_cliente, t.cantidad_miembros, t.estado,
-               t.called_at, t.jugando_desde, t.subcategoria_id, t.vueltas,
+               t.called_at, t.jugando_desde, t.subcategoria_id, t.vueltas, t.combinacion_id,
                ea.nombre AS etapa_actual_nombre,
                ea.orden  AS etapa_actual_orden
         FROM turnos t
@@ -345,7 +355,7 @@ module.exports = (io) => {
       });
 
       const esperando = db.prepare(`
-        SELECT t.id, t.biper_numero, t.nombre_cliente, t.cantidad_miembros, t.created_at, t.subcategoria_id, t.vueltas
+        SELECT t.id, t.biper_numero, t.nombre_cliente, t.cantidad_miembros, t.created_at, t.subcategoria_id, t.vueltas, t.combinacion_id
         FROM turnos t
         WHERE t.atraccion_id = ? AND t.estado = 'esperando'
         ORDER BY t.orden_cola ASC, t.id ASC
@@ -763,16 +773,21 @@ module.exports = (io) => {
         }
       }
 
-      // Validación de vueltas: grupos con distinta cantidad de vueltas nunca
-      // corren juntos. Igual que las subcategorías, solo cuentan los grupos en
-      // la etapa de entrada (los que ya avanzaron no bloquean). `IS NOT` es
-      // null-safe: un turno sin vueltas tampoco se mezcla con uno que sí tiene.
-      if (atraccionInfo?.usa_vueltas) {
-        const conflictoVueltas = db.prepare(`
+      // Validación de vueltas: grupos sueltos con distinta cantidad de vueltas
+      // nunca corren juntos. Igual que las subcategorías, solo cuentan los
+      // grupos en la etapa de entrada (los que ya avanzaron no bloquean). `IS
+      // NOT` es null-safe: un turno sin vueltas tampoco se mezcla con uno que
+      // sí tiene. Una combinación sí puede mezclar vueltas entre sus
+      // integrantes: se valida a cada uno contra los activos de afuera, y los
+      // compañeros (ya validados por el primero) no se vuelven a chequear.
+      if (atraccionInfo?.usa_vueltas && !esCompanero) {
+        const contarConflicto = t => db.prepare(`
           SELECT COUNT(*) AS c FROM turnos
           WHERE atraccion_id = ? AND estado IN ('llamado','jugando')
             AND vueltas IS NOT ?${filtroEntrada}
-        `).get(turnoActual.atraccion_id, turnoActual.vueltas ?? null, ...paramsEntrada).c;
+        `).get(turnoActual.atraccion_id, t.vueltas ?? null, ...paramsEntrada).c;
+        const conflictoVueltas = [turnoActual, ...companeros]
+          .reduce((max, t) => Math.max(max, contarConflicto(t)), 0);
         console.log(`[LLAMAR] conflictoVueltas=${conflictoVueltas} → ${conflictoVueltas > 0 ? 'RECHAZADO: otra cantidad de vueltas activa' : 'OK'}`);
         if (conflictoVueltas > 0) {
           return { status: 400, body: {
@@ -1283,10 +1298,6 @@ module.exports = (io) => {
       const valVueltas = _validarVueltas({ id: turno.atraccion_id, usa_vueltas: turno.usa_vueltas }, vueltas);
       if (valVueltas.error) return res.status(400).json({ error: valVueltas.error });
       nuevasVueltas = valVueltas.vueltas;
-      // Un grupo combinado corre junto: no puede quedar con otra cantidad de vueltas
-      if (nuevasVueltas !== (turno.vueltas ?? null) && _companerosEnEspera(turno).length) {
-        return res.status(400).json({ error: 'El grupo está combinado: descombinalo antes de cambiar la cantidad de vueltas.' });
-      }
     }
 
     db.prepare(
@@ -1339,7 +1350,7 @@ module.exports = (io) => {
 
     const base = db.prepare("SELECT * FROM turnos WHERE id = ? AND estado = 'esperando'").get(baseId);
     if (!base) return res.status(400).json({ error: 'El turno ya no está en espera' });
-    const juego = db.prepare('SELECT max_miembros, usa_subcategorias, usa_vueltas FROM atracciones WHERE id = ?').get(base.atraccion_id);
+    const juego = db.prepare('SELECT max_miembros, usa_subcategorias FROM atracciones WHERE id = ?').get(base.atraccion_id);
 
     const nuevos = conIds.map(i => db.prepare("SELECT * FROM turnos WHERE id = ? AND estado = 'esperando'").get(i));
     if (nuevos.some(t => !t || t.atraccion_id !== base.atraccion_id)) {
@@ -1348,10 +1359,8 @@ module.exports = (io) => {
     if (juego?.usa_subcategorias && nuevos.some(t => t.subcategoria_id !== base.subcategoria_id)) {
       return res.status(400).json({ error: 'Solo se pueden combinar grupos de la misma subcategoría' });
     }
-    // Grupos con distinta cantidad de vueltas nunca corren juntos
-    if (juego?.usa_vueltas && nuevos.some(t => (t.vueltas ?? null) !== (base.vueltas ?? null))) {
-      return res.status(400).json({ error: 'Solo se pueden combinar grupos con la misma cantidad de vueltas' });
-    }
+    // La cantidad de vueltas no se valida: recepción puede combinar grupos con
+    // distinta cantidad de vueltas (ej. 6 y 15) y juegan juntos igual.
     if (nuevos.some(t => t.combinacion_id && t.combinacion_id !== base.combinacion_id && _companerosEnEspera(t).length)) {
       return res.status(400).json({ error: 'Uno de los grupos ya está combinado con otro' });
     }

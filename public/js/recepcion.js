@@ -409,7 +409,7 @@ function renderJuegoPane(j) {
 
       const subcatEsperaHtml = (t.subcategoria_nombre
         ? `<span class="badge bg-success bg-opacity-75"><i class="bi bi-diagram-3 me-1"></i>${escapeHtml(t.subcategoria_nombre)}</span>`
-        : '') + _vueltasBadge(t);
+        : '') + _vueltasBadgeGrupo(grupo);
 
       // Editar / eliminar son por grupo: en una combinación se reemplazan por
       // "Separar" (después se puede editar o eliminar cada grupo suelto).
@@ -787,6 +787,16 @@ function _vueltasBadge(t) {
     : '';
 }
 
+// Badge de vueltas para una tarjeta que puede ser una combinación: lista las
+// distintas cantidades del grupo, ej. "6 / 15 vueltas".
+function _vueltasBadgeGrupo(grupo) {
+  const cantidades = [...new Set(grupo.map(t => t.vueltas).filter(v => v != null).map(Number))]
+    .sort((a, b) => a - b);
+  return cantidades.length
+    ? `<span class="badge bg-info text-dark"><i class="bi bi-arrow-repeat me-1"></i>${cantidades.join(' / ')} vueltas</span>`
+    : '';
+}
+
 function abrirCombinar(juegoId, turnoId) {
   const juego = colaData.find(j => j.id === juegoId);
   const base  = juego?.cola.find(t => t.id === turnoId);
@@ -852,10 +862,8 @@ function _renderCombinar() {
     const otroJ   = c.enOtroJuego.get(String(t.biper_numero));
     const enOtraCombi = !!_comboDe(c.juego, t);
     const noEntra = !marcado && (t.cantidad_miembros || 0) > libres;
-    // Grupos con distinta cantidad de vueltas nunca corren juntos
-    const otrasVueltas = c.juego.usa_vueltas && (t.vueltas ?? null) !== (c.base.vueltas ?? null);
-    const motivo  = otrasVueltas ? `Otra cantidad de vueltas${t.vueltas != null ? ` (${t.vueltas})` : ''}`
-                  : enOtraCombi ? 'Ya está combinado con otro grupo'
+    // La cantidad de vueltas no impide combinar (ej. 6 y 15 juegan juntos)
+    const motivo  = enOtraCombi ? 'Ya está combinado con otro grupo'
                   : otroJ ? `Jugando en ${escapeHtml(otroJ)}`
                   : noEntra ? 'Supera el máximo de personas' : '';
     filas.push(_filaCombinar(t, { marcado, disabled: !marcado && !!motivo, motivo }));
